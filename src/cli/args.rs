@@ -284,7 +284,9 @@ pub fn read_list_file(path: &str) -> Result<Vec<String>> {
         .map_err(|e| Error::usage(format!("cannot read list file {path}: {e}")))?;
     let text = if data.starts_with(&[0xFF, 0xFE]) {
         let units: Vec<u16> = data[2..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
         String::from_utf16_lossy(&units)

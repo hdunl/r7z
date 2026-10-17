@@ -9,7 +9,6 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 
 use ed25519_dalek::{Signature, VerifyingKey};
@@ -152,30 +151,38 @@ fn release_key() -> [u8; 32] {
     hex(RELEASE_KEY).expect("release key")
 }
 
-fn agent() -> Result<ureq::Agent> {
-    let tls = native_tls::TlsConnector::new()
-        .map_err(|e| Error::Other(format!("could not set up a secure connection: {e}")))?;
-    Ok(ureq::AgentBuilder::new()
-        .tls_connector(Arc::new(tls))
+/// HTTPS only, through Windows' own TLS (SChannel) and certificate store, which Windows
+/// Update keeps current.
+fn agent() -> ureq::Agent {
+    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+    ureq::Agent::config_builder()
         .https_only(true)
-        .timeout_connect(Duration::from_secs(15))
-        .timeout_read(Duration::from_secs(30))
+        .tls_config(
+            TlsConfig::builder()
+                .provider(TlsProvider::NativeTls)
+                .root_certs(RootCerts::PlatformVerifier)
+                .build(),
+        )
+        .timeout_connect(Some(Duration::from_secs(15)))
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .timeout_global(Some(Duration::from_secs(15 * 60)))
         .user_agent(concat!("r7z/", env!("CARGO_PKG_VERSION")))
-        .build())
+        .build()
+        .new_agent()
 }
 
 fn net(e: ureq::Error) -> Error {
     match e {
-        ureq::Error::Status(404, _) => Error::Other("no release has been published yet".into()),
-        ureq::Error::Status(code, _) => Error::Other(format!("GitHub answered with HTTP {code}")),
-        ureq::Error::Transport(t) => Error::Other(format!("could not reach GitHub ({t})")),
+        ureq::Error::StatusCode(404) => Error::Other("no release has been published yet".into()),
+        ureq::Error::StatusCode(code) => Error::Other(format!("GitHub answered with HTTP {code}")),
+        other => Error::Other(format!("could not reach GitHub ({other})")),
     }
 }
 
 /// Downloads at most `limit` bytes; anything longer is an error.
 fn get(agent: &ureq::Agent, url: &str, limit: u64, cancel: &AtomicBool) -> Result<Vec<u8>> {
     let resp = agent.get(url).call().map_err(net)?;
-    let mut reader = resp.into_reader().take(limit + 1);
+    let mut reader = resp.into_body().into_reader().take(limit + 1);
     let mut out = Vec::new();
     let mut buf = vec![0u8; 64 << 10];
     loop {
@@ -196,9 +203,14 @@ fn get(agent: &ureq::Agent, url: &str, limit: u64, cancel: &AtomicBool) -> Resul
 
 /// Fetches and verifies the latest release's manifest.
 pub fn check(cancel: &AtomicBool) -> Result<Check> {
-    let agent = agent()?;
+    let agent = agent();
     let base = format!("https://github.com/{REPO}/releases/latest/download");
-    let manifest = get(&agent, &format!("{base}/r7z-update.txt"), MANIFEST_LIMIT, cancel)?;
+    let manifest = get(
+        &agent,
+        &format!("{base}/r7z-update.txt"),
+        MANIFEST_LIMIT,
+        cancel,
+    )?;
     let sig = get(&agent, &format!("{base}/r7z-update.sig"), 1024, cancel)?;
     let sig = String::from_utf8_lossy(&sig);
     let m = verify(&manifest, &sig, &release_key())?;
@@ -219,7 +231,7 @@ fn install_dir() -> Result<PathBuf> {
 /// Downloads the release zip named by a verified manifest, checks its size and hash, and
 /// installs the programs in it next to this one. Returns the version installed.
 pub fn download_and_install(m: &Manifest, cancel: &AtomicBool) -> Result<String> {
-    let agent = agent()?;
+    let agent = agent();
     let zip = get(&agent, &m.download_url(), m.size, cancel)?;
     if zip.len() as u64 != m.size || Sha256::digest(&zip).as_slice() != m.sha256 {
         return Err(Error::Other(
@@ -265,12 +277,13 @@ pub fn install_from_zip(zip: &Path, dir: &Path) -> Result<Vec<String>> {
                 .ok_or_else(|| Error::Other(format!("the update has no {name}")))?;
             let data = r7z::ops::peek::read_entry(a, index, None, ZIP_LIMIT as usize, &|| false)?;
             if data.truncated || !data.data.starts_with(b"MZ") {
-                return Err(Error::Other(format!("{name} in the update is not a program")));
+                return Err(Error::Other(format!(
+                    "{name} in the update is not a program"
+                )));
             }
             let new = sibling(&target, ".new");
-            std::fs::write(&new, &data.data).map_err(|e| {
-                Error::Other(format!("cannot write to {} ({e})", dir.display()))
-            })?;
+            std::fs::write(&new, &data.data)
+                .map_err(|e| Error::Other(format!("cannot write to {} ({e})", dir.display())))?;
             out.push((target, new));
         }
         Ok(out)
@@ -341,7 +354,11 @@ mod tests {
         let key = SigningKey::from_bytes(&[7u8; 32]);
         let sig = key.sign(text.as_bytes()).to_bytes();
         let hex: String = sig.iter().map(|b| format!("{b:02x}")).collect();
-        (text.as_bytes().to_vec(), hex, key.verifying_key().to_bytes())
+        (
+            text.as_bytes().to_vec(),
+            hex,
+            key.verifying_key().to_bytes(),
+        )
     }
 
     /// A stored (uncompressed) zip of every file in `src`.
@@ -445,14 +462,26 @@ mod tests {
 
         let done = install_from_zip(&zip, &dir).unwrap();
         assert_eq!(done, ["r7z-gui.exe"]);
-        assert_eq!(std::fs::read(dir.join("r7z-gui.exe")).unwrap(), b"MZ new gui");
-        assert_eq!(std::fs::read(dir.join("r7z-gui.exe.old")).unwrap(), b"MZ old gui");
-        assert!(!dir.join("r7z.exe").exists(), "the CLI is only updated when present");
+        assert_eq!(
+            std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
+            b"MZ new gui"
+        );
+        assert_eq!(
+            std::fs::read(dir.join("r7z-gui.exe.old")).unwrap(),
+            b"MZ old gui"
+        );
+        assert!(
+            !dir.join("r7z.exe").exists(),
+            "the CLI is only updated when present"
+        );
 
         std::fs::write(src.join("r7z-gui.exe"), b"not a program").unwrap();
         write_zip(&src, &zip);
         assert!(install_from_zip(&zip, &dir).is_err());
-        assert_eq!(std::fs::read(dir.join("r7z-gui.exe")).unwrap(), b"MZ new gui");
+        assert_eq!(
+            std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
+            b"MZ new gui"
+        );
         assert!(!dir.join("r7z-gui.exe.new").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -475,13 +504,19 @@ mod tests {
         let data = std::fs::read(&zip).unwrap();
         assert_eq!(data.len() as u64, m.size);
         assert_eq!(Sha256::digest(&data).as_slice(), m.sha256);
-        let scratch = std::env::temp_dir().join(format!("r7z-release-check-{}", std::process::id()));
+        let scratch =
+            std::env::temp_dir().join(format!("r7z-release-check-{}", std::process::id()));
         std::fs::create_dir_all(&scratch).unwrap();
         std::fs::write(scratch.join("r7z-gui.exe"), b"MZ").unwrap();
         std::fs::write(scratch.join("r7z.exe"), b"MZ").unwrap();
         let done = install_from_zip(&zip, &scratch).unwrap();
         assert_eq!(done, ["r7z-gui.exe", "r7z.exe"]);
-        assert!(std::fs::metadata(scratch.join("r7z-gui.exe")).unwrap().len() > 1 << 20);
+        assert!(
+            std::fs::metadata(scratch.join("r7z-gui.exe"))
+                .unwrap()
+                .len()
+                > 1 << 20
+        );
         let _ = std::fs::remove_dir_all(&scratch);
     }
 }

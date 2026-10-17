@@ -99,7 +99,7 @@ fn e8_translate(d: &mut [u8]) {
 fn write_lens(bits: &mut Bits, prev: &[u8], new: &[u8]) {
     // (pretree symbol, extra value, extra bit count, optional second symbol)
     let mut syms: Vec<(u32, u32, u32, Option<u32>)> = Vec::new();
-    let delta = |i: usize, v: u8| ((prev[i] as u32 + 17 - v as u32) % 17);
+    let delta = |i: usize, v: u8| (prev[i] as u32 + 17 - v as u32) % 17;
     let mut i = 0;
     while i < new.len() {
         let mut run = 1;

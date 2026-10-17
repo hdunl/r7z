@@ -1,3 +1,6 @@
 target/
 *.7z
 /bench-data/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/

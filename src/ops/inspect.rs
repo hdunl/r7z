@@ -262,7 +262,7 @@ pub fn inspect(entries: &[Entry], packed_total: Option<u64>) -> Vec<Finding> {
         ));
     }
 
-    out.sort_by(|a, b| b.level.cmp(&a.level));
+    out.sort_by_key(|f| std::cmp::Reverse(f.level));
     out
 }
 

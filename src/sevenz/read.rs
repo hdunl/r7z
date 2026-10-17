@@ -156,14 +156,13 @@ pub fn parse_header_block(
                     let folder = &tmp.streams.folders[f];
                     header_encrypted |= folder.is_encrypted();
                     let packs = pack_slices(data, &tmp, f)?;
-                    let out =
-                        decode_folder_to_vec(folder, &packs, &opts, limit).map_err(|e| {
-                            if folder.is_encrypted() && matches!(e, Error::Corrupt(_)) {
-                                Error::WrongPassword
-                            } else {
-                                e
-                            }
-                        })?;
+                    let out = decode_folder_to_vec(folder, &packs, &opts, limit).map_err(|e| {
+                        if folder.is_encrypted() && matches!(e, Error::Corrupt(_)) {
+                            Error::WrongPassword
+                        } else {
+                            e
+                        }
+                    })?;
                     if let Some(crc) = folder.crc {
                         if crc32fast::hash(&out) != crc {
                             return Err(if folder.is_encrypted() {
@@ -491,7 +490,9 @@ fn read_files_info(r: &mut Reader) -> Result<Vec<Entry>> {
                 }
                 let raw = p.bytes(p.remaining())?;
                 let units: Vec<u16> = raw
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| u16::from_le_bytes([c[0], c[1]]))
                     .collect();
                 let mut names = units.split(|&u| u == 0);

@@ -407,7 +407,9 @@ pub fn extract(a: &Args, full_paths: bool, test_only: bool) -> Result<i32> {
 fn recover(a: &Args, full_paths: bool, test_only: bool) -> Result<i32> {
     use r7z::ops::recover::{self, RecoverOptions};
     if a.stdout {
-        return Err(Error::usage("-recover writes files; it cannot be used with -so"));
+        return Err(Error::usage(
+            "-recover writes files; it cannot be used with -so",
+        ));
     }
     let t0 = Instant::now();
     let (opened, password) = open(a, true)?;

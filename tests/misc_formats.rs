@@ -266,9 +266,222 @@ fn ar_bsd_long_names() {
     assert_eq!(e.attrib, Some(0x8000 | (0o100666 << 16)));
 }
 
+// ---------------------------------------------------------------- generated ar archives
+//
+// These archives are built here instead of being checked in as binaries, so every byte of
+// them can be read and reviewed. They follow what GNU ar, BSD ar and Microsoft's lib.exe
+// write (symbol tables, long-name tables, member headers), with short text standing in for
+// object code.
+
+const AR_MTIME: &str = "1704164645";
+
+/// One member: the 60-byte header, then the data, padded to an even length.
+fn ar_member(name: &str, mtime: &str, owner: &str, mode: &str, data: &[u8]) -> Vec<u8> {
+    let mut m = format!(
+        "{name:<16}{mtime:<12}{owner:<6}{owner:<6}{mode:<8}{:<10}`\n",
+        data.len()
+    )
+    .into_bytes();
+    m.extend_from_slice(data);
+    if data.len() % 2 == 1 {
+        m.push(b'\n');
+    }
+    m
+}
+
+fn ar(members: &[Vec<u8>]) -> Vec<u8> {
+    [b"!<arch>\n".to_vec(), members.concat()].concat()
+}
+
+fn file_member(name: &str, data: &[u8]) -> Vec<u8> {
+    ar_member(name, AR_MTIME, "0", "100644", data)
+}
+
+/// Big-endian symbol counts and member offsets (GNU and the first lib.exe linker member),
+/// followed by the NUL-terminated names.
+fn be_symbol_table(width: usize, offsets: &[u64], names: &[&str]) -> Vec<u8> {
+    let be = |v: u64| v.to_be_bytes()[8 - width..].to_vec();
+    let mut t = be(offsets.len() as u64);
+    for &o in offsets {
+        t.extend(be(o));
+    }
+    for n in names {
+        t.extend_from_slice(n.as_bytes());
+        t.push(0);
+    }
+    t
+}
+
+/// The members GNU ar writes after its symbol table: a long-name table ("//"), a short
+/// name, a long name ("/0"), the same short name twice, and another long name ("/29").
+fn gnu_members() -> Vec<Vec<u8>> {
+    vec![
+        ar_member(
+            "//",
+            "",
+            "",
+            "",
+            b"a_rather_long_member_name.o/\nanother_very_long_name.txt/\n",
+        ),
+        file_member("short.o/", b"OBJ1OBJ1OBJ1"),
+        file_member("/0", b"long data\n"),
+        file_member("dup.txt/", b"first\n"),
+        file_member("dup.txt/", b"second\n"),
+        file_member("/29", &[b'x'; 33]),
+    ]
+}
+
+/// GNU ar with a 32-bit symbol table ("/").
+fn gnu_a() -> Vec<u8> {
+    let symbols = be_symbol_table(4, &[0xE0, 0x128, 0x1F4], &["func_a", "func_b", "data_c"]);
+    let mut m = vec![ar_member("/", "0", "0", "0", &symbols)];
+    m.extend(gnu_members());
+    ar(&m)
+}
+
+/// GNU ar with a 64-bit symbol table ("/SYM64/").
+fn gnu64_a() -> Vec<u8> {
+    let symbols = be_symbol_table(8, &[0xF0, 0x138, 0x204], &["func_a", "func_b", "data_c"]);
+    let mut m = vec![ar_member("/SYM64/", "0", "0", "0", &symbols)];
+    m.extend(gnu_members());
+    ar(&m)
+}
+
+/// BSD ar: names longer than 16 bytes or containing spaces are stored as "#1/<len>" with
+/// the name at the start of the data, and the symbol table is "__.SYMDEF" (little-endian
+/// ranlib entries of string index and member offset, then the string table).
+fn bsd_symdef_a() -> Vec<u8> {
+    let le = |v: u32| v.to_le_bytes();
+    let mut symdef = b"__.SYMDEF\0\0\0".to_vec();
+    symdef.extend(le(16));
+    for (strx, offset) in [(0, 0x70), (4, 0xB8)] {
+        symdef.extend(le(strx));
+        symdef.extend(le(offset));
+    }
+    symdef.extend(le(8));
+    symdef.extend_from_slice(b"_f1\0_g2\0");
+    ar(&[
+        file_member("#1/12", &symdef),
+        file_member("short.o", b"OBJ1OBJ1OBJ1"),
+        file_member("#1/28", b"a_rather_long_member_name.o\0long data\n"),
+        file_member("odd", b"abc"),
+    ])
+}
+
+/// A Microsoft import library: two linker members (big-endian then little-endian with
+/// sorted names), a long-name table, three import members named after the DLL, and an
+/// object with a long name ("/0").
+fn demo_lib() -> Vec<u8> {
+    let first = be_symbol_table(
+        4,
+        &[0x1B0, 0x214, 0x214, 0x27E, 0x27E, 0x2DC],
+        &[
+            "__IMPORT_DESCRIPTOR_demo",
+            "__imp_DemoFunc",
+            "DemoFunc",
+            "__imp_Other",
+            "Other",
+            "LongSym",
+        ],
+    );
+    let mut second = Vec::new();
+    second.extend(4u32.to_le_bytes());
+    for o in [0x1B0u32, 0x214, 0x27E, 0x2DC] {
+        second.extend(o.to_le_bytes());
+    }
+    second.extend(6u32.to_le_bytes());
+    for i in [2u16, 4, 3, 1, 2, 3] {
+        second.extend(i.to_le_bytes());
+    }
+    for n in [
+        "DemoFunc",
+        "LongSym",
+        "Other",
+        "__IMPORT_DESCRIPTOR_demo",
+        "__imp_DemoFunc",
+        "__imp_Other",
+    ] {
+        second.extend_from_slice(n.as_bytes());
+        second.push(0);
+    }
+    let import = |data: &[u8]| ar_member("demo.dll/", "-1", "0", "0", data);
+    ar(&[
+        ar_member("/", AR_MTIME, "0", "0", &first),
+        ar_member("/", AR_MTIME, "0", "0", &second),
+        ar_member("//", AR_MTIME, "0", "0", b"a_long_object_file_name.obj\0"),
+        import(&(0..40).collect::<Vec<u8>>()),
+        import(&(50..95).collect::<Vec<u8>>()),
+        import(&[1; 33]),
+        ar_member("/0", "-1", "0", "0", b"obj data"),
+    ])
+}
+
+/// A ustar archive of (path, contents) pairs; `None` contents make a directory.
+fn ustar(entries: &[(&str, Option<&[u8]>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (name, data) in entries {
+        let mut h = [0u8; 512];
+        h[..name.len()].copy_from_slice(name.as_bytes());
+        let (mode, kind, size) = match data {
+            Some(d) => ("0000666", b'0', d.len()),
+            None => ("0000777", b'5', 0),
+        };
+        let mut field = |at: usize, s: &str| h[at..at + s.len()].copy_from_slice(s.as_bytes());
+        field(100, mode);
+        field(108, "0000000");
+        field(116, "0000000");
+        field(124, &format!("{size:011o}"));
+        field(136, &format!("{:011o}", 1_792_214_046u64));
+        field(257, "ustar\x0000");
+        h[156] = kind;
+        h[148..156].fill(b' ');
+        let sum: u32 = h.iter().map(|&b| b as u32).sum();
+        h[148..155].copy_from_slice(format!("{sum:06o}\0").as_bytes());
+        out.extend_from_slice(&h);
+        if let Some(d) = data {
+            out.extend_from_slice(d);
+            out.resize(out.len().next_multiple_of(512), 0);
+        }
+    }
+    out.resize(out.len() + 1024, 0);
+    out
+}
+
+/// A Debian package: "debian-binary", a gzip-compressed control archive and an
+/// xz-compressed data archive.
+fn hello_deb() -> Vec<u8> {
+    use std::io::Write;
+    let control = ustar(&[(
+        "./control",
+        Some(b"Package: hello\nVersion: 1.0\nArchitecture: all\nMaintainer: Test <t@example.com>\nDescription: test\n"),
+    )]);
+    let data = ustar(&[
+        ("./usr/", None),
+        ("./usr/share/", None),
+        ("./usr/share/doc/", None),
+        ("./usr/share/doc/hello/", None),
+        ("./usr/share/doc/hello/README", Some(b"hello deb\n")),
+    ]);
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    gz.write_all(&control).unwrap();
+    let mut xz =
+        lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(6)).unwrap();
+    xz.write_all(&data).unwrap();
+    ar(&[
+        file_member("debian-binary", b"2.0\n"),
+        file_member("control.tar.gz", &gz.finish().unwrap()),
+        file_member("data.tar.xz", &xz.finish().unwrap()),
+    ])
+}
+
+fn open_generated(name: &str, data: Vec<u8>) -> Opened {
+    format::open_bytes(data, name, &OpenRequest::default())
+        .unwrap_or_else(|e| panic!("{name}: {e}"))
+}
+
 #[test]
 fn ar_gnu_symbol_table_and_name_table() {
-    let o = open("ar/gnu.a");
+    let o = open_generated("gnu.a", gnu_a());
     let a = o.archive();
     assert_eq!(
         names(a),
@@ -293,7 +506,7 @@ fn ar_gnu_symbol_table_and_name_table() {
     assert_eq!(test_archive(a).unwrap(), 6);
 
     // 7-Zip does not parse 64-bit tables: it lists them raw.
-    let o = open("ar/gnu64.a");
+    let o = open_generated("gnu64.a", gnu64_a());
     let a = o.archive();
     assert_eq!(names(a)[0], "/SYM64");
     assert_eq!(entry(a, "/SYM64").size, Some(53));
@@ -302,7 +515,7 @@ fn ar_gnu_symbol_table_and_name_table() {
 
 #[test]
 fn ar_bsd_symdef() {
-    let o = open("ar/bsd_symdef.a");
+    let o = open_generated("bsd_symdef.a", bsd_symdef_a());
     let a = o.archive();
     assert_eq!(
         names(a),
@@ -319,7 +532,7 @@ fn ar_bsd_symdef() {
 
 #[test]
 fn ar_microsoft_import_library() {
-    let o = open("ar/demo.lib");
+    let o = open_generated("demo.lib", demo_lib());
     let a = o.archive();
     assert_eq!(
         names(a),
@@ -347,7 +560,7 @@ fn ar_microsoft_import_library() {
 #[test]
 fn ar_debian_package() {
     // By default a deb opens through its data.tar.* member, as in 7-Zip.
-    let o = open("ar/hello_1.0_all.deb");
+    let o = open_generated("hello_1.0_all.deb", hello_deb());
     let kinds: Vec<&str> = o.levels.iter().map(|l| l.archive.format().name).collect();
     assert_eq!(kinds, ["Ar", "xz", "tar"]);
     assert!(names(o.archive()).contains(&"usr/share/doc/hello/README"));
@@ -356,7 +569,7 @@ fn ar_debian_package() {
         format: format::find_format("ar"),
         ..OpenRequest::default()
     };
-    let o = format::open(&fixture("ar/hello_1.0_all.deb"), &forced).unwrap();
+    let o = format::open_bytes(hello_deb(), "hello_1.0_all.deb", &forced).unwrap();
     let a = o.archive();
     assert_eq!(names(a), ["control.tar.gz", "data.tar.xz"]);
     assert_eq!(prop(a, "SubType").as_deref(), Some("deb"));
@@ -424,7 +637,7 @@ fn build_rpm(payload: &[u8], compressor: &str) -> Vec<u8> {
     ]);
     let size = ((main.len() + payload.len()) as u32).to_be_bytes();
     let mut sig = rpm_header(&[(1000, 4, &size, 1), (1004, 7, &[0x11; 16], 16)]);
-    while sig.len() % 8 != 0 {
+    while !sig.len().is_multiple_of(8) {
         sig.push(0);
     }
     [lead, sig, main, payload.to_vec()].concat()
@@ -433,13 +646,8 @@ fn build_rpm(payload: &[u8], compressor: &str) -> Vec<u8> {
 #[test]
 fn rpm_lists_its_payload() {
     let payload = fs::read(fixture("rpm/payload.cpio.gz")).unwrap();
-    let rpm = fs::read(fixture("rpm/hello-1.0-1.noarch.rpm")).unwrap();
-    assert!(
-        build_rpm(&payload, "gzip") == rpm,
-        "fixture and helper disagree"
-    );
-
-    let o = open("rpm/hello-1.0-1.noarch.rpm");
+    let rpm = build_rpm(&payload, "gzip");
+    let o = open_generated("hello-1.0-1.noarch.rpm", rpm.clone());
     let a = o.levels[0].archive.clone();
     assert_eq!(a.format().name, "Rpm");
     assert_eq!(names(&*a), ["hello-1.0-1.noarch.cpio.gz"]);
@@ -571,15 +779,28 @@ fn xar_checksums_are_verified() {
 
 // ---------------------------------------------------------------- damage
 
-fn all_fixtures() -> Vec<PathBuf> {
+/// Every checked-in fixture and every generated archive, as (name, bytes).
+fn all_fixtures() -> Vec<(String, Vec<u8>)> {
     let mut v = Vec::new();
     for dir in ["cpio", "ar", "rpm", "xar"] {
         for e in fs::read_dir(fixture(dir)).unwrap() {
             let p = e.unwrap().path();
             if p.extension().is_some_and(|x| x != "gz") {
-                v.push(p);
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                v.push((name, fs::read(&p).unwrap()));
             }
         }
+    }
+    let payload = fs::read(fixture("rpm/payload.cpio.gz")).unwrap();
+    for (name, data) in [
+        ("gnu.a", gnu_a()),
+        ("gnu64.a", gnu64_a()),
+        ("bsd_symdef.a", bsd_symdef_a()),
+        ("demo.lib", demo_lib()),
+        ("hello_1.0_all.deb", hello_deb()),
+        ("hello-1.0-1.noarch.rpm", build_rpm(&payload, "gzip")),
+    ] {
+        v.push((name.to_string(), data));
     }
     v
 }
@@ -595,9 +816,7 @@ fn try_damaged(data: Vec<u8>, name: &str) -> r7z::Result<()> {
 
 #[test]
 fn truncated_inputs_fail_without_panicking() {
-    for path in all_fixtures() {
-        let data = fs::read(&path).unwrap();
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    for (name, data) in all_fixtures() {
         let whole = format::open_bytes(data.clone(), &name, &OpenRequest::default()).unwrap();
         let outer = &whole.levels[0].archive;
         let physical: usize = prop(&**outer, "Physical Size").unwrap().parse().unwrap();
@@ -618,9 +837,7 @@ fn truncated_inputs_fail_without_panicking() {
 
 #[test]
 fn bit_flips_never_panic() {
-    for path in all_fixtures() {
-        let data = fs::read(&path).unwrap();
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+    for (name, data) in all_fixtures() {
         for i in 0..data.len() {
             for bit in [0x01, 0x80] {
                 let mut d = data.clone();

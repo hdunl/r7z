@@ -442,7 +442,8 @@ impl App {
             match result {
                 Ok(version) => {
                     self.update_offer = None;
-                    self.update_note = Some(format!("r7z {version} is installed; restart to use it"));
+                    self.update_note =
+                        Some(format!("r7z {version} is installed; restart to use it"));
                     self.update_ready = Some(version.clone());
                     self.toast_long(
                         format!("Updated to r7z {version}"),
@@ -1760,7 +1761,7 @@ impl App {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .map(|f| f.path().to_path_buf())
                 .collect()
         });
         // Our own drag passing over the window; such drops are cancelled anyway.
@@ -1834,8 +1835,9 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        let dark = ctx.style().visuals.dark_mode;
+    fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = &root.ctx().clone();
+        let dark = ctx.global_style().visuals.dark_mode;
         if self.title_dark != Some(dark) || self.hwnd == 0 {
             use raw_window_handle::{HasWindowHandle, RawWindowHandle};
             if let Ok(h) = frame.window_handle() {
@@ -1867,7 +1869,7 @@ impl eframe::App for App {
         self.update_preview(ctx);
         self.update_title(ctx);
         crate::ui::shortcuts(self, ctx);
-        crate::ui::frame(self, ctx);
+        crate::ui::frame(self, root);
         crate::dialogs::show(self, ctx);
         crate::finder::show(self, ctx);
 
@@ -1896,7 +1898,7 @@ impl eframe::App for App {
                 pos,
                 button: egui::PointerButton::Primary,
                 pressed: false,
-                modifiers: raw.modifiers,
+                modifiers: ctx.input(|i| i.modifiers),
             });
         }
         raw.events.push(egui::Event::PointerGone);

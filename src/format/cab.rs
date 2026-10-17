@@ -562,14 +562,11 @@ fn folder_packed_sizes(vols: &[Volume], folders: &[Folder]) -> Vec<u64> {
 /// The CAB block checksum: XOR of little-endian words, the tail bytes packed high to low.
 fn checksum(data: &[u8], seed: u32) -> u32 {
     let mut sum = seed;
-    let mut words = data.chunks_exact(4);
-    for w in &mut words {
-        sum ^= u32::from_le_bytes([w[0], w[1], w[2], w[3]]);
+    let (words, rest) = data.as_chunks::<4>();
+    for w in words {
+        sum ^= u32::from_le_bytes(*w);
     }
-    let tail = words
-        .remainder()
-        .iter()
-        .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+    let tail = rest.iter().fold(0u32, |acc, &b| (acc << 8) | b as u32);
     sum ^ tail
 }
 

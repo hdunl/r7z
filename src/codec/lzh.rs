@@ -828,8 +828,8 @@ pub fn arj_fast_reader<D: AsRef<[u8]>>(src: D, size: u64) -> LzReader<ArjFast<D>
 /// CRC-16/ARC (reflected 0x8005, initial 0), the LZH data checksum. Slicing-by-8.
 pub fn crc16(mut crc: u16, data: &[u8]) -> u16 {
     let t = &CRC16;
-    let mut chunks = data.chunks_exact(8);
-    for c in &mut chunks {
+    let (chunks, rest) = data.as_chunks::<8>();
+    for c in chunks {
         let lo = crc ^ u16::from_le_bytes([c[0], c[1]]);
         crc = t[7][(lo & 0xFF) as usize]
             ^ t[6][(lo >> 8) as usize]
@@ -840,7 +840,7 @@ pub fn crc16(mut crc: u16, data: &[u8]) -> u16 {
             ^ t[1][c[6] as usize]
             ^ t[0][c[7] as usize];
     }
-    for &b in chunks.remainder() {
+    for &b in rest {
         crc = t[0][((crc ^ b as u16) & 0xFF) as usize] ^ (crc >> 8);
     }
     crc

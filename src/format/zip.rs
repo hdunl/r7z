@@ -358,14 +358,7 @@ fn from_central(
         });
         p = end;
     }
-    let texts = || {
-        legacy
-            .iter()
-            .flatten()
-            .copied()
-            .chain([comment])
-            .flatten()
-    };
+    let texts = || legacy.iter().flatten().copied().chain([comment]).flatten();
     let coding = texts()
         .any(|t| !t.is_ascii())
         .then(|| codepage::choose(code_page, texts()));

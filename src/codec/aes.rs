@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::sync::{Mutex, OnceLock};
 
-use aes::cipher::{generic_array::GenericArray, BlockDecrypt, BlockEncrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherDecrypt, BlockCipherEncrypt, KeyInit};
 use aes::Aes256;
 use sha2::{Digest, Sha256};
 
@@ -20,7 +20,7 @@ use crate::util::read_full;
 pub const DEFAULT_CYCLES_POWER: u8 = 19;
 const MAX_CYCLES_POWER: u8 = 24;
 
-type Block = GenericArray<u8, aes::cipher::consts::U16>;
+type Block = Array<u8, aes::cipher::consts::U16>;
 
 #[derive(Debug, Clone)]
 pub struct AesProps {
@@ -129,9 +129,8 @@ pub fn derive_key(password: &str, salt: &[u8], cycles_power: u8) -> Result<[u8; 
 }
 
 fn as_blocks(buf: &mut [u8]) -> &mut [Block] {
-    debug_assert!(buf.len() % 16 == 0);
-    // SAFETY: GenericArray<u8, U16> is a transparent wrapper over [u8; 16] with alignment 1.
-    unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut Block, buf.len() / 16) }
+    debug_assert!(buf.len().is_multiple_of(16));
+    Block::slice_as_chunks_mut(buf).0
 }
 
 /// CBC decryption reader. Whole buffers are decrypted at once so AES-NI can pipeline
@@ -156,7 +155,7 @@ impl<R: Read> AesReader<R> {
         let key = derive_key(password, &p.salt, p.cycles_power)?;
         Ok(AesReader {
             inner,
-            cipher: Aes256::new(GenericArray::from_slice(&key)),
+            cipher: Aes256::new(&Array::from(key)),
             iv: p.iv,
             buf: vec![0u8; AES_BUF],
             scratch: vec![0u8; AES_BUF],
@@ -180,7 +179,7 @@ impl<R: Read> AesReader<R> {
         let data = &mut self.buf[..n];
         self.scratch[..n].copy_from_slice(data);
         self.cipher.decrypt_blocks(as_blocks(data));
-        for (i, chunk) in data.chunks_exact_mut(16).enumerate() {
+        for (i, chunk) in data.as_chunks_mut::<16>().0.iter_mut().enumerate() {
             let prev: &[u8] = if i == 0 {
                 &self.iv
             } else {
@@ -227,18 +226,18 @@ impl<'a> AesWriter<'a> {
     pub fn new(inner: Box<dyn Sink + 'a>, key: &[u8; 32], iv: [u8; 16]) -> Self {
         AesWriter {
             inner,
-            cipher: Aes256::new(GenericArray::from_slice(key)),
+            cipher: Aes256::new(&Array::from(*key)),
             prev: iv,
             pending: Vec::with_capacity(AES_BUF + 16),
         }
     }
 
     fn encrypt_whole_blocks(&mut self, buf: &mut [u8]) {
-        for chunk in buf.chunks_exact_mut(16) {
+        for chunk in buf.as_chunks_mut::<16>().0 {
             for (a, b) in chunk.iter_mut().zip(&self.prev) {
                 *a ^= b;
             }
-            let blk = GenericArray::from_mut_slice(chunk);
+            let blk: &mut Block = chunk.into();
             self.cipher.encrypt_block(blk);
             self.prev.copy_from_slice(chunk);
         }
@@ -246,7 +245,7 @@ impl<'a> AesWriter<'a> {
 
     fn drain(&mut self, all: bool) -> io::Result<()> {
         let mut n = self.pending.len() - self.pending.len() % 16;
-        if all && self.pending.len() % 16 != 0 {
+        if all && !self.pending.len().is_multiple_of(16) {
             let pad = 16 - self.pending.len() % 16;
             self.pending.extend(std::iter::repeat_n(0u8, pad));
             n = self.pending.len();

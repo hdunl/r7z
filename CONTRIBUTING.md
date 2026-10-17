@@ -12,7 +12,7 @@ Security problems go through [private reporting](SECURITY.md) instead.
 
 ## Building
 
-You need Rust 1.87 or newer with the MSVC toolchain.
+You need Rust 1.95 or newer with the MSVC toolchain.
 
 ```bash
 cargo build --release          # target/release/r7z.exe and r7z-gui.exe

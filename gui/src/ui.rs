@@ -56,7 +56,7 @@ pub fn group(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -331,9 +331,9 @@ fn place_label(k: Known) -> &'static str {
     }
 }
 
-fn sidebar(app: &mut App, ctx: &egui::Context, p: &Palette) {
-    egui::SidePanel::left("side")
-        .exact_width(240.0)
+fn sidebar(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
+    egui::Panel::left("side")
+        .exact_size(240.0)
         .resizable(false)
         .show_separator_line(false)
         .frame(egui::Frame::new().fill(p.side).inner_margin(Margin {
@@ -342,11 +342,11 @@ fn sidebar(app: &mut App, ctx: &egui::Context, p: &Palette) {
             top: 16,
             bottom: 10,
         }))
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             let full = ui.max_rect();
             ui.painter().vline(
                 full.right() + 12.0,
-                ctx.screen_rect().y_range(),
+                ctx.content_rect().y_range(),
                 Stroke::new(1.0, p.line),
             );
             ui.horizontal(|ui| {
@@ -877,8 +877,8 @@ fn crumbs(app: &App) -> Vec<Crumb> {
     v
 }
 
-fn header(app: &mut App, ctx: &egui::Context, p: &Palette) {
-    egui::TopBottomPanel::top("header")
+fn header(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
+    egui::Panel::top("header")
         .show_separator_line(false)
         .frame(egui::Frame::new().fill(p.base).inner_margin(Margin {
             left: 16,
@@ -886,7 +886,7 @@ fn header(app: &mut App, ctx: &egui::Context, p: &Palette) {
             top: 12,
             bottom: 6,
         }))
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 if icon_button(
@@ -1051,7 +1051,8 @@ fn search_box(app: &mut App, ui: &mut Ui, p: &Palette) {
                 };
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut app.search)
-                        .frame(false)
+                        .frame(egui::Frame::NONE)
+                        .align(egui::Align2::LEFT_CENTER)
                         .hint_text(RichText::new(hint).color(p.faint))
                         .desired_width(width - 60.0)
                         .margin(Margin::symmetric(2, 4)),
@@ -1562,7 +1563,7 @@ fn menu_action(app: &mut App, ctx: &egui::Context, t: Target, act: MenuAct) {
     }
 }
 
-fn central(app: &mut App, ctx: &egui::Context, p: &Palette) {
+fn central(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(p.base).inner_margin(Margin {
             left: 16,
@@ -1570,7 +1571,7 @@ fn central(app: &mut App, ctx: &egui::Context, p: &Palette) {
             top: 2,
             bottom: 10,
         }))
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             egui::Frame::new()
                 .fill(p.surface)
                 .stroke(Stroke::new(1.0, p.line))
@@ -1634,7 +1635,8 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
                     ui.add(
                         egui::TextEdit::multiline(&mut app.preview.expected)
                             .id_salt("expected-hash-text")
-                            .frame(false)
+                            .frame(egui::Frame::NONE)
+                            .align(egui::Align2::LEFT_CENTER)
                             .desired_rows(1)
                             .font(FontId::monospace(11.5))
                             .hint_text(
@@ -1767,11 +1769,11 @@ fn prop(ui: &mut Ui, p: &Palette, k: &str, v: &str) {
     });
 }
 
-fn preview_panel(app: &mut App, ctx: &egui::Context, p: &Palette) {
-    egui::SidePanel::right("preview")
+fn preview_panel(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
+    egui::Panel::right("preview")
         .resizable(true)
-        .default_width(330.0)
-        .width_range(270.0..=620.0)
+        .default_size(330.0)
+        .size_range(270.0..=620.0)
         .show_separator_line(false)
         .frame(egui::Frame::new().fill(p.side).inner_margin(Margin {
             left: 16,
@@ -1779,11 +1781,11 @@ fn preview_panel(app: &mut App, ctx: &egui::Context, p: &Palette) {
             top: 16,
             bottom: 12,
         }))
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             let r = ui.max_rect();
             ui.painter().vline(
                 r.left() - 16.0,
-                ctx.screen_rect().y_range(),
+                ctx.content_rect().y_range(),
                 Stroke::new(1.0, p.line),
             );
             egui::ScrollArea::vertical()
@@ -2265,17 +2267,17 @@ fn folder_summary(app: &mut App, ui: &mut Ui, p: &Palette) {
 
 // ------------------------------------------------------------------ bottom
 
-fn status(app: &mut App, ctx: &egui::Context, p: &Palette) {
-    egui::TopBottomPanel::bottom("status")
+fn status(app: &mut App, root: &mut Ui, p: &Palette) {
+    egui::Panel::bottom("status")
         .show_separator_line(false)
-        .exact_height(26.0)
+        .exact_size(26.0)
         .frame(egui::Frame::new().fill(p.base).inner_margin(Margin {
             left: 18,
             right: 18,
             top: 0,
             bottom: 4,
         }))
-        .show(ctx, |ui| {
+        .show(root, |ui| {
             ui.horizontal_centered(|ui| {
                 let sel = app.selected_rows();
                 let count = app.rows.len() as u64;
@@ -2306,7 +2308,11 @@ fn status(app: &mut App, ctx: &egui::Context, p: &Palette) {
                                 .color(p.faint),
                         );
                     } else {
-                        ui.label(RichText::new("Ctrl+Shift+F  search everywhere").size(11.5).color(p.faint));
+                        ui.label(
+                            RichText::new("Ctrl+Shift+F  search everywhere")
+                                .size(11.5)
+                                .color(p.faint),
+                        );
                     }
                 });
             });
@@ -2317,7 +2323,7 @@ fn activity(app: &mut App, ctx: &egui::Context, p: &Palette) {
     let Some(job) = &app.job else { return };
     let s = job.shared.clone();
     let title = job.title.clone();
-    egui::Area::new(Id::new("activity"))
+    egui::Area::new(Id::unique("activity"))
         .anchor(Align2::RIGHT_BOTTOM, vec2(-18.0, -38.0))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
@@ -2417,7 +2423,7 @@ fn toasts(app: &mut App, ctx: &egui::Context, p: &Palette) {
     let offset = if app.job.is_some() { -150.0 } else { -38.0 };
     let mut act: Option<(usize, usize)> = None;
     let mut dismiss: Option<usize> = None;
-    egui::Area::new(Id::new("toasts"))
+    egui::Area::new(Id::unique("toasts"))
         .anchor(Align2::RIGHT_BOTTOM, vec2(-18.0, offset))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
@@ -2485,8 +2491,11 @@ fn drop_overlay(app: &App, ctx: &egui::Context, p: &Palette) {
     if !hovering || app.drag.is_some() {
         return;
     }
-    let rect = ctx.screen_rect();
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::new("drop")));
+    let rect = ctx.content_rect();
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        Id::unique("drop"),
+    ));
     painter.rect_filled(
         rect,
         CornerRadius::ZERO,
@@ -2520,16 +2529,17 @@ fn drop_overlay(app: &App, ctx: &egui::Context, p: &Palette) {
     );
 }
 
-pub fn frame(app: &mut App, ctx: &egui::Context) {
+pub fn frame(app: &mut App, root: &mut Ui) {
+    let ctx = &root.ctx().clone();
     let p = theme::current(ctx);
-    sidebar(app, ctx, &p);
+    sidebar(app, root, ctx, &p);
     // In narrow windows the list matters more than the preview.
-    if app.show_preview && ctx.screen_rect().width() >= 980.0 {
-        preview_panel(app, ctx, &p);
+    if app.show_preview && ctx.content_rect().width() >= 980.0 {
+        preview_panel(app, root, ctx, &p);
     }
-    header(app, ctx, &p);
-    status(app, ctx, &p);
-    central(app, ctx, &p);
+    header(app, root, ctx, &p);
+    status(app, root, &p);
+    central(app, root, ctx, &p);
     activity(app, ctx, &p);
     toasts(app, ctx, &p);
     drop_overlay(app, ctx, &p);
@@ -2543,7 +2553,7 @@ pub fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if app.dialog.is_some() || app.finder.is_some() {
         return;
     }
-    let typing = ctx.wants_keyboard_input();
+    let typing = ctx.egui_wants_keyboard_input();
     let (cmd, alt, shift) =
         ctx.input(|i| (i.modifiers.command, i.modifiers.alt, i.modifiers.shift));
     let pressed = |k: Key| ctx.input(|i| i.key_pressed(k));

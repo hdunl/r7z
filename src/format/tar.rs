@@ -579,7 +579,12 @@ fn parse_into(
                         .split(',')
                         .filter_map(|x| x.trim().parse().ok())
                         .collect();
-                    let map = nums.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+                    let map = nums
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|c| (c[0], c[1]))
+                        .collect();
                     e.size = Some(real.unwrap_or(size));
                     dref = Some(DataRef {
                         offset: 0,
@@ -666,7 +671,12 @@ fn read_sparse10(cur: &mut Cursor<'_>, size: u64) -> Result<(Vec<(u64, u64)>, u6
                 nums.push(v);
             }
             if want == Some(nums.len()) {
-                let map = nums.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+                let map = nums
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| (c[0], c[1]))
+                    .collect();
                 return Ok((map, consumed));
             }
         }

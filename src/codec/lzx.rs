@@ -346,7 +346,7 @@ impl Lzx {
                 self.intel_started = true;
                 br.align_for_bytes();
                 let r = br.bytes(12)?;
-                for (i, w) in r.chunks_exact(4).enumerate() {
+                for (i, w) in r.as_chunks::<4>().0.iter().enumerate() {
                     self.r[i] = u32::from_le_bytes([w[0], w[1], w[2], w[3]]);
                 }
                 br.resume_bits();

@@ -4,7 +4,7 @@
 
 use std::io::{self, Read};
 
-use aes::cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit};
+use aes::cipher::{Array, BlockCipherEncrypt, KeyInit};
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
 
@@ -149,7 +149,7 @@ impl WzAes {
             24 => Cipher::A192(aes::Aes192::new_from_slice(key).unwrap()),
             _ => Cipher::A256(aes::Aes256::new_from_slice(key).unwrap()),
         };
-        let mac = <Hmac<Sha1> as Mac>::new_from_slice(&dk[key_len..key_len * 2]).unwrap();
+        let mac = <Hmac<Sha1> as hmac::KeyInit>::new_from_slice(&dk[key_len..key_len * 2]).unwrap();
         let pv = [dk[key_len * 2], dk[key_len * 2 + 1]];
         Ok((
             WzAes {
@@ -167,7 +167,7 @@ impl WzAes {
         for b in buf {
             if self.pos == 16 {
                 self.counter = self.counter.wrapping_add(1);
-                let mut block = GenericArray::from(self.counter.to_le_bytes());
+                let mut block = Array::from(self.counter.to_le_bytes());
                 match &self.cipher {
                     Cipher::A128(c) => c.encrypt_block(&mut block),
                     Cipher::A192(c) => c.encrypt_block(&mut block),

@@ -126,7 +126,7 @@ pub fn write_bit_vector(out: &mut Vec<u8>, bits: &[bool]) {
             b = 0;
         }
     }
-    if bits.len() % 8 != 0 {
+    if !bits.len().is_multiple_of(8) {
         out.push(b);
     }
 }

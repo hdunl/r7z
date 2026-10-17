@@ -520,7 +520,9 @@ impl Read for BlobReader<'_, '_> {
 
 fn utf16_name(b: &[u8]) -> String {
     let units: Vec<u16> = b
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|c| u16::from_le_bytes([c[0], c[1]]))
         .take_while(|&u| u != 0)
         .collect();
@@ -575,11 +577,11 @@ impl DirParser<'_> {
         let mut empty_root = false;
         let mut n = 0usize;
         loop {
-            if pos % 8 != 0 || pos < self.dir_start || pos > len || len - pos < 8 {
+            if !pos.is_multiple_of(8) || pos < self.dir_start || pos > len || len - pos < 8 {
                 return Err(corrupt("bad directory entry offset"));
             }
             let rlen = u64_at(m, pos);
-            if rlen > (len - pos) as u64 || rlen % 8 != 0 {
+            if rlen > (len - pos) as u64 || !rlen.is_multiple_of(8) {
                 return Err(corrupt("bad directory entry length"));
             }
             let rlen = rlen as usize;
@@ -599,7 +601,7 @@ impl DirParser<'_> {
             let num_alt = u16_at(p, 0x60);
             let short_len = u16_at(p, 0x62) as usize;
             let name_len = u16_at(p, 0x64) as usize;
-            if short_len % 2 != 0 || name_len % 2 != 0 {
+            if !short_len.is_multiple_of(2) || !name_len.is_multiple_of(2) {
                 return Err(corrupt("bad name length"));
             }
             let names = if name_len == 0 { 0 } else { name_len + 2 }
@@ -634,14 +636,14 @@ impl DirParser<'_> {
                     return Err(corrupt("truncated stream entry"));
                 }
                 let alen = u64_at(m, pos);
-                if alen > (len - pos) as u64 || alen % 8 != 0 || alen < ALT_ENTRY as u64 {
+                if alen > (len - pos) as u64 || !alen.is_multiple_of(8) || alen < ALT_ENTRY as u64 {
                     return Err(corrupt("bad stream entry length"));
                 }
                 let alen = alen as usize;
                 self.claim(pos, alen)?;
                 let a = &m[pos..pos + alen];
                 let nlen = u16_at(a, 0x24) as usize;
-                if nlen % 2 != 0 || (ALT_ENTRY + nlen + 2).next_multiple_of(8) > alen {
+                if !nlen.is_multiple_of(2) || (ALT_ENTRY + nlen + 2).next_multiple_of(8) > alen {
                     return Err(corrupt("bad stream name length"));
                 }
                 let aname = utf16_name(&a[ALT_ENTRY..ALT_ENTRY + nlen]);
@@ -1016,7 +1018,7 @@ impl Wim {
                 return Err(corrupt("bad lookup table size"));
             }
             let mut keep = false;
-            for e in table.chunks_exact(LOOKUP_ENTRY) {
+            for e in table.as_chunks::<LOOKUP_ENTRY>().0 {
                 let res = ResHdr::parse(e);
                 let spart = u16_at(e, 24);
                 let refs = u32_at(e, 26);

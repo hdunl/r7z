@@ -119,14 +119,32 @@ fn draw_nested(
         *budget -= 1;
         let nd = &tree.nodes[c];
         if nd.is_dir {
-            let shade = if p.dark { Color32::from_white_alpha(10) } else { Color32::from_black_alpha(14) };
+            let shade = if p.dark {
+                Color32::from_white_alpha(10)
+            } else {
+                Color32::from_black_alpha(14)
+            };
             painter.rect_filled(cr, CornerRadius::same(3), shade);
             if depth < 6 && cr.width() > 6.0 && cr.height() > 6.0 {
-                draw_nested(painter, tree, c, cr.shrink(1.5), depth + 1, budget, p, pointer, hovered);
+                draw_nested(
+                    painter,
+                    tree,
+                    c,
+                    cr.shrink(1.5),
+                    depth + 1,
+                    budget,
+                    p,
+                    pointer,
+                    hovered,
+                );
             }
         } else {
             let col = classify(&nd.name).color();
-            painter.rect_filled(cr, CornerRadius::same(2), col.gamma_multiply(if p.dark { 0.62 } else { 0.8 }));
+            painter.rect_filled(
+                cr,
+                CornerRadius::same(2),
+                col.gamma_multiply(if p.dark { 0.62 } else { 0.8 }),
+            );
             if pointer.is_some_and(|pos| cr.contains(pos)) {
                 *hovered = Some((c, cr));
             }
@@ -177,7 +195,17 @@ pub fn show(
                 pos2(r.right() - 4.0, r.bottom() - 4.0),
             );
             let mut budget = 3000usize;
-            draw_nested(&painter, tree, n, inner, 1, &mut budget, p, pointer, &mut hovered);
+            draw_nested(
+                &painter,
+                tree,
+                n,
+                inner,
+                1,
+                &mut budget,
+                p,
+                pointer,
+                &mut hovered,
+            );
         }
         if r.width() > 56.0 && r.height() > 30.0 {
             let text_color = if nd.is_dir {
@@ -212,7 +240,7 @@ pub fn show(
         if hovered.is_none() && pointer.is_some_and(|pos| r.contains(pos)) {
             hovered = Some((n, r));
         }
-        let id = ui.id().with(("cell", i));
+        let id = ui.scope_id().with(("cell", i));
         let resp = ui.interact(r, id, Sense::click());
         if resp.hovered() {
             let nd = &tree.nodes[hovered.map_or(n, |h| h.0)];

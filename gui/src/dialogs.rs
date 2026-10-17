@@ -291,7 +291,8 @@ fn field(
         .show(ui, |ui| {
             ui.add(
                 egui::TextEdit::singleline(value)
-                    .frame(false)
+                    .frame(egui::Frame::NONE)
+                    .align(egui::Align2::LEFT_CENTER)
                     .password(password)
                     .hint_text(RichText::new(hint).color(p.faint))
                     .desired_width(width - 16.0)
@@ -412,7 +413,7 @@ fn modal<R>(
     width: f32,
     add: impl FnOnce(&mut Ui) -> R,
 ) -> (R, bool) {
-    let r = egui::Modal::new(Id::new(id)).show(ctx, |ui| {
+    let r = egui::Modal::new(Id::unique(id)).show(ctx, |ui| {
         ui.set_width(width);
         add(ui)
     });
@@ -516,12 +517,12 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 if cancel {
                     input.clear();
                     submit = false;
-                    ui.memory_mut(|m| m.data.insert_temp(Id::new("pw-cancel"), true));
+                    ui.memory_mut(|m| m.data.insert_temp(Id::unique("pw-cancel"), true));
                 }
             });
             let cancelled = ctx.memory_mut(|m| {
                 m.data
-                    .remove_temp::<bool>(Id::new("pw-cancel"))
+                    .remove_temp::<bool>(Id::unique("pw-cancel"))
                     .unwrap_or(false)
             });
             if submit {
@@ -1133,10 +1134,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 }
                 label(ui, p, "Files");
                 let mut hidden = app.show_hidden;
-                if ui
-                    .checkbox(&mut hidden, "Show hidden files")
-                    .changed()
-                {
+                if ui.checkbox(&mut hidden, "Show hidden files").changed() {
                     app.toggle_hidden();
                 }
                 ui.horizontal(|ui| {
@@ -1164,9 +1162,13 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 }
                 ui.horizontal(|ui| {
                     ui.add_space(22.0);
-                    let mut silent = shell::load_setting("update_install").as_deref() == Some("auto");
+                    let mut silent =
+                        shell::load_setting("update_install").as_deref() == Some("auto");
                     if ui
-                        .add_enabled(auto, egui::Checkbox::new(&mut silent, "Install them without asking"))
+                        .add_enabled(
+                            auto,
+                            egui::Checkbox::new(&mut silent, "Install them without asking"),
+                        )
                         .changed()
                     {
                         shell::save_setting("update_install", if silent { "auto" } else { "ask" });
@@ -1179,8 +1181,11 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         if button(ui, None, "Restart now", true, true).clicked() {
                             app.restart(ctx);
                         }
-                    } else if let Some(version) = app.update_offer.as_ref().map(|m| m.version.clone()) {
-                        if button(ui, None, &format!("Update to {version}"), true, !busy).clicked() {
+                    } else if let Some(version) =
+                        app.update_offer.as_ref().map(|m| m.version.clone())
+                    {
+                        if button(ui, None, &format!("Update to {version}"), true, !busy).clicked()
+                        {
                             app.install_update(ctx);
                         }
                     } else if button(ui, None, "Check now", false, !busy).clicked() {
@@ -1269,7 +1274,7 @@ fn overwrite_prompt(app: &mut App, ctx: &egui::Context, p: &Palette) {
     let Some(path) = s.prompt.lock().ok().and_then(|g| g.clone()) else {
         return;
     };
-    egui::Modal::new(Id::new("overwrite")).show(ctx, |ui| {
+    egui::Modal::new(Id::unique("overwrite")).show(ctx, |ui| {
         ui.set_width(460.0);
         title(ui, "Replace the existing file?");
         ui.add(

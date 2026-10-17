@@ -632,7 +632,7 @@ pub mod data {
         while out.len() < n {
             let w = words[r[i % r.len()] as usize % words.len()];
             out.extend_from_slice(w.as_bytes());
-            out.push(if r[(i + 1) % r.len()] % 11 == 0 {
+            out.push(if r[(i + 1) % r.len()].is_multiple_of(11) {
                 b'\n'
             } else {
                 b' '

@@ -28,10 +28,7 @@ impl Drag {
 
     /// The effect the target performed (`COPY`, `MOVE`, `LINK`), or 0 when nothing was dropped.
     pub fn join(&mut self) -> u32 {
-        self.handle
-            .take()
-            .and_then(|h| h.join().ok())
-            .unwrap_or(0)
+        self.handle.take().and_then(|h| h.join().ok()).unwrap_or(0)
     }
 }
 
@@ -782,11 +779,7 @@ mod imp {
             return Ok(());
         }
         let from = wide_list(files);
-        let to: Vec<u16> = dest
-            .as_os_str()
-            .encode_wide()
-            .chain([0, 0])
-            .collect();
+        let to: Vec<u16> = dest.as_os_str().encode_wide().chain([0, 0]).collect();
         let mut flags = FOF_ALLOWUNDO | FOF_NOCONFIRMMKDIR;
         // Pasting a copy next to the original makes "name - Copy", as Explorer does.
         if same_folder {

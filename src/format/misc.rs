@@ -184,7 +184,9 @@ fn parse_record(line: &[u8]) -> Result<Record> {
         return Err(bad());
     }
     let bytes: Vec<u8> = hex
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| {
             std::str::from_utf8(p)
                 .ok()

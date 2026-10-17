@@ -2,9 +2,21 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.1 - 2026-10-17
 
+Security and maintenance release.
+
+- Dependencies are current, with no known advisories: egui 0.37 and rfd 0.17 drop the
+  unmaintained `ttf-parser` and `zbus` crates, and the RustCrypto, ureq, ed25519-dalek,
+  lz4_flex and getrandom crates move to their latest major versions.
+- The updater uses Windows' own TLS and certificate store.
+- AES block handling no longer needs an `unsafe` cast.
 - Both programs carry Windows version information (product name, description, version).
+- Releases include SLSA build provenance (`.intoto.jsonl`) and a Sigstore bundle.
+- Continuous fuzzing of archive parsing and recovery with ClusterFuzzLite, CodeQL code
+  scanning, and an OpenSSF Scorecard.
+- Text fields center their text again.
+- Built with Rust 1.99.1; Rust 1.95 or newer is required to build from source.
 
 ## 0.1.0 - 2026-10-17
 

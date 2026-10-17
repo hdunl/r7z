@@ -91,14 +91,13 @@ def main() -> None:
     (out / "r7z-update.txt").write_bytes(manifest)
     signature = key.sign(manifest)
     key.public_key().verify(signature, manifest)
-    (out / "r7z-update.sig").write_text(signature.hex() + "\n", encoding="ascii")
+    (out / "r7z-update.sig").write_bytes((signature.hex() + "\n").encode())
 
     sums = [(digest, zip_name)]
     for name in ("r7z-update.txt", "r7z-update.sig"):
         sums.append((hashlib.sha256((out / name).read_bytes()).hexdigest(), name))
-    (out / "SHA256SUMS").write_text(
-        "".join(f"{h}  {n}\n" for h, n in sums), encoding="ascii"
-    )
+    # Unix line endings, so `sha256sum -c SHA256SUMS` works everywhere.
+    (out / "SHA256SUMS").write_bytes("".join(f"{h}  {n}\n" for h, n in sums).encode())
     for p in sorted(out.iterdir()):
         print(f"{p.stat().st_size:>10}  {p.name}")
 

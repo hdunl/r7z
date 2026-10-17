@@ -45,7 +45,7 @@ jobs:
       - name: Check the release the way installed copies will
         run: cargo test --release -p r7z-gui --locked -- --ignored packaged_release
         env:
-          R7Z_RELEASE_DIR: dist
+          R7Z_RELEASE_DIR: ${{ github.workspace }}/dist
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0

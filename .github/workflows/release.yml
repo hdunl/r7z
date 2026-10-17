@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 env:
-  # Fail the build rather than ship r7z-gui.exe without its icon.
-  R7Z_REQUIRE_ICON: "1"
+  # Fail the build rather than ship programs without their icon and version information.
+  R7Z_REQUIRE_RESOURCES: "1"
 
 jobs:
   release:

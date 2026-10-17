@@ -1,0 +1,16 @@
+name: Feature request
+description: A format, option or feature you'd like r7z to have.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task or situation, rather than the solution. "I get .rar files from ..." is more useful than "add RAR".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you'd like r7z to handle it, and how other tools do it if you know.

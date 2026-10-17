@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work, crashes, or gives the wrong result.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: r7z version
+      description: Shown at the bottom of Settings, or by running `r7z` with no arguments.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: program
+    attributes:
+      label: Program
+      options:
+        - Desktop app (r7z-gui)
+        - Command line (r7z)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: archive
+    attributes:
+      label: Archive details
+      description: Format, size, and the tool that made it, if you know. If you can share the archive (or a smaller one that shows the same problem), attach it or link it.
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or crash log
+      description: For the command line, paste the output (`r7z t archive` helps). If the desktop app closed, attach `%APPDATA%\r7z\crash.log`.
+      render: text
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"

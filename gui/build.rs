@@ -1,10 +1,9 @@
-//! Embeds the r7z icon in the Windows executable. The icon is rendered from the same code
-//! as the window icon; `rc.exe` (Windows SDK) compiles it. Without `rc.exe` the build
-//! continues and the executable shows the default icon.
+//! Embeds the manifest, the r7z icon and version information in r7z-gui.exe. The icon
+//! is rendered from the same code as the window icon.
 
 include!("src/logo.rs");
+include!("../build/winres.rs");
 
-use std::io::Write;
 use std::path::PathBuf;
 
 /// A multi-resolution .ico with 32-bit BMP images (alpha in the color data).
@@ -65,54 +64,9 @@ fn main() {
             manifest.display()
         );
     }
-    println!("cargo:rerun-if-env-changed=R7Z_REQUIRE_ICON");
+    println!("cargo:rerun-if-changed=../build/winres.rs");
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let ico_path = out.join("r7z.ico");
     std::fs::write(&ico_path, ico(&[16, 20, 24, 32, 40, 48, 64, 128, 256])).unwrap();
-    let rc_path = out.join("r7z.rc");
-    let mut rc = std::fs::File::create(&rc_path).unwrap();
-    let escaped = ico_path.display().to_string().replace('\\', "\\\\");
-    writeln!(rc, "1 ICON \"{escaped}\"").unwrap();
-    let res = out.join("r7z.res");
-    let ok = std::process::Command::new(rc_exe())
-        .args(["/nologo", "/fo"])
-        .arg(&res)
-        .arg(&rc_path)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if ok {
-        println!("cargo:rustc-link-arg-bins={}", res.display());
-    } else if std::env::var_os("R7Z_REQUIRE_ICON").is_some() {
-        panic!("rc.exe was not found, so the icon cannot be embedded (R7Z_REQUIRE_ICON is set)");
-    } else {
-        println!("cargo:warning=rc.exe not found; r7z-gui.exe will use the default icon");
-    }
-}
-
-/// rc.exe from PATH (a developer prompt), or else the newest Windows 10/11 SDK, which is
-/// installed with the C++ build tools but not put on PATH outside a developer prompt.
-fn rc_exe() -> PathBuf {
-    let on_path = std::process::Command::new("rc.exe")
-        .arg("/?")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok();
-    if on_path {
-        return PathBuf::from("rc.exe");
-    }
-    let kits = std::env::var_os("ProgramFiles(x86)")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Program Files (x86)"))
-        .join(r"Windows Kits\10\bin");
-    let mut found: Vec<PathBuf> = std::fs::read_dir(&kits)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path().join(r"x64\rc.exe"))
-        .filter(|p| p.is_file())
-        .collect();
-    found.sort();
-    found.pop().unwrap_or_else(|| PathBuf::from("rc.exe"))
+    compile_resources(&out, "r7z-gui", "r7z archiver", Some(&ico_path));
 }

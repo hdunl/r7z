@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/hdunl/r7z/actions/workflows/ci.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue" alt="License"></a>
-  <img src="https://img.shields.io/badge/rust-1.85%2B-orange" alt="Rust 1.85+">
+  <img src="https://img.shields.io/badge/rust-1.87%2B-orange" alt="Rust 1.87+">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4" alt="Windows 10 | 11">
 </p>
 
@@ -130,7 +130,7 @@ are in [docs/performance.md](docs/performance.md). `scripts/compare.py` reproduc
 
 ## Building
 
-Rust 1.85 or newer with the MSVC toolchain:
+Rust 1.87 or newer with the MSVC toolchain:
 
 ```bash
 git clone https://github.com/hdunl/r7z

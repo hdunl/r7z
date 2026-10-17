@@ -5,7 +5,7 @@ members = [".", "gui"]
 name = "r7z"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.87"
 resolver = "3"
 description = "A fast, lightweight 7z archiver written in Rust, interoperable with 7-Zip"
 license = "MIT OR Apache-2.0"
@@ -42,7 +42,7 @@ rpassword = "7"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
 deflate64 = "=0.1.9"
-ruzstd = "=0.8.1"
+ruzstd = "0.9.1"
 lz4_flex = { version = "0.11", default-features = false, features = ["std", "frame", "safe-decode", "safe-encode"] }
 hmac = "0.12"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }

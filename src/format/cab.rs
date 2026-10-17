@@ -585,7 +585,7 @@ impl Decoder {
         let param = (ctype >> 8) as u32;
         Ok(match ctype & 0xF {
             METHOD_NONE => Decoder::Store,
-            METHOD_MSZIP => Decoder::MsZip(Box::new(MsZip::new())),
+            METHOD_MSZIP => Decoder::MsZip(Box::default()),
             METHOD_QUANTUM => Decoder::Quantum(Box::new(Quantum::new(param)?)),
             METHOD_LZX => Decoder::Lzx(Box::new(Lzx::new(param)?)),
             m => return Err(Error::unsupported(format!("CAB compression method {m}"))),

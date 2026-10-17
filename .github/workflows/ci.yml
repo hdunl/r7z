@@ -12,6 +12,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Fail the build rather than ship r7z-gui.exe without its icon.
+  R7Z_REQUIRE_ICON: "1"
   # Fat LTO is for release binaries; CI only needs optimized tests.
   CARGO_PROFILE_RELEASE_LTO: "false"
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"

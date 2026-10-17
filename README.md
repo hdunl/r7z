@@ -63,6 +63,8 @@ executables with no installer and no runtime to set up.
 - Batch extract, convert between formats, and create archives with AES-256.
 - Light and dark themes that follow Windows, Explorer right-click menu, and Ctrl+Shift+F to
   search everywhere.
+- Updates itself from GitHub releases. Every update is signed, and the signature is
+  checked before anything is installed.
 
 The full list is in [docs/desktop-app.md](docs/desktop-app.md).
 
@@ -149,6 +151,12 @@ with the default icon. Source layout and testing: [docs/development.md](docs/dev
 - BCJ2 encoding and a threaded match finder for faster `-mx9`
 
 Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supported-yet).
+
+## Security
+
+Releases are built and signed by GitHub Actions, with a build provenance attestation
+for every file. Updates are verified against a key built into the app. Details, and how to
+report a vulnerability privately: [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

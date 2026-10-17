@@ -1153,6 +1153,43 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         app.toggle_protected();
                     }
                 });
+                label(ui, p, "Updates");
+                let mut auto = crate::app::auto_updates();
+                if ui
+                    .checkbox(&mut auto, "Check for updates automatically")
+                    .on_hover_text("Once a day, r7z asks GitHub for the latest release. Updates are signed and checked before anything is installed.")
+                    .changed()
+                {
+                    shell::save_setting("updates", if auto { "on" } else { "off" });
+                }
+                ui.horizontal(|ui| {
+                    ui.add_space(22.0);
+                    let mut silent = shell::load_setting("update_install").as_deref() == Some("auto");
+                    if ui
+                        .add_enabled(auto, egui::Checkbox::new(&mut silent, "Install them without asking"))
+                        .changed()
+                    {
+                        shell::save_setting("update_install", if silent { "auto" } else { "ask" });
+                    }
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let busy = app.update_check.is_some() || app.update_install.is_some();
+                    if app.update_ready.is_some() {
+                        if button(ui, None, "Restart now", true, true).clicked() {
+                            app.restart(ctx);
+                        }
+                    } else if let Some(version) = app.update_offer.as_ref().map(|m| m.version.clone()) {
+                        if button(ui, None, &format!("Update to {version}"), true, !busy).clicked() {
+                            app.install_update(ctx);
+                        }
+                    } else if button(ui, None, "Check now", false, !busy).clicked() {
+                        app.check_for_updates(ctx, true);
+                    }
+                    if let Some(note) = &app.update_note {
+                        ui.label(RichText::new(note).size(12.0).color(p.dim));
+                    }
+                });
                 label(ui, p, "Explorer menu");
                 let installed = app.explorer.unwrap_or(false);
                 ui.add(

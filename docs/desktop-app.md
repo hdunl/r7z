@@ -89,6 +89,13 @@ single 10 MB executable with no installer, and it starts instantly.
   "Extract to folder" and "Add to archive…" to the right-click menu. It writes per-user
   registry keys only (no administrator rights); "Remove from menu" deletes them. These
   verbs call `r7z-gui --extract-here|--extract-to|--add <path>`.
+- **Updates:** once a day r7z checks GitHub for a newer release and offers it in a
+  toast; Settings → Updates has "Check now", and options to stop checking or to install
+  updates without asking. Each release's manifest is signed with Ed25519 and checked
+  against a key built into the app, the download is checked against the hash in the
+  manifest, and only newer versions are accepted. The new `r7z-gui.exe` (and `r7z.exe`,
+  when it is in the same folder) replaces the old one, which is kept as `.old` until the
+  next start; "Restart now" switches over. See [SECURITY.md](../SECURITY.md).
 - **Crash reports:** if something goes wrong, the error is written to
   `%APPDATA%\r7z\crash.log`. A failure inside a background job is reported as an error
   and does not close the window.

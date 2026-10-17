@@ -27,6 +27,7 @@ mod spacemap;
 mod theme;
 mod ui;
 mod undo;
+mod update;
 
 use std::io::Write;
 use std::path::PathBuf;

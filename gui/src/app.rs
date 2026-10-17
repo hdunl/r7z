@@ -84,6 +84,12 @@ pub enum ToastAct {
     Recover(PathBuf),
     /// Reverse the extract with this undo record.
     Undo(String),
+    /// Download and install the update that was found.
+    Update,
+    /// Start the updated program and close this one.
+    Restart,
+    /// Open a web page.
+    Link(String),
 }
 
 pub struct Toast {
@@ -121,6 +127,16 @@ pub struct App {
     pub show_preview: bool,
     pub show_hidden: bool,
     pub show_protected: bool,
+    pub update_check: Option<Task<crate::update::Check>>,
+    pub update_install: Option<Task<String>>,
+    /// A newer release whose signed manifest checked out.
+    pub update_offer: Option<crate::update::Manifest>,
+    /// The version installed by an update, waiting for a restart.
+    pub update_ready: Option<String>,
+    /// One line for the Updates section of Settings.
+    pub update_note: Option<String>,
+    update_manual: bool,
+    update_due: bool,
     pub opening: Option<(Task<Opened>, Opening, Option<String>)>,
     pub staging: Vec<Task<PathBuf>>,
     pub job: Option<Job>,
@@ -213,6 +229,7 @@ impl App {
         theme::apply(&cc.egui_ctx, theme_pref);
         std::thread::spawn(shell::sweep_stale_temp);
         std::thread::spawn(crate::mount::sweep_stale);
+        std::thread::spawn(crate::update::cleanup);
         let places: Vec<(Known, PathBuf)> = [
             Known::Home,
             Known::Desktop,
@@ -255,6 +272,13 @@ impl App {
             show_preview: shell::load_setting("preview").as_deref() != Some("off"),
             show_hidden: shell::load_setting("hidden").as_deref() == Some("on"),
             show_protected: shell::load_setting("protected").as_deref() == Some("on"),
+            update_check: None,
+            update_install: None,
+            update_offer: None,
+            update_ready: None,
+            update_note: None,
+            update_manual: false,
+            update_due: auto_updates() && update_due(),
             opening: None,
             staging: Vec::new(),
             job: None,
@@ -327,6 +351,118 @@ impl App {
             body: body.into(),
             error,
         });
+    }
+
+    /// A toast that stays up long enough to be acted on later.
+    pub fn toast_long(&mut self, text: String, ok: bool, actions: Vec<(String, ToastAct)>) {
+        self.toast_with(text, ok, actions);
+        if let Some(t) = self.toasts.last_mut() {
+            t.until = Instant::now() + Duration::from_secs(60);
+        }
+    }
+
+    pub fn check_for_updates(&mut self, ctx: &egui::Context, manual: bool) {
+        if self.update_check.is_some() || self.update_install.is_some() {
+            return;
+        }
+        self.update_manual = manual;
+        if manual {
+            self.update_note = Some("Checking…".into());
+        }
+        self.update_check = Some(Task::spawn(ctx, crate::update::check));
+    }
+
+    pub fn install_update(&mut self, ctx: &egui::Context) {
+        let Some(m) = self.update_offer.clone() else {
+            return;
+        };
+        if self.update_install.is_some() {
+            return;
+        }
+        self.update_note = Some(format!("Downloading r7z {}…", m.version));
+        self.update_install = Some(Task::spawn(ctx, move |cancel| {
+            crate::update::download_and_install(&m, cancel)
+        }));
+    }
+
+    pub fn restart(&mut self, ctx: &egui::Context) {
+        match crate::update::relaunch() {
+            Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Err(e) => self.toast(format!("Couldn't restart r7z: {e}"), false, None),
+        }
+    }
+
+    fn poll_updates(&mut self, ctx: &egui::Context) {
+        if std::mem::take(&mut self.update_due) {
+            self.check_for_updates(ctx, false);
+        }
+        if let Some(result) = self.update_check.as_mut().and_then(|t| t.take()) {
+            self.update_check = None;
+            let manual = self.update_manual;
+            match result {
+                Ok(crate::update::Check::Available(m)) => {
+                    mark_update_checked();
+                    let (version, url) = (m.version.clone(), m.release_url());
+                    self.update_note = Some(format!("r7z {version} is available"));
+                    self.update_offer = Some(m);
+                    if shell::load_setting("update_install").as_deref() == Some("auto") {
+                        self.install_update(ctx);
+                    } else {
+                        self.toast_long(
+                            format!("r7z {version} is available"),
+                            true,
+                            vec![
+                                ("Update".into(), ToastAct::Update),
+                                ("What's new".into(), ToastAct::Link(url)),
+                            ],
+                        );
+                    }
+                }
+                Ok(crate::update::Check::UpToDate) => {
+                    mark_update_checked();
+                    self.update_note = Some("You have the latest version".into());
+                    if manual {
+                        self.toast(
+                            format!("r7z {} is the latest version", crate::update::CURRENT),
+                            true,
+                            None,
+                        );
+                    }
+                }
+                Err(e) => {
+                    self.update_note = Some(format!("Couldn't check: {e}"));
+                    if manual {
+                        self.toast(format!("Couldn't check for updates: {e}"), false, None);
+                    }
+                }
+            }
+        }
+        if let Some(result) = self.update_install.as_mut().and_then(|t| t.take()) {
+            self.update_install = None;
+            match result {
+                Ok(version) => {
+                    self.update_offer = None;
+                    self.update_note = Some(format!("r7z {version} is installed; restart to use it"));
+                    self.update_ready = Some(version.clone());
+                    self.toast_long(
+                        format!("Updated to r7z {version}"),
+                        true,
+                        vec![("Restart now".into(), ToastAct::Restart)],
+                    );
+                }
+                Err(e) => {
+                    self.update_note = Some(format!("Update failed: {e}"));
+                    let url = self.update_offer.as_ref().map(|m| m.release_url());
+                    self.toast_long(
+                        format!("The update didn't install: {e}"),
+                        false,
+                        url.map(|u| ("Download page".to_string(), ToastAct::Link(u)))
+                            .into_iter()
+                            .collect(),
+                    );
+                }
+            }
+        }
     }
 
     pub fn toast(&mut self, text: String, ok: bool, action: Option<(String, ToastAct)>) {
@@ -1710,6 +1846,7 @@ impl eframe::App for App {
                 }
             }
         }
+        self.poll_updates(ctx);
         if self.cjk_pending {
             self.cjk_pending = false;
             theme::install_fonts(ctx, true);
@@ -1779,4 +1916,26 @@ impl eframe::App for App {
             let _ = std::fs::remove_dir_all(tmp);
         }
     }
+}
+
+pub fn auto_updates() -> bool {
+    shell::load_setting("updates").as_deref() != Some("off")
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// At most one automatic check a day.
+fn update_due() -> bool {
+    let last = shell::load_setting("update_checked")
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    unix_now().saturating_sub(last) >= 24 * 3600
+}
+
+fn mark_update_checked() {
+    shell::save_setting("update_checked", &unix_now().to_string());
 }

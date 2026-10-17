@@ -176,7 +176,7 @@ impl Tree {
         }
         let mut v: Vec<(FileClass, u64, u64)> =
             by.into_iter().map(|(c, (s, n))| (c, s, n)).collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|e| std::cmp::Reverse(e.1));
         v
     }
 }

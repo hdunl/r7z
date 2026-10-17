@@ -7,6 +7,7 @@
 mod app;
 mod dialogs;
 mod dnd;
+mod finder;
 mod icons;
 mod jobs;
 mod logo;
@@ -17,10 +18,9 @@ mod mount;
 #[path = "mount_stub.rs"]
 mod mount;
 mod open_folder;
+mod preview;
 #[cfg(windows)]
 mod projfs;
-mod finder;
-mod preview;
 mod recover;
 mod shell;
 mod spacemap;

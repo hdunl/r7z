@@ -331,7 +331,7 @@ mod tests {
             x = x.wrapping_mul(1103515245).wrapping_add(12345);
             let w = ["alpha ", "beta ", "gamma ", "delta\n"][(x >> 16) as usize % 4];
             v.extend_from_slice(w.as_bytes());
-            if x % 7 == 0 {
+            if x.is_multiple_of(7) {
                 v.push((x >> 8) as u8);
             }
         }

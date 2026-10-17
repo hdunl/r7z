@@ -146,7 +146,7 @@ impl<'a> Header<'a> {
 
     /// The type, data-store offset and count of `tag`.
     fn find(&self, tag: u32) -> Option<(u32, usize, usize)> {
-        self.index.chunks_exact(16).find_map(|e| {
+        self.index.as_chunks::<16>().0.iter().find_map(|e| {
             (be32(e, 0) == tag).then(|| (be32(e, 4), be32(e, 8) as usize, be32(e, 12) as usize))
         })
     }

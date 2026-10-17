@@ -24,9 +24,9 @@ pub fn dict_label(size: u64) -> String {
     if size.is_power_of_two() {
         return size.trailing_zeros().to_string();
     }
-    if size % (1 << 20) == 0 {
+    if size.is_multiple_of(1 << 20) {
         format!("{}m", size >> 20)
-    } else if size % (1 << 10) == 0 {
+    } else if size.is_multiple_of(1 << 10) {
         format!("{}k", size >> 10)
     } else {
         format!("{size}b")

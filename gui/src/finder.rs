@@ -231,7 +231,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         .filter_map(|(i, it)| score(&state.query, &it.label).map(|s| (s, i)))
         .collect();
     if !state.query.is_empty() {
-        ranked.sort_by(|a, b| b.0.cmp(&a.0));
+        ranked.sort_by_key(|r| std::cmp::Reverse(r.0));
     }
     ranked.truncate(60);
     let (down, up, enter, esc) = ctx.input(|i| {
@@ -251,14 +251,14 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     state.sel = state.sel.min(ranked.len().saturating_sub(1));
     let mut chosen: Option<Cmd> = None;
     let area =
-        egui::Modal::default_area(Id::new("finder")).anchor(Align2::CENTER_TOP, vec2(0.0, 90.0));
+        egui::Modal::default_area(Id::unique("finder")).anchor(Align2::CENTER_TOP, vec2(0.0, 90.0));
     let frame = egui::Frame::new()
         .fill(p.surface)
         .stroke(Stroke::new(1.0, p.line))
         .corner_radius(CornerRadius::same(14))
-        .shadow(ctx.style().visuals.window_shadow)
+        .shadow(ctx.global_style().visuals.window_shadow)
         .inner_margin(Margin::same(8));
-    let resp = egui::Modal::new(Id::new("finder"))
+    let resp = egui::Modal::new(Id::unique("finder"))
         .area(area)
         .frame(frame)
         .show(ctx, |ui| {
@@ -268,9 +268,11 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 icons::icon(ui, 16.0, Icon::Search, p.dim);
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut state.query)
-                        .frame(false)
+                        .frame(egui::Frame::NONE)
+                        .align(egui::Align2::LEFT_CENTER)
                         .hint_text(
-                            RichText::new("Search files, folders, places and actions").color(p.faint),
+                            RichText::new("Search files, folders, places and actions")
+                                .color(p.faint),
                         )
                         .font(FontId::proportional(15.0))
                         .desired_width(500.0)

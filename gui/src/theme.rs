@@ -78,7 +78,7 @@ pub fn palette(dark: bool) -> Palette {
 }
 
 pub fn current(ctx: &egui::Context) -> Palette {
-    palette(ctx.style().visuals.dark_mode)
+    palette(ctx.global_style().visuals.dark_mode)
 }
 
 fn visuals(dark: bool) -> Visuals {

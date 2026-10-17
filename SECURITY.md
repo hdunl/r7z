@@ -22,16 +22,20 @@ staying current takes one click.
 - Every release is built by [GitHub Actions](.github/workflows/release.yml) from a tagged
   commit, never on a developer machine, and the tests run before anything is published.
 - Each release has a build provenance attestation that ties the files to the exact commit
-  and workflow run that produced them. To check a download:
+  and workflow run that produced them. It is attached to the release as SLSA provenance
+  (`.intoto.jsonl`) and as a Sigstore bundle (`.sigstore.json`). To check a download:
 
   ```
-  gh attestation verify r7z-0.1.0-windows-x64.zip --repo hdunl/r7z
+  gh attestation verify r7z-0.1.1-windows-x64.zip --repo hdunl/r7z
   ```
 
 - `SHA256SUMS` lists the hash of every file in the release.
 - Dependencies are locked in `Cargo.lock` and checked weekly against the RustSec advisory
   database; Dependabot proposes updates. The workflows pin third-party actions to exact
   commits.
+- Archive parsing and recovery are fuzzed continuously with ClusterFuzzLite, and CodeQL
+  scans every change. The ar, deb, lib and rpm test archives are built by the test code
+  instead of being checked in, so no program-like binaries live in the repository.
 
 ## How updates work
 

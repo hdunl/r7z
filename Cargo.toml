@@ -1,11 +1,12 @@
 [workspace]
 members = [".", "gui"]
+exclude = ["fuzz"]
 
 [package]
 name = "r7z"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-rust-version = "1.87"
+rust-version = "1.95"
 resolver = "3"
 description = "A fast, lightweight 7z archiver written in Rust, interoperable with 7-Zip"
 license = "Apache-2.0"
@@ -25,27 +26,27 @@ path = "src/main.rs"
 
 [dependencies]
 lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
-aes = "0.8.4"
-sha2 = "0.10.9"
-sha1 = "0.10.6"
-sha3 = "0.10.8"
-md-5 = "0.10.6"
+aes = "0.9"
+sha2 = "0.11"
+sha1 = "0.11"
+sha3 = "0.12"
+md-5 = "0.11"
 crc32fast = "1.5"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 memmap2 = "0.9"
-rayon = "1.10"
+rayon = "1.12"
 indicatif = "0.18"
 console = "0.16"
 filetime = "0.2"
-getrandom = "0.3"
+getrandom = "0.4"
 rpassword = "7"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
-deflate64 = "=0.1.9"
+deflate64 = "0.1.12"
 ruzstd = "0.9.1"
-lz4_flex = { version = "0.11", default-features = false, features = ["std", "frame", "safe-decode", "safe-encode"] }
-hmac = "0.12"
-pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+lz4_flex = { version = "0.14", default-features = false, features = ["std", "frame", "safe-decode", "safe-encode"] }
+hmac = "0.13"
+pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
 ppmd-rust = "1.5"
 encoding_rs = "0.8.35"
 

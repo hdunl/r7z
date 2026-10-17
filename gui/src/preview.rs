@@ -516,7 +516,9 @@ fn as_text(data: &[u8]) -> Option<String> {
     if data.starts_with(&[0xFF, 0xFE]) || data.starts_with(&[0xFE, 0xFF]) {
         let le = data[0] == 0xFF;
         let units: Vec<u16> = data[2..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| {
                 if le {
                     u16::from_le_bytes([c[0], c[1]])

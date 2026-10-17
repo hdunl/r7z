@@ -441,7 +441,9 @@ pub fn extract(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -> Re
         ..Default::default()
     };
     for (i, err) in &plan.errors {
-        report.errors.push((entries[*i].name.clone(), clone_err(err)));
+        report
+            .errors
+            .push((entries[*i].name.clone(), clone_err(err)));
     }
     for (i, r) in write_unitless(a, &plan, cb) {
         match r {

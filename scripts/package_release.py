@@ -4,7 +4,7 @@
 
 Reads target/release/r7z.exe and r7z-gui.exe and writes to the output folder:
 
-    r7z-0.1.0-windows-x64.zip   the programs, README and licenses
+    r7z-0.1.0-windows-x64.zip   the programs, README and license
     SHA256SUMS                  hashes of everything above
     r7z-update.txt              manifest the desktop app's updater reads
     r7z-update.sig              Ed25519 signature of r7z-update.txt (hex)
@@ -69,8 +69,7 @@ def main() -> None:
         "r7z.exe": ROOT / "target" / "release" / "r7z.exe",
         "r7z-gui.exe": ROOT / "target" / "release" / "r7z-gui.exe",
         "README.md": ROOT / "README.md",
-        "LICENSE-MIT": ROOT / "LICENSE-MIT",
-        "LICENSE-APACHE": ROOT / "LICENSE-APACHE",
+        "LICENSE": ROOT / "LICENSE",
     }
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, src in files.items():

@@ -41,7 +41,7 @@ getrandom = "0.3"
 rpassword = "7"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 bzip2 = "0.6"
-deflate64 = "=0.1.9"
+deflate64 = "=0.1.12"
 ruzstd = "0.9.1"
 lz4_flex = { version = "0.11", default-features = false, features = ["std", "frame", "safe-decode", "safe-encode"] }
 hmac = "0.12"

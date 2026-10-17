@@ -1,0 +1,35 @@
+pub mod codepage;
+pub mod crc64;
+pub mod fmt;
+pub mod mem;
+pub mod text;
+pub mod time;
+pub mod wildcard;
+
+/// Reads until `buf` is full or EOF, returning the number of bytes read.
+pub fn read_full<R: std::io::Read + ?Sized>(r: &mut R, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut n = 0;
+    while n < buf.len() {
+        match r.read(&mut buf[n..]) {
+            Ok(0) => break,
+            Ok(k) => n += k,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(n)
+}
+
+/// Number of worker threads to use by default.
+pub fn default_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+}
+
+/// A random 64-bit value (for temporary names and salts).
+pub fn random_u64() -> u64 {
+    let mut b = [0u8; 8];
+    let _ = getrandom::fill(&mut b);
+    u64::from_le_bytes(b)
+}

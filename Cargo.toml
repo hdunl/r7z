@@ -1,0 +1,62 @@
+[workspace]
+members = [".", "gui"]
+
+[package]
+name = "r7z"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+resolver = "3"
+description = "A fast, lightweight 7z archiver written in Rust, interoperable with 7-Zip"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/hdunl/r7z"
+readme = "README.md"
+keywords = ["7z", "zip", "archive", "compression", "lzma"]
+categories = ["compression", "command-line-utilities"]
+default-run = "r7z"
+
+[lib]
+name = "r7z"
+path = "src/lib.rs"
+
+[[bin]]
+name = "r7z"
+path = "src/main.rs"
+
+[dependencies]
+lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+aes = "0.8.4"
+sha2 = "0.10.9"
+sha1 = "0.10.6"
+sha3 = "0.10.8"
+md-5 = "0.10.6"
+crc32fast = "1.5"
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
+memmap2 = "0.9"
+rayon = "1.10"
+indicatif = "0.18"
+console = "0.16"
+filetime = "0.2"
+getrandom = "0.3"
+rpassword = "7"
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+bzip2 = "0.6"
+deflate64 = "=0.1.9"
+ruzstd = "=0.8.1"
+lz4_flex = { version = "0.11", default-features = false, features = ["std", "frame", "safe-decode", "safe-encode"] }
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+ppmd-rust = "1.5"
+encoding_rs = "0.8.35"
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,24 @@
+[package]
+name = "r7z-gui"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Desktop file manager for r7z archives"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/hdunl/r7z"
+
+[[bin]]
+name = "r7z-gui"
+path = "src/main.rs"
+
+[dependencies]
+r7z = { path = ".." }
+eframe = { version = "0.32", default-features = false, features = ["glow", "default_fonts"] }
+egui_extras = { version = "0.32", default-features = false }
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "ico", "tiff"] }
+sha2 = "0.10.9"
+sha1 = "0.10.6"
+md-5 = "0.10.6"
+crc32fast = "1.5"
+raw-window-handle = "0.6"

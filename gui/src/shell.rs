@@ -203,6 +203,9 @@ pub enum ModernMenu {
     Installed,
     /// This copy of r7z can register it.
     Available,
+    /// The menu's files are missing from this copy (it was updated by a version that only
+    /// replaced existing files); they can be fetched from this version's release.
+    Missing,
     /// It cannot be registered; the reason is shown in Settings.
     Unavailable(String),
 }
@@ -271,13 +274,13 @@ fn developer_mode() -> bool {
 /// The package next to this program: a signed `r7z-shell.msix` (releases) or the loose
 /// `package\AppxManifest.xml` of a development build, which needs Developer Mode.
 #[cfg(windows)]
-fn modern_menu_package() -> Result<(PathBuf, bool), String> {
+fn modern_menu_package() -> Result<(PathBuf, bool), ModernMenu> {
     let dir = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
-        .ok_or("cannot tell where r7z is installed")?;
+        .ok_or_else(|| ModernMenu::Unavailable("cannot tell where r7z is installed".into()))?;
     if !dir.join("r7z_shell.dll").is_file() {
-        return Err("This copy of r7z doesn't include the Windows 11 menu.".into());
+        return Err(ModernMenu::Missing);
     }
     let msix = dir.join("r7z-shell.msix");
     if msix.is_file() {
@@ -287,7 +290,7 @@ fn modern_menu_package() -> Result<(PathBuf, bool), String> {
     if loose.is_file() && developer_mode() {
         return Ok((loose, false));
     }
-    Err("Windows 11's main menu needs a signed release of r7z; until then the entries are under \"Show more options\".".into())
+    Err(ModernMenu::Missing)
 }
 
 #[cfg(windows)]
@@ -302,7 +305,17 @@ pub fn modern_menu_status() -> ModernMenu {
     }
     match modern_menu_package() {
         Ok(_) => ModernMenu::Available,
-        Err(why) => ModernMenu::Unavailable(why),
+        Err(state) => state,
+    }
+}
+
+/// Fetches the Windows 11 menu files this copy lacks from this version's release (with
+/// the same signed-manifest checks as updates), then registers the menu.
+#[cfg(windows)]
+pub fn get_modern_menu() -> ModernMenu {
+    match crate::update::install_missing(&std::sync::atomic::AtomicBool::new(false)) {
+        Ok(_) => install_modern_menu(),
+        Err(e) => ModernMenu::Unavailable(format!("Couldn't get the Windows 11 menu: {e}")),
     }
 }
 
@@ -310,7 +323,7 @@ pub fn modern_menu_status() -> ModernMenu {
 pub fn install_modern_menu() -> ModernMenu {
     let (package, signed) = match modern_menu_package() {
         Ok(p) => p,
-        Err(why) => return ModernMenu::Unavailable(why),
+        Err(state) => return state,
     };
     let dir = std::env::current_exe()
         .ok()
@@ -351,6 +364,10 @@ pub fn install_modern_menu() -> ModernMenu {
 }
 #[cfg(not(windows))]
 pub fn uninstall_modern_menu() -> ModernMenu {
+    modern_menu_status()
+}
+#[cfg(not(windows))]
+pub fn get_modern_menu() -> ModernMenu {
     modern_menu_status()
 }
 

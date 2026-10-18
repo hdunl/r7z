@@ -1208,6 +1208,9 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     (true, Some(shell::ModernMenu::Unavailable(why))) => {
                         format!("r7z is in the right-click menu for files and folders. {why}")
                     }
+                    (true, Some(shell::ModernMenu::Missing)) => {
+                        "r7z is in the right-click menu for files and folders, under \"Show more options\" on Windows 11. To be in the main menu as well, it needs two files from its release.".to_string()
+                    }
                     (true, _) => "r7z is in the right-click menu for files and folders.".to_string(),
                     (false, _) => "Adds \"Open with r7z\", \"Extract here\", \"Extract to folder\" and \"Add to archive\" to the right-click menu. Only your user account is changed; no administrator rights are needed.".to_string(),
                 };
@@ -1229,13 +1232,24 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         {
                             app.modern_menu_job(ctx, shell::install_modern_menu);
                         }
+                        if modern == Some(shell::ModernMenu::Missing)
+                            && button(ui, None, "Get the Windows 11 menu", false, !busy).clicked()
+                        {
+                            app.modern_menu_job(ctx, shell::get_modern_menu);
+                        }
                     } else if button(ui, None, "Add to menu", false, !busy).clicked() {
                         if !shell::install_explorer() {
                             app.toast("Couldn't add the menu entries".into(), false, None);
                         }
                         app.explorer = Some(shell::explorer_installed());
-                        if modern == Some(shell::ModernMenu::Available) {
-                            app.modern_menu_job(ctx, shell::install_modern_menu);
+                        match modern {
+                            Some(shell::ModernMenu::Available) => {
+                                app.modern_menu_job(ctx, shell::install_modern_menu)
+                            }
+                            Some(shell::ModernMenu::Missing) => {
+                                app.modern_menu_job(ctx, shell::get_modern_menu)
+                            }
+                            _ => {}
                         }
                     }
                     if busy {

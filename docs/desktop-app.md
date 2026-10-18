@@ -110,6 +110,15 @@ single 10 MB executable with no installer, and it starts instantly.
   certificate; releases ship it signed as `r7z-shell.msix`, so Settings → "Add to menu"
   puts r7z in the main menu on any Windows 11 PC. Development builds use the loose
   manifest instead, which registers only with Developer Mode on.
+- **Install:** "Install r7z" (on the welcome tour's last page, in Settings → Install, or
+  `r7z-gui --install`) copies the program to `%LOCALAPPDATA%\Programs\r7z` and starts
+  that copy. It adds a Start menu shortcut, which Windows search finds; an entry in
+  Settings → Installed apps; App Paths, so Run → `r7z` works; r7z as an "Open with" and
+  Default apps choice for archive types (it never takes over a file type by itself); and
+  the right-click menus. Everything is per user under HKCU, with no administrator rights.
+  Uninstall (Windows Settings → Apps, r7z's Settings, or `r7z-gui --uninstall --quiet`)
+  removes all of it and the install folder, and keeps the settings in `%APPDATA%\r7z`.
+  People who used r7z before 0.1.7 see a one-time offer to install.
 - **Updates:** once a day r7z checks GitHub for a newer release and offers it in a
   toast; Settings → Updates has "Check now", and options to stop checking or to install
   updates without asking. Each release's manifest is signed with Ed25519 and checked

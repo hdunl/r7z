@@ -35,6 +35,8 @@ pub enum Startup {
     Compress(Vec<PathBuf>, crate::dialogs::Fmt),
     Test(PathBuf),
     Convert(PathBuf),
+    /// Started from Settings → Installed apps: confirm, then remove r7z.
+    Uninstall,
 }
 
 /// What to do once the archive r7z was started with has opened.
@@ -107,6 +109,8 @@ pub enum ToastAct {
     Restart,
     /// Open a web page.
     Link(String),
+    /// Install r7z (Start menu, Installed apps, right-click menu).
+    Install,
 }
 
 pub struct Toast {
@@ -179,6 +183,9 @@ pub struct App {
     /// Windows 11 main-menu registration, checked in the background when Settings opens.
     pub modern_menu: Option<shell::ModernMenu>,
     pub modern_task: Option<Task<shell::ModernMenu>>,
+    /// Whether and where r7z is installed; read when first needed.
+    pub install_state: Option<crate::install::State>,
+    pub install_task: Option<Task<PathBuf>>,
     /// The welcome tour, while it is open.
     pub tour: Option<crate::tour::Tour>,
     pub focus_search: bool,
@@ -324,6 +331,8 @@ impl App {
             explorer: None,
             modern_menu: None,
             modern_task: None,
+            install_state: None,
+            install_task: None,
             tour: None,
             focus_search: false,
             scroll_to: None,
@@ -340,10 +349,15 @@ impl App {
         let ctx = &cc.egui_ctx;
         // The tour opens by itself on a normal first launch, not when r7z was started
         // from the Explorer menu to extract or compress something.
-        if matches!(startup, Startup::None | Startup::Open(_)) && crate::tour::first_run() {
+        let normal = matches!(startup, Startup::None | Startup::Open(_));
+        if normal && crate::tour::first_run() {
             crate::tour::open(&mut app);
+        } else if normal {
+            crate::install::refresh();
+            app.offer_install();
         }
         match startup {
+            Startup::Uninstall => app.dialog = Some(Dialog::Uninstall { from_windows: true }),
             Startup::None => {}
             Startup::Open(p) if p.is_dir() => app.loc = Loc::Disk(p),
             Startup::Open(p) => app.open_disk_archive(ctx, p, None),
@@ -444,6 +458,64 @@ impl App {
     }
 
     /// Runs a Windows 11 menu action (status, install, uninstall) off the UI thread.
+    pub fn install_state(&mut self) -> crate::install::State {
+        self.install_state
+            .get_or_insert_with(crate::install::state)
+            .clone()
+    }
+
+    /// Copies r7z to its install folder and registers it, in the background.
+    pub fn start_install(&mut self, ctx: &egui::Context) {
+        if self.install_task.is_none() {
+            self.install_task = Some(Task::spawn(ctx, |_| {
+                crate::install::install().map_err(Error::Other)
+            }));
+        }
+    }
+
+    /// Once, for people who had r7z before it could be installed: a toast that offers it.
+    fn offer_install(&mut self) {
+        if !cfg!(windows) || shell::load_setting("install_offer").is_some() {
+            return;
+        }
+        if self.install_state() == crate::install::State::NotInstalled {
+            shell::save_setting("install_offer", "shown");
+            self.toast_long(
+                "Install r7z to find it in the Start menu and Windows search".into(),
+                true,
+                vec![("Install".into(), ToastAct::Install)],
+            );
+        }
+    }
+
+    fn poll_install(&mut self, ctx: &egui::Context) {
+        let Some(result) = self.install_task.as_mut().and_then(|t| t.take()) else {
+            return;
+        };
+        self.install_task = None;
+        self.install_state = None;
+        self.explorer = None;
+        self.modern_menu = None;
+        match result {
+            Ok(exe) => {
+                let current = std::env::current_exe().ok();
+                let moved =
+                    current.is_none_or(|c| c.canonicalize().ok() != exe.canonicalize().ok());
+                // Carry on in the installed copy, so updates go there.
+                if moved && std::process::Command::new(&exe).spawn().is_ok() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                } else {
+                    self.toast(
+                        "r7z is installed. Find it in the Start menu or Windows search".into(),
+                        true,
+                        None,
+                    );
+                }
+            }
+            Err(e) => self.message("Couldn't install r7z", &e.to_string(), true),
+        }
+    }
+
     pub fn modern_menu_job(&mut self, ctx: &egui::Context, f: fn() -> shell::ModernMenu) {
         if self.modern_task.is_none() {
             self.modern_task = Some(Task::spawn(ctx, move |_| Ok(f())));
@@ -1943,6 +2015,7 @@ impl eframe::App for App {
             }
         }
         self.poll_updates(ctx);
+        self.poll_install(ctx);
         if let Some(Ok(state)) = self.modern_task.as_mut().and_then(|t| t.take()) {
             self.modern_task = None;
             self.modern_menu = Some(state);

@@ -289,7 +289,7 @@ pub fn install_missing(cancel: &AtomicBool) -> Result<Vec<String>> {
     download_zip_and_install(&agent, &m, true, cancel)
 }
 
-fn sibling(path: &Path, suffix: &str) -> PathBuf {
+pub fn sibling(path: &Path, suffix: &str) -> PathBuf {
     let mut s = path.as_os_str().to_owned();
     s.push(suffix);
     PathBuf::from(s)
@@ -377,6 +377,11 @@ fn install_parts(zip: &Path, dir: &Path, only_missing: bool) -> Result<Vec<Strin
 }
 
 /// Removes what an earlier update left behind (`*.old`, unfinished `*.new`).
+/// The files a release installs next to `r7z-gui.exe`.
+pub fn release_files() -> Vec<&'static str> {
+    PARTS.iter().map(|(name, _, _)| *name).collect()
+}
+
 pub fn cleanup() {
     let Ok(dir) = install_dir() else { return };
     for (name, _, _) in PARTS {

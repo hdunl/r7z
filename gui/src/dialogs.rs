@@ -169,6 +169,10 @@ pub enum Dialog {
     Safety,
     /// The outcome list of a recovery.
     Recovered(crate::recover::RecoverView),
+    /// Confirms removing r7z; `from_windows` when Settings → Installed apps started it.
+    Uninstall {
+        from_windows: bool,
+    },
 }
 
 impl Dialog {
@@ -466,6 +470,48 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     body,
                     error,
                 })
+            }
+        }
+        Dialog::Uninstall { from_windows } => {
+            let state = app.install_state();
+            let what = match &state {
+                crate::install::State::Installed { dir, .. } => format!(
+                    "Removes r7z from the Start menu, Installed apps, the right-click menu and \"Open with\", and deletes {}. Your settings stay in %APPDATA%\\r7z.",
+                    dir.display()
+                ),
+                crate::install::State::NotInstalled => {
+                    "Removes r7z from the right-click menu and \"Open with\".".to_string()
+                }
+            };
+            let ((go, cancel), close) = modal(ctx, "uninstall", 460.0, |ui| {
+                title(ui, "Uninstall r7z?");
+                ui.add(egui::Label::new(RichText::new(&what).size(13.0).color(p.dim)).wrap());
+                footer(ui, "Uninstall", true)
+            });
+            if go {
+                match crate::install::uninstall() {
+                    Ok(()) => {
+                        app.install_state = None;
+                        app.explorer = None;
+                        app.modern_menu = None;
+                        let here =
+                            matches!(state, crate::install::State::Installed { here: true, .. });
+                        if from_windows || here {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        } else {
+                            app.toast("r7z was uninstalled".into(), true, None);
+                        }
+                    }
+                    Err(e) => app.message("Couldn't uninstall r7z", &e, true),
+                }
+                None
+            } else if cancel || close {
+                if from_windows {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                None
+            } else {
+                Some(Dialog::Uninstall { from_windows })
             }
         }
         other => show_rest(app, ctx, &p, other),
@@ -1186,6 +1232,54 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         ui.label(RichText::new(note).size(12.0).color(p.dim));
                     }
                 });
+                if cfg!(windows) {
+                    label(ui, p, "Install");
+                    let installing = app.install_task.is_some();
+                    let (text, install_label) = match app.install_state() {
+                        crate::install::State::NotInstalled => (
+                            format!(
+                                "Copies r7z to {} and adds it to the Start menu, Windows search, Installed apps, \"Open with\" and the right-click menu. Only your user account is changed.",
+                                crate::install::target_dir()
+                                    .map(|d| d.display().to_string())
+                                    .unwrap_or_default()
+                            ),
+                            Some("Install r7z"),
+                        ),
+                        crate::install::State::Installed { dir, here: true } => (
+                            format!(
+                                "Installed in {}. Updates install there, and Windows lists r7z under Settings → Apps.",
+                                dir.display()
+                            ),
+                            None,
+                        ),
+                        crate::install::State::Installed { dir, here: false } => (
+                            format!(
+                                "Installed in {}. This copy runs from another folder.",
+                                dir.display()
+                            ),
+                            Some("Install this copy"),
+                        ),
+                    };
+                    ui.add(egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap());
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if let Some(l) = install_label {
+                            if button(ui, None, l, false, !installing).clicked() {
+                                app.start_install(ctx);
+                            }
+                        }
+                        if app.install_state() != crate::install::State::NotInstalled
+                            && button(ui, None, "Uninstall…", false, !installing).clicked()
+                        {
+                            app.dialog = Some(Dialog::Uninstall {
+                                from_windows: false,
+                            });
+                        }
+                        if installing {
+                            ui.label(RichText::new("Installing…").size(12.0).color(p.dim));
+                        }
+                    });
+                }
                 label(ui, p, "Explorer menu");
                 if app.modern_menu.is_none() {
                     app.modern_menu_job(ctx, shell::modern_menu_status);
@@ -1299,7 +1393,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 Some(Dialog::Recovered(view))
             }
         }
-        Dialog::Message { .. } => None,
+        Dialog::Message { .. } | Dialog::Uninstall { .. } => None,
     }
 }
 

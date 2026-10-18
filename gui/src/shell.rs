@@ -117,7 +117,7 @@ pub fn undo_backups() -> PathBuf {
 }
 
 #[cfg(windows)]
-fn reg(args: &[&str]) -> bool {
+pub fn reg(args: &[&str]) -> bool {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     Command::new("reg")
@@ -155,10 +155,13 @@ pub fn explorer_installed() -> bool {
 
 #[cfg(windows)]
 pub fn install_explorer() -> bool {
-    let exe = match std::env::current_exe() {
-        Ok(e) => e.display().to_string(),
-        Err(_) => return false,
-    };
+    std::env::current_exe().is_ok_and(|exe| install_explorer_for(&exe))
+}
+
+/// Adds the classic menu verbs, starting `exe`.
+#[cfg(windows)]
+pub fn install_explorer_for(exe: &Path) -> bool {
+    let exe = exe.display().to_string();
     let mut ok = true;
     for (class, key, label, flag) in VERBS {
         let base = format!(r"HKCU\Software\Classes\{class}\shell\{key}");
@@ -211,7 +214,7 @@ pub enum ModernMenu {
 }
 
 #[cfg(windows)]
-fn powershell(script: &str) -> Result<String, String> {
+pub fn powershell(script: &str) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let out = Command::new("powershell.exe")
@@ -234,7 +237,7 @@ fn powershell(script: &str) -> Result<String, String> {
 
 /// A path as a single-quoted PowerShell string.
 #[cfg(windows)]
-fn ps_path(p: &Path) -> String {
+pub fn ps_path(p: &Path) -> String {
     format!("'{}'", p.display().to_string().replace('\'', "''"))
 }
 
@@ -279,6 +282,11 @@ fn modern_menu_package() -> Result<(PathBuf, bool), ModernMenu> {
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
         .ok_or_else(|| ModernMenu::Unavailable("cannot tell where r7z is installed".into()))?;
+    modern_menu_package_in(&dir)
+}
+
+#[cfg(windows)]
+fn modern_menu_package_in(dir: &Path) -> Result<(PathBuf, bool), ModernMenu> {
     if !dir.join("r7z_shell.dll").is_file() {
         return Err(ModernMenu::Missing);
     }
@@ -329,19 +337,35 @@ pub fn install_modern_menu() -> ModernMenu {
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
         .unwrap_or_default();
-    let script = if signed {
-        format!(
-            "Add-AppxPackage -Path {} -ExternalLocation {}",
-            ps_path(&package),
-            ps_path(&dir)
-        )
+    register_modern_menu(&package, signed, &dir, false)
+}
+
+/// Points the Windows 11 menu at the copy of r7z in `dir`, replacing a registration for
+/// another folder.
+#[cfg(windows)]
+pub fn move_modern_menu(dir: &Path) -> ModernMenu {
+    if !windows_11() {
+        return ModernMenu::Unavailable("Windows 10 has only the classic menu.".into());
+    }
+    match modern_menu_package_in(dir) {
+        Ok((package, signed)) => register_modern_menu(&package, signed, dir, true),
+        Err(state) => state,
+    }
+}
+
+#[cfg(windows)]
+fn register_modern_menu(package: &Path, signed: bool, dir: &Path, replace: bool) -> ModernMenu {
+    let remove = if replace {
+        "Get-AppxPackage -Name r7z | Remove-AppxPackage; "
     } else {
-        format!(
-            "Add-AppxPackage -Register {} -ExternalLocation {}",
-            ps_path(&package),
-            ps_path(&dir)
-        )
+        ""
     };
+    let add = if signed { "-Path" } else { "-Register" };
+    let script = format!(
+        "{remove}Add-AppxPackage {add} {} -ExternalLocation {}",
+        ps_path(package),
+        ps_path(dir)
+    );
     match powershell(&script) {
         Ok(_) => modern_menu_status(),
         Err(e) => ModernMenu::Unavailable(format!("Windows refused the menu package: {e}")),

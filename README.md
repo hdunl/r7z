@@ -86,8 +86,12 @@ The full list is in [docs/desktop-app.md](docs/desktop-app.md).
 
 ## Install
 
-Prebuilt Windows x64 binaries are on the [Releases](https://github.com/hdunl/r7z/releases)
-page. Put `r7z.exe` somewhere on your `PATH`, and run `r7z-gui.exe` from anywhere.
+Download the zip from [Releases](https://github.com/hdunl/r7z/releases/latest), unzip it
+and run `r7z-gui.exe`. It works from any folder. To have it in the Start menu, Windows
+search and Installed apps, click **Install r7z** on the welcome tour's last page or in
+Settings. That copies r7z to `%LOCALAPPDATA%\Programs\r7z` and needs no administrator
+rights; uninstall it from Windows Settings → Apps. For the command line, put `r7z.exe`
+on your `PATH` or run `r7z` after installing.
 
 With a Rust toolchain:
 

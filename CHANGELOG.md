@@ -2,6 +2,17 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.7 - 2026-10-18
+
+- r7z can install itself: Install (on the welcome tour's last page, in Settings, or in a
+  one-time offer for existing users) copies it to `%LOCALAPPDATA%\Programs\r7z` and adds
+  it to the Start menu and Windows search, Settings → Installed apps, Run (`r7z`),
+  "Open with" and Default apps for archive types, and the right-click menus. No
+  administrator rights. Uninstall from Settings → Apps or from r7z's Settings removes
+  all of it and keeps your settings.
+- `r7z-gui --install` and `r7z-gui --uninstall --quiet` do the same without a window.
+- The Windows 11 menu package is listed as "r7z right-click menu" in Installed apps.
+
 ## 0.1.6 - 2026-10-18
 
 - The programs no longer need the Visual C++ Redistributable: the C runtime is linked in,

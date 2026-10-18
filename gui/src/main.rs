@@ -4,13 +4,15 @@
 //! `r7z-gui [archive or folder]` opens it. Explorer menu verbs use
 //! `--extract-here <archives...>`, `--extract-to <archives...>`, `--test <archive>`,
 //! `--convert <archive>`, `--add <paths...>`, and `--add-7z` / `--add-zip <paths...>`
-//! to compress right away with the default settings.
+//! to compress right away with the default settings. `--uninstall` is what Settings →
+//! Installed apps runs; `--install` and `--uninstall --quiet` do their job without a window.
 
 mod app;
 mod dialogs;
 mod dnd;
 mod finder;
 mod icons;
+mod install;
 mod jobs;
 mod logo;
 mod model;
@@ -65,6 +67,7 @@ fn parse_args() -> app::Startup {
                 },
             ),
         },
+        Some("--uninstall") => app::Startup::Uninstall,
         Some("--test") => match path(1) {
             Some(p) => app::Startup::Test(p),
             None => app::Startup::None,
@@ -128,8 +131,32 @@ fn install_panic_hook() {
     }));
 }
 
+/// `--install` and `--uninstall --quiet` work without a window, for scripts and package
+/// managers; they exit with 0 on success.
+fn run_without_window() -> Option<i32> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let result = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        ["--install"] => install::install().map(drop),
+        ["--uninstall", "--quiet"] => install::uninstall(),
+        _ => return None,
+    };
+    Some(match result {
+        Ok(()) => 0,
+        Err(e) => {
+            if let Some(dir) = shell::config_dir() {
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(dir.join("install.log"), e);
+            }
+            1
+        }
+    })
+}
+
 fn main() -> eframe::Result {
     install_panic_hook();
+    if let Some(code) = run_without_window() {
+        std::process::exit(code);
+    }
     let startup = parse_args();
     let icon = egui::IconData {
         rgba: logo::logo_rgba(64),
@@ -138,7 +165,10 @@ fn main() -> eframe::Result {
     };
     let compact = matches!(
         startup,
-        app::Startup::ExtractHere(_) | app::Startup::ExtractTo(_) | app::Startup::Compress(..)
+        app::Startup::ExtractHere(_)
+            | app::Startup::ExtractTo(_)
+            | app::Startup::Compress(..)
+            | app::Startup::Uninstall
     );
     let size = if compact {
         [720.0, 420.0]

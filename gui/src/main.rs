@@ -25,6 +25,7 @@ mod recover;
 mod shell;
 mod spacemap;
 mod theme;
+mod tour;
 mod ui;
 mod undo;
 mod update;

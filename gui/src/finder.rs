@@ -37,6 +37,7 @@ enum Cmd {
     Refresh,
     Hidden,
     Settings,
+    Tour,
     Theme(egui::ThemePreference),
     Go(PathBuf),
     Recent(PathBuf),
@@ -138,6 +139,7 @@ fn items(app: &App) -> Vec<Item> {
         Cmd::Theme(egui::ThemePreference::System),
     );
     act("Settings", "", Icon::Settings, Cmd::Settings);
+    act("Welcome tour", "what r7z can do", Icon::Layers, Cmd::Tour);
     for (k, path) in &app.places {
         v.push(Item {
             label: format!("Go to {k:?}"),
@@ -387,6 +389,7 @@ fn run(app: &mut App, ctx: &egui::Context, cmd: Cmd) {
             app.explorer = Some(crate::shell::explorer_installed());
             app.dialog = Some(Dialog::Settings);
         }
+        Cmd::Tour => crate::tour::open(app),
         Cmd::Theme(t) => app.set_theme(ctx, t),
         Cmd::Go(p) => app.go(Loc::Disk(p)),
         Cmd::Recent(p) => app.open_disk_archive(ctx, p, None),

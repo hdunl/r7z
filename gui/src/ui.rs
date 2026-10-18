@@ -2550,7 +2550,7 @@ pub fn frame(app: &mut App, root: &mut Ui) {
 pub fn shortcuts(app: &mut App, ctx: &egui::Context) {
     // Tracked every frame so a press is seen once, whatever has the focus.
     let paste = crate::dnd::paste_pressed(&mut app.paste_down) && ctx.input(|i| i.focused);
-    if app.dialog.is_some() || app.finder.is_some() {
+    if app.dialog.is_some() || app.finder.is_some() || app.tour.is_some() {
         return;
     }
     let typing = ctx.egui_wants_keyboard_input();

@@ -1259,7 +1259,12 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 );
                 ui.add_space(6.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    button(ui, None, "Done", true, true).clicked()
+                    let done = button(ui, None, "Done", true, true).clicked();
+                    let tour = button(ui, None, "Welcome tour", false, true).clicked();
+                    if tour {
+                        crate::tour::open(app);
+                    }
+                    done || tour
                 })
                 .inner
             });

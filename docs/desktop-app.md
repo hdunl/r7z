@@ -104,6 +104,9 @@ single 10 MB executable with no installer, and it starts instantly.
   manifest, and only newer versions are accepted. The new `r7z-gui.exe` (and `r7z.exe`,
   when it is in the same folder) replaces the old one, which is kept as `.old` until the
   next start; "Restart now" switches over. See [SECURITY.md](../SECURITY.md).
+- **Welcome tour:** on the first normal launch, a short tour shows the main features
+  with screenshots. Skip it with the button or Esc; Settings → "Welcome tour" and search
+  everywhere open it again.
 - **Crash reports:** if something goes wrong, the error is written to
   `%APPDATA%\r7z\crash.log`. A failure inside a background job is reported as an error
   and does not close the window.

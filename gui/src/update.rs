@@ -24,9 +24,25 @@ const RELEASE_KEY: &str = "281b0c26996e9342c9e1f12e2d3d71c57d57e5325d6e6c7d4259e
 const MANIFEST_LIMIT: u64 = 4 << 10;
 const ZIP_LIMIT: u64 = 256 << 20;
 
-/// Programs a release may replace, all in the folder r7z-gui.exe runs from. The others
-/// are updated only when they are already there.
-const PROGRAMS: [&str; 3] = ["r7z-gui.exe", "r7z.exe", "r7z_shell.dll"];
+/// When a file from a release zip is installed in the folder r7z-gui.exe runs from.
+#[derive(Clone, Copy, PartialEq)]
+enum When {
+    /// Always; the zip must have it.
+    Required,
+    /// Only to replace a copy that is already there (the command line tool).
+    Replace,
+    /// Whenever the zip has it, also when it is missing: parts of the app that older
+    /// releases did not ship (the Windows 11 menu).
+    Bundled,
+}
+
+/// The files a release may install, with the first bytes each must start with.
+const PARTS: [(&str, When, &[u8]); 4] = [
+    ("r7z-gui.exe", When::Required, b"MZ"),
+    ("r7z.exe", When::Replace, b"MZ"),
+    ("r7z_shell.dll", When::Bundled, b"MZ"),
+    ("r7z-shell.msix", When::Bundled, b"PK"),
+];
 
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
@@ -202,18 +218,21 @@ fn get(agent: &ureq::Agent, url: &str, limit: u64, cancel: &AtomicBool) -> Resul
 }
 
 /// Fetches and verifies the latest release's manifest.
-pub fn check(cancel: &AtomicBool) -> Result<Check> {
-    let agent = agent();
+fn latest(agent: &ureq::Agent, cancel: &AtomicBool) -> Result<Manifest> {
     let base = format!("https://github.com/{REPO}/releases/latest/download");
     let manifest = get(
-        &agent,
+        agent,
         &format!("{base}/r7z-update.txt"),
         MANIFEST_LIMIT,
         cancel,
     )?;
-    let sig = get(&agent, &format!("{base}/r7z-update.sig"), 1024, cancel)?;
+    let sig = get(agent, &format!("{base}/r7z-update.sig"), 1024, cancel)?;
     let sig = String::from_utf8_lossy(&sig);
-    let m = verify(&manifest, &sig, &release_key())?;
+    verify(&manifest, &sig, &release_key())
+}
+
+pub fn check(cancel: &AtomicBool) -> Result<Check> {
+    let m = latest(&agent(), cancel)?;
     Ok(if is_newer(&m.version, CURRENT) {
         Check::Available(m)
     } else {
@@ -229,10 +248,15 @@ fn install_dir() -> Result<PathBuf> {
 }
 
 /// Downloads the release zip named by a verified manifest, checks its size and hash, and
-/// installs the programs in it next to this one. Returns the version installed.
-pub fn download_and_install(m: &Manifest, cancel: &AtomicBool) -> Result<String> {
-    let agent = agent();
-    let zip = get(&agent, &m.download_url(), m.size, cancel)?;
+/// installs its files next to this program; with `only_missing`, just the files this copy
+/// lacks. Returns the names installed.
+fn download_zip_and_install(
+    agent: &ureq::Agent,
+    m: &Manifest,
+    only_missing: bool,
+    cancel: &AtomicBool,
+) -> Result<Vec<String>> {
+    let zip = get(agent, &m.download_url(), m.size, cancel)?;
     if zip.len() as u64 != m.size || Sha256::digest(&zip).as_slice() != m.sha256 {
         return Err(Error::Other(
             "the downloaded update does not match its signed checksum".into(),
@@ -240,9 +264,29 @@ pub fn download_and_install(m: &Manifest, cancel: &AtomicBool) -> Result<String>
     }
     let tmp = std::env::temp_dir().join(format!("r7z-update-{}.zip", std::process::id()));
     std::fs::write(&tmp, &zip)?;
-    let result = install_from_zip(&tmp, &install_dir()?);
+    let result = install_parts(&tmp, &install_dir()?, only_missing);
     let _ = std::fs::remove_file(&tmp);
-    result.map(|_| m.version.clone())
+    result
+}
+
+/// Installs a newer release. Returns the version installed.
+pub fn download_and_install(m: &Manifest, cancel: &AtomicBool) -> Result<String> {
+    download_zip_and_install(&agent(), m, false, cancel).map(|_| m.version.clone())
+}
+
+/// Adds the files of this version's release that this copy lacks, such as the Windows 11
+/// menu on a copy that an older version updated: those only replaced files that were
+/// already there. Uses the same signed manifest and checks as an update.
+pub fn install_missing(cancel: &AtomicBool) -> Result<Vec<String>> {
+    let agent = agent();
+    let m = latest(&agent, cancel)?;
+    if m.version != CURRENT {
+        return Err(Error::Other(format!(
+            "r7z {} is available; updating to it brings these files too",
+            m.version
+        )));
+    }
+    download_zip_and_install(&agent, &m, true, cancel)
 }
 
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
@@ -251,34 +295,37 @@ fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// Replaces the programs in `dir` with the ones in `zip`. A running program can be renamed
-/// on Windows but not overwritten, so each one moves to `name.old` first (removed on the
-/// next start) and the new file takes its name. Any failure puts the old files back.
-pub fn install_from_zip(zip: &Path, dir: &Path) -> Result<Vec<String>> {
+/// Installs the files in `zip` into `dir` (with `only_missing`, just the ones `dir` lacks).
+/// A running program can be renamed on Windows but not overwritten, so each existing file
+/// moves to `name.old` first (removed on the next start) and the new file takes its name.
+/// Any failure puts the old files back.
+fn install_parts(zip: &Path, dir: &Path, only_missing: bool) -> Result<Vec<String>> {
     let opened = r7z::format::open(zip, &Default::default())?;
     let a = opened.archive();
     let stage = || -> Result<Vec<(PathBuf, PathBuf)>> {
         let mut out = Vec::new();
-        for (i, name) in PROGRAMS.iter().enumerate() {
+        for (name, when, magic) in PARTS {
             let target = dir.join(name);
-            if i > 0 && !target.exists() {
+            if (when == When::Replace && !target.exists()) || (only_missing && target.exists()) {
                 continue;
             }
-            let index = a
-                .entries()
-                .iter()
-                .position(|e| {
-                    !e.is_dir
-                        && e.name
-                            .rsplit('/')
-                            .next()
-                            .is_some_and(|n| n.eq_ignore_ascii_case(name))
-                })
-                .ok_or_else(|| Error::Other(format!("the update has no {name}")))?;
+            let index = a.entries().iter().position(|e| {
+                !e.is_dir
+                    && e.name
+                        .rsplit('/')
+                        .next()
+                        .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            });
+            let Some(index) = index else {
+                if when == When::Required {
+                    return Err(Error::Other(format!("the update has no {name}")));
+                }
+                continue;
+            };
             let data = r7z::ops::peek::read_entry(a, index, None, ZIP_LIMIT as usize, &|| false)?;
-            if data.truncated || !data.data.starts_with(b"MZ") {
+            if data.truncated || !data.data.starts_with(magic) {
                 return Err(Error::Other(format!(
-                    "{name} in the update is not a program"
+                    "{name} in the update is not what it should be"
                 )));
             }
             let new = sibling(&target, ".new");
@@ -291,7 +338,7 @@ pub fn install_from_zip(zip: &Path, dir: &Path) -> Result<Vec<String>> {
     let staged = match stage() {
         Ok(s) => s,
         Err(e) => {
-            for name in PROGRAMS {
+            for (name, _, _) in PARTS {
                 let _ = std::fs::remove_file(sibling(&dir.join(name), ".new"));
             }
             return Err(e);
@@ -332,7 +379,7 @@ pub fn install_from_zip(zip: &Path, dir: &Path) -> Result<Vec<String>> {
 /// Removes what an earlier update left behind (`*.old`, unfinished `*.new`).
 pub fn cleanup() {
     let Ok(dir) = install_dir() else { return };
-    for name in PROGRAMS {
+    for (name, _, _) in PARTS {
         let target = dir.join(name);
         let _ = std::fs::remove_file(sibling(&target, ".old"));
         let _ = std::fs::remove_file(sibling(&target, ".new"));
@@ -447,6 +494,43 @@ mod tests {
     }
 
     #[test]
+    fn bundled_parts_are_added_and_repairs_only_fill_gaps() {
+        let root = std::env::temp_dir().join(format!("r7z-bundled-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("app");
+        let src = root.join("src");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(dir.join("r7z-gui.exe"), b"MZ installed gui").unwrap();
+        std::fs::write(src.join("r7z-gui.exe"), b"MZ release gui").unwrap();
+        std::fs::write(src.join("r7z_shell.dll"), b"MZ shell").unwrap();
+        std::fs::write(src.join("r7z-shell.msix"), b"PK package").unwrap();
+        let zip = root.join("u.zip");
+        write_zip(&src, &zip);
+
+        // A repair adds what is missing and leaves the running program alone.
+        let done = install_parts(&zip, &dir, true).unwrap();
+        assert_eq!(done, ["r7z_shell.dll", "r7z-shell.msix"]);
+        assert_eq!(
+            std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
+            b"MZ installed gui"
+        );
+        assert_eq!(
+            std::fs::read(dir.join("r7z-shell.msix")).unwrap(),
+            b"PK package"
+        );
+
+        // A package that isn't one is refused, and nothing is left half done.
+        std::fs::remove_file(dir.join("r7z-shell.msix")).unwrap();
+        std::fs::write(src.join("r7z-shell.msix"), b"MZ not a package").unwrap();
+        write_zip(&src, &zip);
+        assert!(install_parts(&zip, &dir, true).is_err());
+        assert!(!dir.join("r7z-shell.msix").exists());
+        assert!(!dir.join("r7z-shell.msix.new").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn installs_and_rolls_back() {
         let root = std::env::temp_dir().join(format!("r7z-update-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -460,7 +544,7 @@ mod tests {
         let zip = root.join("u.zip");
         write_zip(&src, &zip);
 
-        let done = install_from_zip(&zip, &dir).unwrap();
+        let done = install_parts(&zip, &dir, false).unwrap();
         assert_eq!(done, ["r7z-gui.exe"]);
         assert_eq!(
             std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
@@ -477,7 +561,7 @@ mod tests {
 
         std::fs::write(src.join("r7z-gui.exe"), b"not a program").unwrap();
         write_zip(&src, &zip);
-        assert!(install_from_zip(&zip, &dir).is_err());
+        assert!(install_parts(&zip, &dir, false).is_err());
         assert_eq!(
             std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
             b"MZ new gui"
@@ -509,8 +593,10 @@ mod tests {
         std::fs::create_dir_all(&scratch).unwrap();
         std::fs::write(scratch.join("r7z-gui.exe"), b"MZ").unwrap();
         std::fs::write(scratch.join("r7z.exe"), b"MZ").unwrap();
-        let done = install_from_zip(&zip, &scratch).unwrap();
-        assert_eq!(done, ["r7z-gui.exe", "r7z.exe"]);
+        let done = install_parts(&zip, &scratch, false).unwrap();
+        assert!(done.iter().any(|n| n == "r7z-gui.exe") && done.iter().any(|n| n == "r7z.exe"));
+        // The Windows 11 menu parts come along even though the folder had none.
+        assert!(done.iter().any(|n| n == "r7z_shell.dll"), "{done:?}");
         assert!(
             std::fs::metadata(scratch.join("r7z-gui.exe"))
                 .unwrap()

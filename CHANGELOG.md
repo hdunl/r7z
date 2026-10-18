@@ -2,7 +2,7 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.6 - 2026-10-18
 
 - The programs no longer need the Visual C++ Redistributable: the C runtime is linked in,
   so r7z starts on a fresh Windows install.

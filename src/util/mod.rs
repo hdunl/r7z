@@ -20,6 +20,12 @@ pub fn read_full<R: std::io::Read + ?Sized>(r: &mut R, buf: &mut [u8]) -> std::i
     Ok(n)
 }
 
+/// Sum of sizes read from an archive. Header values are untrusted, so the total stops at
+/// `u64::MAX` instead of overflowing.
+pub fn saturating_sum(values: impl IntoIterator<Item = u64>) -> u64 {
+    values.into_iter().fold(0, u64::saturating_add)
+}
+
 /// Number of worker threads to use by default.
 pub fn default_threads() -> usize {
     std::thread::available_parallelism()

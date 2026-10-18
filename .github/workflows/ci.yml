@@ -33,6 +33,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo build --release --workspace --locked
       - run: cargo test --release --workspace --locked
+      # Debug build: arithmetic overflow panics, so past fuzzing crashes stay fixed.
+      - run: cargo test --test fuzz_regressions --locked
       - run: cargo clippy --release --workspace --locked
 
   msrv:

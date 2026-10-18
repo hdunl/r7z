@@ -555,7 +555,7 @@ fn folder_packed_sizes(vols: &[Volume], folders: &[Folder]) -> Vec<u64> {
         .collect();
     folders
         .iter()
-        .map(|f| f.segments.iter().map(|&(v, k)| ends[v][k]).sum())
+        .map(|f| crate::util::saturating_sum(f.segments.iter().map(|&(v, k)| ends[v][k])))
         .collect()
 }
 

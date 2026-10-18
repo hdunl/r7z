@@ -198,7 +198,7 @@ impl Archive {
     pub fn packed_size_of_folder(&self, f: usize) -> u64 {
         let first = self.folder_first_pack[f];
         let n = self.streams.folders[f].packed_streams.len();
-        self.streams.pack_sizes[first..first + n].iter().sum()
+        crate::util::saturating_sum(self.streams.pack_sizes[first..first + n].iter().copied())
     }
 
     pub fn has_encrypted_data(&self) -> bool {

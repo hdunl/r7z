@@ -1,0 +1,4 @@
+# Link the C runtime into the binaries, so r7z runs on Windows installs that lack the
+# Visual C++ Redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

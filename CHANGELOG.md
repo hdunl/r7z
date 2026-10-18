@@ -2,7 +2,7 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.9 - 2026-10-18
 
 - Faster extraction: decoded files wait for the writer threads in a queue bounded by
   size (32 MiB) instead of by count, so decoding runs ahead of file creation; new

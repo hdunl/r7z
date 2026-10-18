@@ -24,9 +24,9 @@ const RELEASE_KEY: &str = "281b0c26996e9342c9e1f12e2d3d71c57d57e5325d6e6c7d4259e
 const MANIFEST_LIMIT: u64 = 4 << 10;
 const ZIP_LIMIT: u64 = 256 << 20;
 
-/// Programs a release may replace, all in the folder r7z-gui.exe runs from. r7z.exe is
-/// updated only when it is already there.
-const PROGRAMS: [&str; 2] = ["r7z-gui.exe", "r7z.exe"];
+/// Programs a release may replace, all in the folder r7z-gui.exe runs from. The others
+/// are updated only when they are already there.
+const PROGRAMS: [&str; 3] = ["r7z-gui.exe", "r7z.exe", "r7z_shell.dll"];
 
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 

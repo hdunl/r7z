@@ -1196,31 +1196,56 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     }
                 });
                 label(ui, p, "Explorer menu");
-                let installed = app.explorer.unwrap_or(false);
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(if installed {
-                            "r7z is in the right-click menu for files and folders (under \"Show more options\" on Windows 11)."
-                        } else {
-                            "Adds \"Open with r7z\", \"Extract here\", \"Extract to folder\" and \"Add to archive\" to the right-click menu. Only your user account is changed; no administrator rights are needed."
-                        })
-                        .size(12.5)
-                        .color(p.dim),
-                    )
-                    .wrap(),
-                );
-                ui.add_space(4.0);
-                if installed {
-                    if button(ui, None, "Remove from menu", false, true).clicked() {
-                        shell::uninstall_explorer();
-                        app.explorer = Some(shell::explorer_installed());
-                    }
-                } else if button(ui, None, "Add to menu", false, true).clicked() {
-                    if !shell::install_explorer() {
-                        app.toast("Couldn't add the menu entries".into(), false, None);
-                    }
-                    app.explorer = Some(shell::explorer_installed());
+                if app.modern_menu.is_none() {
+                    app.modern_menu_job(ctx, shell::modern_menu_status);
                 }
+                let installed = app.explorer.unwrap_or(false);
+                let modern = app.modern_menu.clone();
+                let text = match (installed, &modern) {
+                    (true, Some(shell::ModernMenu::Installed)) => {
+                        "r7z is in the right-click menu for files and folders, in Windows 11's main menu and under \"Show more options\".".to_string()
+                    }
+                    (true, Some(shell::ModernMenu::Unavailable(why))) => {
+                        format!("r7z is in the right-click menu for files and folders. {why}")
+                    }
+                    (true, _) => "r7z is in the right-click menu for files and folders.".to_string(),
+                    (false, _) => "Adds \"Open with r7z\", \"Extract here\", \"Extract to folder\" and \"Add to archive\" to the right-click menu. Only your user account is changed; no administrator rights are needed.".to_string(),
+                };
+                ui.add(egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap());
+                ui.add_space(4.0);
+                let busy = app.modern_task.is_some();
+                ui.horizontal(|ui| {
+                    if installed {
+                        if button(ui, None, "Remove from menu", false, !busy).clicked() {
+                            shell::uninstall_explorer();
+                            app.explorer = Some(shell::explorer_installed());
+                            if modern == Some(shell::ModernMenu::Installed) {
+                                app.modern_menu_job(ctx, shell::uninstall_modern_menu);
+                            }
+                        }
+                        if modern == Some(shell::ModernMenu::Available)
+                            && button(ui, None, "Add to the Windows 11 menu", false, !busy)
+                                .clicked()
+                        {
+                            app.modern_menu_job(ctx, shell::install_modern_menu);
+                        }
+                    } else if button(ui, None, "Add to menu", false, !busy).clicked() {
+                        if !shell::install_explorer() {
+                            app.toast("Couldn't add the menu entries".into(), false, None);
+                        }
+                        app.explorer = Some(shell::explorer_installed());
+                        if modern == Some(shell::ModernMenu::Available) {
+                            app.modern_menu_job(ctx, shell::install_modern_menu);
+                        }
+                    }
+                    if busy {
+                        ui.label(
+                            RichText::new("Updating the Windows 11 menu…")
+                                .size(12.0)
+                                .color(p.dim),
+                        );
+                    }
+                });
                 ui.add_space(14.0);
                 ui.separator();
                 ui.label(

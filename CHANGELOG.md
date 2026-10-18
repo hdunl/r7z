@@ -20,6 +20,8 @@ Security and maintenance release.
 - Continuous fuzzing of archive parsing and recovery with ClusterFuzzLite, CodeQL code
   scanning, and an OpenSSF Scorecard.
 - Text fields center their text again.
+- Five crashes found by fuzzing are fixed: integer overflows on crafted WIM sizes, tar
+  sparse maps and pax times, recovery offsets and timestamps.
 - Built with Rust 1.99.1; Rust 1.95 or newer is required to build from source.
 
 ## 0.1.0 - 2026-10-17

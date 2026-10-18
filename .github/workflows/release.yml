@@ -115,7 +115,7 @@ jobs:
             if ($sig.Status -ne "Valid") { throw "$f is not validly signed: $($sig.StatusMessage)" }
             if ((Parts $sig.SignerCertificate.Subject) -ne (Parts $env:SUBJECT)) { throw "$f is signed by an unexpected certificate" }
             if (-not $sig.TimeStamperCertificate) { throw "$f has no timestamp" }
-            Write-Output "$f: signed and timestamped"
+            Write-Output "${f}: signed and timestamped"
           }
 
       - name: Package and sign

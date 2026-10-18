@@ -26,7 +26,7 @@ staying current takes one click.
   (`.intoto.jsonl`) and as a Sigstore bundle (`.sigstore.json`). To check a download:
 
   ```
-  gh attestation verify r7z-0.1.3-windows-x64.zip --repo hdunl/r7z
+  gh attestation verify r7z-0.1.4-windows-x64.zip --repo hdunl/r7z
   ```
 
 - `SHA256SUMS` lists the hash of every file in the release.
@@ -59,7 +59,7 @@ the user agent `r7z/<version>`.
 
 ## Code signing
 
-From 0.1.3, `r7z.exe`, `r7z-gui.exe`, `r7z_shell.dll` and the Windows 11 menu package
+From 0.1.4, `r7z.exe`, `r7z-gui.exe`, `r7z_shell.dll` and the Windows 11 menu package
 (`r7z-shell.msix`) are Authenticode-signed with a Public Trust certificate from
 Microsoft's Artifact Signing service, and timestamped, so the signatures stay valid after
 the certificate rotates. Signing happens in the release workflow, which signs in to Azure

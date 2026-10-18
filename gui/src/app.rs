@@ -166,6 +166,8 @@ pub struct App {
     /// Windows 11 main-menu registration, checked in the background when Settings opens.
     pub modern_menu: Option<shell::ModernMenu>,
     pub modern_task: Option<Task<shell::ModernMenu>>,
+    /// The welcome tour, while it is open.
+    pub tour: Option<crate::tour::Tour>,
     pub focus_search: bool,
     pub scroll_to: Option<usize>,
     title_dark: Option<bool>,
@@ -309,6 +311,7 @@ impl App {
             explorer: None,
             modern_menu: None,
             modern_task: None,
+            tour: None,
             focus_search: false,
             scroll_to: None,
             title_dark: None,
@@ -322,6 +325,11 @@ impl App {
             mounts: Default::default(),
         };
         let ctx = &cc.egui_ctx;
+        // The tour opens by itself on a normal first launch, not when r7z was started
+        // from the Explorer menu to extract or compress something.
+        if matches!(startup, Startup::None | Startup::Open(_)) && crate::tour::first_run() {
+            crate::tour::open(&mut app);
+        }
         match startup {
             Startup::None => {}
             Startup::Open(p) if p.is_dir() => app.loc = Loc::Disk(p),
@@ -1914,6 +1922,7 @@ impl eframe::App for App {
         crate::ui::frame(self, root);
         crate::dialogs::show(self, ctx);
         crate::finder::show(self, ctx);
+        crate::tour::show(self, ctx);
 
         let animating = self.job.is_some()
             || self.opening.is_some()

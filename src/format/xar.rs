@@ -300,17 +300,6 @@ fn hex_bytes(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-/// Days from 1970-01-01 to a proleptic Gregorian date.
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
 /// Parses an ISO 8601 time (`2024-01-02T03:04:05[.fff][Z|+hh:mm]`) into a FILETIME.
 fn parse_time(s: &str) -> Option<u64> {
     let s = s.trim();
@@ -359,7 +348,8 @@ fn parse_time(s: &str) -> Option<u64> {
             sign * (t[..2].parse::<i64>().ok()? * 3600 + t[2..].parse::<i64>().ok()? * 60)
         }
     };
-    let unix = days_from_civil(y, mo, d) * 86_400 + h * 3600 + mi * 60 + sec - offset;
+    let days = crate::util::time::days_from_civil(y, mo as u32, d as u32);
+    let unix = days * 86_400 + h * 3600 + mi * 60 + sec - offset;
     let ft = (unix + 11_644_473_600)
         .checked_mul(10_000_000)?
         .checked_add(ticks)?;

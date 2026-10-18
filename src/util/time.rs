@@ -5,20 +5,29 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const EPOCH_DIFF_SECS: u64 = 11_644_473_600;
 const TICKS_PER_SEC: u64 = 10_000_000;
 
+/// A system time to FILETIME, clamped to the FILETIME range.
 pub fn to_filetime(t: SystemTime) -> u64 {
     match t.duration_since(UNIX_EPOCH) {
-        Ok(d) => (d.as_secs() + EPOCH_DIFF_SECS) * TICKS_PER_SEC + (d.subsec_nanos() / 100) as u64,
+        Ok(d) => d
+            .as_secs()
+            .saturating_add(EPOCH_DIFF_SECS)
+            .saturating_mul(TICKS_PER_SEC)
+            .saturating_add((d.subsec_nanos() / 100) as u64),
         Err(e) => {
             let d = e.duration();
-            let ticks = d.as_secs() * TICKS_PER_SEC + (d.subsec_nanos() / 100) as u64;
+            let ticks = d
+                .as_secs()
+                .saturating_mul(TICKS_PER_SEC)
+                .saturating_add((d.subsec_nanos() / 100) as u64);
             (EPOCH_DIFF_SECS * TICKS_PER_SEC).saturating_sub(ticks)
         }
     }
 }
 
-/// Seconds since 1970 (UTC) to FILETIME.
+/// Seconds since 1970 (UTC) to FILETIME. Archive headers can hold any value, so the
+/// result is clamped to the FILETIME range.
 pub fn unix_to_filetime(secs: i64) -> u64 {
-    ((secs + EPOCH_DIFF_SECS as i64).max(0) as u64) * TICKS_PER_SEC
+    (secs.saturating_add(EPOCH_DIFF_SECS as i64).max(0) as u64).saturating_mul(TICKS_PER_SEC)
 }
 
 /// FILETIME to seconds since 1970 (UTC).
@@ -81,14 +90,15 @@ pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-pub fn from_filetime(ft: u64) -> SystemTime {
+/// FILETIME to a system time, or `None` when the platform cannot represent it (a time
+/// read from an archive can be anything up to the year 60056).
+pub fn from_filetime(ft: u64) -> Option<SystemTime> {
     let epoch_ticks = EPOCH_DIFF_SECS * TICKS_PER_SEC;
+    let span = |t: u64| Duration::new(t / TICKS_PER_SEC, ((t % TICKS_PER_SEC) * 100) as u32);
     if ft >= epoch_ticks {
-        let t = ft - epoch_ticks;
-        UNIX_EPOCH + Duration::new(t / TICKS_PER_SEC, ((t % TICKS_PER_SEC) * 100) as u32)
+        UNIX_EPOCH.checked_add(span(ft - epoch_ticks))
     } else {
-        let t = epoch_ticks - ft;
-        UNIX_EPOCH - Duration::new(t / TICKS_PER_SEC, ((t % TICKS_PER_SEC) * 100) as u32)
+        UNIX_EPOCH.checked_sub(span(epoch_ticks - ft))
     }
 }
 
@@ -165,9 +175,18 @@ mod tests {
     fn roundtrip() {
         let now = SystemTime::now();
         let ft = to_filetime(now);
-        let back = from_filetime(ft);
+        let back = from_filetime(ft).unwrap();
         let diff = now.duration_since(back).unwrap_or_default();
         assert!(diff < Duration::from_micros(1));
         assert_eq!(civil_from_days(0), (1970, 1, 1));
+    }
+
+    #[test]
+    fn extreme_values_do_not_overflow() {
+        assert_eq!(unix_to_filetime(i64::MAX), u64::MAX);
+        assert_eq!(unix_to_filetime(i64::MIN), 0);
+        let _ = from_filetime(u64::MAX);
+        let _ = format_filetime(u64::MAX);
+        let _ = filetime_to_dos(u64::MAX);
     }
 }

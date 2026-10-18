@@ -116,14 +116,15 @@ pub struct WriteOptions {
     pub store_atime: bool,
 }
 
-/// zlib-style level for a 7-Zip `-mx` level.
+/// zlib-style level for a 7-Zip `-mx` level. The default (mx5) is zlib level 7: with the
+/// zlib-rs encoder that matches the size of the previous encoder's level 6 on source
+/// trees and is still about twice as fast.
 pub fn deflate_level(mx: u32) -> u32 {
     match mx {
         0 => 0,
         1..=4 => mx,
-        5 => 6,
-        6 => 7,
-        7 => 8,
+        5 => 7,
+        6 => 8,
         _ => 9,
     }
 }

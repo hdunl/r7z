@@ -69,9 +69,10 @@ pub fn deflate_chunk(dict: &[u8], data: &[u8], level: u32, last: bool) -> io::Re
 }
 
 fn deflate_with(c: &mut Compress, dict: &[u8], data: &[u8], last: bool) -> io::Result<Vec<u8>> {
+    // The previous chunk's tail becomes the window, so matches can reach back into it
+    // without compressing it again.
     if !dict.is_empty() {
-        let mut scratch = Vec::with_capacity(dict.len() + 1024);
-        deflate_into(c, dict, &mut scratch, FlushCompress::Sync)?;
+        c.set_dictionary(dict).map_err(io::Error::other)?;
     }
     let mut out = Vec::with_capacity(data.len() / 2 + 1024);
     deflate_into(

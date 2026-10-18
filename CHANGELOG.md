@@ -2,19 +2,19 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.4 - 2026-10-18
 
-- Updates also install files that are new in a release, such as the Windows 11 menu
-  package; before, an update only replaced files that were already there.
-- Copies updated by an older version can fetch the Windows 11 menu from Settings →
-  Explorer menu → "Get the Windows 11 menu", with the same signed checks as updates.
-
-## 0.1.3 - 2026-10-18
+The first code-signed release. 0.1.3 was tagged, but its release build stopped at the
+signature check and nothing was published.
 
 - Releases are code-signed (Authenticode, Public Trust, timestamped) through Microsoft's
   Artifact Signing, so Windows shows a verified publisher instead of a SmartScreen warning.
 - The Windows 11 menu package ships signed, so r7z joins the main context menu on any
   Windows 11 PC, not only with Developer Mode on.
+- Updates also install files that are new in a release, such as the Windows 11 menu
+  package; before, an update only replaced files that were already there.
+- Copies updated by an older version can fetch the Windows 11 menu from Settings →
+  Explorer menu → "Get the Windows 11 menu", with the same signed checks as updates.
 
 ## 0.1.2 - 2026-10-18
 

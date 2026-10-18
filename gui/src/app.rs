@@ -475,7 +475,7 @@ impl App {
 
     /// Once, for people who had r7z before it could be installed: a toast that offers it.
     fn offer_install(&mut self) {
-        if !cfg!(windows) || shell::load_setting("install_offer").is_some() {
+        if !cfg!(windows) || crate::STORE || shell::load_setting("install_offer").is_some() {
             return;
         }
         if self.install_state() == crate::install::State::NotInstalled {
@@ -2093,7 +2093,7 @@ impl eframe::App for App {
 }
 
 pub fn auto_updates() -> bool {
-    shell::load_setting("updates").as_deref() != Some("off")
+    !crate::STORE && shell::load_setting("updates").as_deref() != Some("off")
 }
 
 fn unix_now() -> u64 {

@@ -7,6 +7,11 @@ license = "Apache-2.0"
 repository = "https://github.com/hdunl/r7z"
 description = "Windows 11 context menu entries for r7z"
 
+[features]
+# The Microsoft Store package registers the menu under its own class ID, so it can sit
+# next to the menu package that the zip release registers.
+store = []
+
 [lib]
 name = "r7z_shell"
 crate-type = ["cdylib"]

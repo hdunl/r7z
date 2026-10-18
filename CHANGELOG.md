@@ -2,6 +2,14 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
+  updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
+  with the right-click menu, "Open with" for archive types and the `r7z` command. Release
+  runs keep the package as a workflow artifact for Partner Center.
+- PRIVACY.md: what r7z stores and when it uses the network.
+
 ## 0.1.9 - 2026-10-18
 
 - Faster extraction: decoded files wait for the writer threads in a queue bounded by

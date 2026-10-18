@@ -1188,54 +1188,66 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         app.toggle_protected();
                     }
                 });
-                label(ui, p, "Updates");
-                let mut auto = crate::app::auto_updates();
-                if ui
+                if crate::STORE {
+                    label(ui, p, "Updates");
+                    ui.label(
+                        RichText::new("The Microsoft Store keeps r7z up to date.")
+                            .size(12.5)
+                            .color(p.dim),
+                    );
+                } else {
+                    label(ui, p, "Updates");
+                    let mut auto = crate::app::auto_updates();
+                    if ui
                     .checkbox(&mut auto, "Check for updates automatically")
                     .on_hover_text("Once a day, r7z asks GitHub for the latest release. Updates are signed and checked before anything is installed.")
                     .changed()
                 {
                     shell::save_setting("updates", if auto { "on" } else { "off" });
                 }
-                ui.horizontal(|ui| {
-                    ui.add_space(22.0);
-                    let mut silent =
-                        shell::load_setting("update_install").as_deref() == Some("auto");
-                    if ui
-                        .add_enabled(
-                            auto,
-                            egui::Checkbox::new(&mut silent, "Install them without asking"),
-                        )
-                        .changed()
-                    {
-                        shell::save_setting("update_install", if silent { "auto" } else { "ask" });
-                    }
-                });
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    let busy = app.update_check.is_some() || app.update_install.is_some();
-                    if app.update_ready.is_some() {
-                        if button(ui, None, "Restart now", true, true).clicked() {
-                            app.restart(ctx);
-                        }
-                    } else if let Some(version) =
-                        app.update_offer.as_ref().map(|m| m.version.clone())
-                    {
-                        if button(ui, None, &format!("Update to {version}"), true, !busy).clicked()
+                    ui.horizontal(|ui| {
+                        ui.add_space(22.0);
+                        let mut silent =
+                            shell::load_setting("update_install").as_deref() == Some("auto");
+                        if ui
+                            .add_enabled(
+                                auto,
+                                egui::Checkbox::new(&mut silent, "Install them without asking"),
+                            )
+                            .changed()
                         {
-                            app.install_update(ctx);
+                            shell::save_setting(
+                                "update_install",
+                                if silent { "auto" } else { "ask" },
+                            );
                         }
-                    } else if button(ui, None, "Check now", false, !busy).clicked() {
-                        app.check_for_updates(ctx, true);
-                    }
-                    if let Some(note) = &app.update_note {
-                        ui.label(RichText::new(note).size(12.0).color(p.dim));
-                    }
-                });
-                if cfg!(windows) {
-                    label(ui, p, "Install");
-                    let installing = app.install_task.is_some();
-                    let (text, install_label) = match app.install_state() {
+                    });
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        let busy = app.update_check.is_some() || app.update_install.is_some();
+                        if app.update_ready.is_some() {
+                            if button(ui, None, "Restart now", true, true).clicked() {
+                                app.restart(ctx);
+                            }
+                        } else if let Some(version) =
+                            app.update_offer.as_ref().map(|m| m.version.clone())
+                        {
+                            if button(ui, None, &format!("Update to {version}"), true, !busy)
+                                .clicked()
+                            {
+                                app.install_update(ctx);
+                            }
+                        } else if button(ui, None, "Check now", false, !busy).clicked() {
+                            app.check_for_updates(ctx, true);
+                        }
+                        if let Some(note) = &app.update_note {
+                            ui.label(RichText::new(note).size(12.0).color(p.dim));
+                        }
+                    });
+                    if cfg!(windows) {
+                        label(ui, p, "Install");
+                        let installing = app.install_task.is_some();
+                        let (text, install_label) = match app.install_state() {
                         crate::install::State::NotInstalled => (
                             format!(
                                 "Copies r7z to {} and adds it to the Start menu, Windows search, Installed apps, \"Open with\" and the right-click menu. Only your user account is changed.",
@@ -1260,33 +1272,35 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                             Some("Install this copy"),
                         ),
                     };
-                    ui.add(egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap());
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        if let Some(l) = install_label {
-                            if button(ui, None, l, false, !installing).clicked() {
-                                app.start_install(ctx);
+                        ui.add(
+                            egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap(),
+                        );
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            if let Some(l) = install_label {
+                                if button(ui, None, l, false, !installing).clicked() {
+                                    app.start_install(ctx);
+                                }
                             }
-                        }
-                        if app.install_state() != crate::install::State::NotInstalled
-                            && button(ui, None, "Uninstall…", false, !installing).clicked()
-                        {
-                            app.dialog = Some(Dialog::Uninstall {
-                                from_windows: false,
-                            });
-                        }
-                        if installing {
-                            ui.label(RichText::new("Installing…").size(12.0).color(p.dim));
-                        }
-                    });
-                }
-                label(ui, p, "Explorer menu");
-                if app.modern_menu.is_none() {
-                    app.modern_menu_job(ctx, shell::modern_menu_status);
-                }
-                let installed = app.explorer.unwrap_or(false);
-                let modern = app.modern_menu.clone();
-                let text = match (installed, &modern) {
+                            if app.install_state() != crate::install::State::NotInstalled
+                                && button(ui, None, "Uninstall…", false, !installing).clicked()
+                            {
+                                app.dialog = Some(Dialog::Uninstall {
+                                    from_windows: false,
+                                });
+                            }
+                            if installing {
+                                ui.label(RichText::new("Installing…").size(12.0).color(p.dim));
+                            }
+                        });
+                    }
+                    label(ui, p, "Explorer menu");
+                    if app.modern_menu.is_none() {
+                        app.modern_menu_job(ctx, shell::modern_menu_status);
+                    }
+                    let installed = app.explorer.unwrap_or(false);
+                    let modern = app.modern_menu.clone();
+                    let text = match (installed, &modern) {
                     (true, Some(shell::ModernMenu::Installed)) => {
                         "r7z is in the right-click menu for files and folders, in Windows 11's main menu and under \"Show more options\".".to_string()
                     }
@@ -1299,52 +1313,54 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     (true, _) => "r7z is in the right-click menu for files and folders.".to_string(),
                     (false, _) => "Adds \"Open with r7z\", \"Extract here\", \"Extract to folder\" and \"Add to archive\" to the right-click menu. Only your user account is changed; no administrator rights are needed.".to_string(),
                 };
-                ui.add(egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap());
-                ui.add_space(4.0);
-                let busy = app.modern_task.is_some();
-                ui.horizontal(|ui| {
-                    if installed {
-                        if button(ui, None, "Remove from menu", false, !busy).clicked() {
-                            shell::uninstall_explorer();
+                    ui.add(egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap());
+                    ui.add_space(4.0);
+                    let busy = app.modern_task.is_some();
+                    ui.horizontal(|ui| {
+                        if installed {
+                            if button(ui, None, "Remove from menu", false, !busy).clicked() {
+                                shell::uninstall_explorer();
+                                app.explorer = Some(shell::explorer_installed());
+                                if modern == Some(shell::ModernMenu::Installed) {
+                                    app.modern_menu_job(ctx, shell::uninstall_modern_menu);
+                                }
+                            }
+                            if modern == Some(shell::ModernMenu::Available)
+                                && button(ui, None, "Add to the Windows 11 menu", false, !busy)
+                                    .clicked()
+                            {
+                                app.modern_menu_job(ctx, shell::install_modern_menu);
+                            }
+                            if modern == Some(shell::ModernMenu::Missing)
+                                && button(ui, None, "Get the Windows 11 menu", false, !busy)
+                                    .clicked()
+                            {
+                                app.modern_menu_job(ctx, shell::get_modern_menu);
+                            }
+                        } else if button(ui, None, "Add to menu", false, !busy).clicked() {
+                            if !shell::install_explorer() {
+                                app.toast("Couldn't add the menu entries".into(), false, None);
+                            }
                             app.explorer = Some(shell::explorer_installed());
-                            if modern == Some(shell::ModernMenu::Installed) {
-                                app.modern_menu_job(ctx, shell::uninstall_modern_menu);
+                            match modern {
+                                Some(shell::ModernMenu::Available) => {
+                                    app.modern_menu_job(ctx, shell::install_modern_menu)
+                                }
+                                Some(shell::ModernMenu::Missing) => {
+                                    app.modern_menu_job(ctx, shell::get_modern_menu)
+                                }
+                                _ => {}
                             }
                         }
-                        if modern == Some(shell::ModernMenu::Available)
-                            && button(ui, None, "Add to the Windows 11 menu", false, !busy)
-                                .clicked()
-                        {
-                            app.modern_menu_job(ctx, shell::install_modern_menu);
+                        if busy {
+                            ui.label(
+                                RichText::new("Updating the Windows 11 menu…")
+                                    .size(12.0)
+                                    .color(p.dim),
+                            );
                         }
-                        if modern == Some(shell::ModernMenu::Missing)
-                            && button(ui, None, "Get the Windows 11 menu", false, !busy).clicked()
-                        {
-                            app.modern_menu_job(ctx, shell::get_modern_menu);
-                        }
-                    } else if button(ui, None, "Add to menu", false, !busy).clicked() {
-                        if !shell::install_explorer() {
-                            app.toast("Couldn't add the menu entries".into(), false, None);
-                        }
-                        app.explorer = Some(shell::explorer_installed());
-                        match modern {
-                            Some(shell::ModernMenu::Available) => {
-                                app.modern_menu_job(ctx, shell::install_modern_menu)
-                            }
-                            Some(shell::ModernMenu::Missing) => {
-                                app.modern_menu_job(ctx, shell::get_modern_menu)
-                            }
-                            _ => {}
-                        }
-                    }
-                    if busy {
-                        ui.label(
-                            RichText::new("Updating the Windows 11 menu…")
-                                .size(12.0)
-                                .color(p.dim),
-                        );
-                    }
-                });
+                    });
+                }
                 ui.add_space(14.0);
                 ui.separator();
                 ui.label(

@@ -12,7 +12,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $stage = Join-Path ([IO.Path]::GetTempPath()) "r7z-msix-$PID"
 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
-Copy-Item -Recurse (Join-Path $root "package") $stage
+New-Item -ItemType Directory $stage | Out-Null
+# package/store holds the Microsoft Store package, which is built separately.
+Get-ChildItem -File (Join-Path $root "package") | Copy-Item -Destination $stage
 
 $manifest = Join-Path $stage "AppxManifest.xml"
 [xml]$xml = Get-Content -Raw $manifest

@@ -131,13 +131,16 @@ fn install_panic_hook() {
     }));
 }
 
+/// Built for the Microsoft Store (see the `store` feature).
+pub const STORE: bool = cfg!(feature = "store");
+
 /// `--install` and `--uninstall --quiet` work without a window, for scripts and package
 /// managers; they exit with 0 on success.
 fn run_without_window() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["--install"] => install::install().map(drop),
-        ["--uninstall", "--quiet"] => install::uninstall(),
+        ["--install"] if !STORE => install::install().map(drop),
+        ["--uninstall", "--quiet"] if !STORE => install::uninstall(),
         _ => return None,
     };
     Some(match result {

@@ -152,6 +152,23 @@ jobs:
           cp "$BUNDLE" "dist/r7z-$version.sigstore.json"
           python -c "import json, sys; print(json.dumps(json.load(open(sys.argv[1]))['dsseEnvelope'], separators=(',', ':')))" "$BUNDLE" > "dist/r7z-$version.intoto.jsonl"
 
+      - name: Build the Microsoft Store package
+        # Unsigned: Partner Center signs it on publishing. Kept as a workflow artifact for
+        # upload to Partner Center, not attached to the release, since it can't be
+        # installed directly.
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          cargo build --release --locked --target-dir target/store -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
+          scripts/make_store_msix.ps1 -Version $version -BinDir target/store/release -Out "target/store/r7z-$version-store.msix"
+
+      - name: Keep the Microsoft Store package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-package
+          path: target/store/*.msix
+          if-no-files-found: error
+
       - name: Publish
         shell: bash
         env:

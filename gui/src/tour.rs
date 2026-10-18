@@ -54,7 +54,11 @@ const PAGES: &[Page] = &[
     },
     Page {
         title: "Right from Explorer",
-        body: "Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. Install r7z to add these menus, and to find r7z in the Start menu and Windows search. It keeps itself up to date with signed updates.",
+        body: if crate::STORE {
+            "Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. No need to open r7z first."
+        } else {
+            "Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. Install r7z to add these menus, and to find r7z in the Start menu and Windows search. It keeps itself up to date with signed updates."
+        },
         image: Some(include_bytes!("../res/tour/menu.webp")),
     },
 ];
@@ -263,6 +267,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     }
                     if page == last
                         && cfg!(windows)
+                        && !crate::STORE
                         && app.install_state() == crate::install::State::NotInstalled
                         && button(ui, None, "Install r7z", false, app.install_task.is_none())
                             .clicked()

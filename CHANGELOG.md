@@ -2,7 +2,7 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.2 - 2026-10-18
 
 - A welcome tour on first launch shows the main features with screenshots; it can
   be skipped, and reopened from Settings or search everywhere.

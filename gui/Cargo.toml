@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 r7z = { path = ".." }
-eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
+eframe = { version = "0.37", default-features = false, features = ["glow"] }
 egui_extras = { version = "0.37", default-features = false }
 rfd = { version = "0.17", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "ico", "tiff"] }
@@ -24,3 +24,8 @@ crc32fast = "1.5"
 raw-window-handle = "0.6"
 ureq = { version = "3.4", default-features = false, features = ["native-tls"] }
 ed25519-dalek = { version = "3", default-features = false }
+
+# On Windows the interface uses the system's fonts (see theme::install_fonts); elsewhere
+# egui's own fonts are built in.
+[target.'cfg(not(windows))'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["default_fonts"] }

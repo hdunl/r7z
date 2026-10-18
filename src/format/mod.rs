@@ -280,30 +280,42 @@ impl Format {
     }
 }
 
-/// Every format r7z knows, in detection priority order.
-pub static FORMATS: &[&Format] = &[
-    &sevenz::FORMAT,
-    &zip::FORMAT,
-    &tar::FORMAT,
-    &xar::FORMAT,
-    &rpm::FORMAT,
-    &ar::FORMAT,
-    &cpio::FORMAT,
-    &cab::FORMAT,
-    &wim::FORMAT,
-    &arj::FORMAT,
-    &lzh::FORMAT,
-    &stream::GZIP,
-    &stream::BZIP2,
-    &stream::XZ,
-    &stream::ZSTD,
-    &stream::LZ4,
-    &stream::Z,
-    &stream::LZMA86,
-    &stream::LZMA,
-    &misc::SPLIT,
-    &misc::BASE64,
-    &misc::IHEX,
+/// The format table and an extensions-only copy of it, from one list.
+macro_rules! formats {
+    ($($f:path),* $(,)?) => {
+        /// Every format r7z knows, in detection priority order.
+        pub static FORMATS: &[&Format] = &[$(&$f),*];
+
+        /// The file extensions of [`FORMATS`], in the same order, evaluated at compile
+        /// time. Code that only needs to recognize archive names (the Explorer menu)
+        /// reads this, so linking it doesn't pull in every parser.
+        pub const EXTENSIONS: &[&[&str]] = &[$($f.extensions),*];
+    };
+}
+
+formats![
+    sevenz::FORMAT,
+    zip::FORMAT,
+    tar::FORMAT,
+    xar::FORMAT,
+    rpm::FORMAT,
+    ar::FORMAT,
+    cpio::FORMAT,
+    cab::FORMAT,
+    wim::FORMAT,
+    arj::FORMAT,
+    lzh::FORMAT,
+    stream::GZIP,
+    stream::BZIP2,
+    stream::XZ,
+    stream::ZSTD,
+    stream::LZ4,
+    stream::Z,
+    stream::LZMA86,
+    stream::LZMA,
+    misc::SPLIT,
+    misc::BASE64,
+    misc::IHEX,
 ];
 
 pub fn find_format(name: &str) -> Option<&'static Format> {

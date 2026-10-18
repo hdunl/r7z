@@ -122,7 +122,7 @@ fn io_err(e: impl std::fmt::Display) -> io::Error {
 // ---------------------------------------------------------------------------------------
 // gzip
 
-pub static GZIP: Format = Format {
+pub const GZIP: Format = Format {
     name: "gzip",
     aliases: &["gz", "tgz"],
     extensions: &["gz", "gzip", "tgz", "tpz", "apk"],
@@ -250,7 +250,7 @@ fn open_gzip(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // bzip2
 
-pub static BZIP2: Format = Format {
+pub const BZIP2: Format = Format {
     name: "bzip2",
     aliases: &["bz2", "tbz", "tbz2"],
     extensions: &["bz2", "bzip2", "tbz2", "tbz"],
@@ -299,7 +299,7 @@ fn open_bzip2(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // xz
 
-pub static XZ: Format = Format {
+pub const XZ: Format = Format {
     name: "xz",
     aliases: &["txz"],
     extensions: &["xz", "txz"],
@@ -430,7 +430,7 @@ fn open_xz(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // zstd
 
-pub static ZSTD: Format = Format {
+pub const ZSTD: Format = Format {
     name: "zstd",
     aliases: &["zst", "tzst"],
     extensions: &["zst", "tzst", "zstd"],
@@ -562,7 +562,7 @@ fn open_zstd(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // lz4
 
-pub static LZ4: Format = Format {
+pub const LZ4: Format = Format {
     name: "lz4",
     aliases: &["tlz4"],
     extensions: &["lz4", "tlz4"],
@@ -725,7 +725,7 @@ impl Read for Lz4Frames {
 // ---------------------------------------------------------------------------------------
 // Z (Unix compress, LZW)
 
-pub static Z: Format = Format {
+pub const Z: Format = Format {
     name: "Z",
     aliases: &["compress", "taz"],
     extensions: &["z", "taz"],
@@ -751,7 +751,7 @@ fn open_z(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // lzma (LZMA "alone") and lzma86
 
-pub static LZMA: Format = Format {
+pub const LZMA: Format = Format {
     name: "lzma",
     aliases: &[],
     extensions: &["lzma"],
@@ -763,7 +763,7 @@ pub static LZMA: Format = Format {
     open: open_lzma,
 };
 
-pub static LZMA86: Format = Format {
+pub const LZMA86: Format = Format {
     name: "lzma86",
     aliases: &[],
     extensions: &["lzma86"],

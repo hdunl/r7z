@@ -21,7 +21,7 @@ use crate::error::{Error, Result};
 use crate::sevenz::attr;
 use crate::util::time::dos_to_filetime;
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "Cab",
     aliases: &[],
     extensions: &["cab"],

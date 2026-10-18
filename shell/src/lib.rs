@@ -102,9 +102,8 @@ fn is_archive(path: &Path) -> bool {
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    r7z::format::FORMATS.iter().any(|f| {
-        f.extensions
-            .iter()
+    r7z::format::EXTENSIONS.iter().any(|exts| {
+        exts.iter()
             .any(|e| name.ends_with(&format!(".{}", e.trim_start_matches('.').to_lowercase())))
     })
 }

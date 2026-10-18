@@ -61,3 +61,50 @@ strip = true
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# The desktop app's interface libraries are optimized for size: they draw a few frames
+# a second at most, while the codecs, which set r7z's speed, stay at opt-level 3.
+[profile.release.package.r7z-gui]
+opt-level = "s"
+[profile.release.package.egui]
+opt-level = "s"
+[profile.release.package.epaint]
+opt-level = "s"
+[profile.release.package.eframe]
+opt-level = "s"
+[profile.release.package.egui-winit]
+opt-level = "s"
+[profile.release.package.egui_glow]
+opt-level = "s"
+[profile.release.package.glow]
+opt-level = "s"
+[profile.release.package.winit]
+opt-level = "s"
+[profile.release.package.harfrust]
+opt-level = "s"
+[profile.release.package.skrifa]
+opt-level = "s"
+[profile.release.package.read-fonts]
+opt-level = "s"
+[profile.release.package.vello_cpu]
+opt-level = "s"
+[profile.release.package.vello_common]
+opt-level = "s"
+[profile.release.package.fearless_simd]
+opt-level = "s"
+[profile.release.package.kurbo]
+opt-level = "s"
+[profile.release.package.ureq]
+opt-level = "s"
+[profile.release.package.ureq-proto]
+opt-level = "s"
+[profile.release.package.rfd]
+opt-level = "s"
+[profile.release.package.image]
+opt-level = "s"
+[profile.release.package.image-webp]
+opt-level = "s"
+[profile.release.package.tiff]
+opt-level = "s"
+[profile.release.package.png]
+opt-level = "s"

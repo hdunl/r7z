@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::sevenz::read::ArchiveFile;
 use crate::sevenz::{salvage, SIGNATURE, SIGNATURE_HEADER_SIZE};
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "7z",
     aliases: &[],
     extensions: &["7z"],

@@ -180,8 +180,9 @@ fn read_font(name: &str) -> Option<Vec<u8>> {
     std::fs::read(dir.join("Fonts").join(name)).ok()
 }
 
-/// Segoe UI and Cascadia Mono when present. The CJK fallback is large and only loaded when
-/// a listing needs it.
+/// Segoe UI and Cascadia Mono when present, with Segoe UI Symbol and Segoe UI Emoji for
+/// what they lack. On Windows these are the only fonts: egui's own are not built in. The
+/// CJK fallback is large and only loaded when a listing needs it.
 pub fn install_fonts(ctx: &egui::Context, cjk: bool) {
     let mut fonts = FontDefinitions::default();
     let mut add = |key: &str, files: &[&str]| -> bool {
@@ -198,6 +199,7 @@ pub fn install_fonts(ctx: &egui::Context, cjk: bool) {
     let regular = add("ui", &["segoeui.ttf"]);
     let semibold = add("ui-semibold", &["seguisb.ttf"]);
     let symbols = add("ui-symbols", &["seguisym.ttf"]);
+    let emoji = add("ui-emoji", &["seguiemj.ttf"]);
     let mono = add("mono", &["CascadiaMono.ttf", "consola.ttf"]);
     let cjk = cjk && add("cjk", &["msyh.ttc", "YuGothR.ttc", "malgun.ttf"]);
 
@@ -215,6 +217,9 @@ pub fn install_fonts(ctx: &egui::Context, cjk: bool) {
     if symbols {
         prop.push("ui-symbols".into());
     }
+    if emoji {
+        prop.push("ui-emoji".into());
+    }
     let fallback = prop.clone();
     let mut sb = Vec::new();
     if semibold {
@@ -230,6 +235,12 @@ pub fn install_fonts(ctx: &egui::Context, cjk: bool) {
     }
     if cjk {
         monos.push("cjk".into());
+    }
+    // Code previews fall back to the interface fonts for symbols and emoji.
+    for f in ["ui-symbols", "ui-emoji"] {
+        if fonts.font_data.contains_key(f) {
+            monos.push(f.into());
+        }
     }
     ctx.set_fonts(fonts);
 }

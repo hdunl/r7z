@@ -11,7 +11,7 @@ use super::{
 use crate::error::{Error, Result};
 use crate::util::time::unix_to_filetime;
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "Ar",
     aliases: &[],
     extensions: &["ar", "a", "deb", "udeb", "lib"],

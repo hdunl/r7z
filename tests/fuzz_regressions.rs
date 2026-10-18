@@ -31,12 +31,25 @@ fn inputs(target: &str) -> Vec<(String, Vec<u8>)> {
 
 #[test]
 fn open_inputs_decode_without_panicking() {
-    for (name, data) in inputs("open") {
-        let Ok(opened) = format::open_bytes(data, &name, &OpenRequest::default()) else {
+    // Same choices as fuzz/fuzz_targets/open.rs: the last byte picks the file name and
+    // whether a password is offered.
+    const NAMES: [&str; 18] = [
+        "a.7z", "a.zip", "a.tar", "a.gz", "a.bz2", "a.xz", "a.zst", "a.lz4", "a.Z", "a.lzma",
+        "a.cab", "a.rpm", "a.deb", "a.wim", "a.001", "a.b64", "a.hex", "a.lzh",
+    ];
+    for (_, data) in inputs("open") {
+        let pick = data.last().copied().unwrap_or(0);
+        let name = NAMES[pick as usize % NAMES.len()];
+        let password = (pick & 0x80 != 0).then(|| "password".to_string());
+        let req = OpenRequest {
+            password: password.clone(),
+            ..Default::default()
+        };
+        let Ok(opened) = format::open_bytes(data, name, &req) else {
             continue;
         };
         let ctx = Ctx {
-            password: None,
+            password,
             threads: 1,
         };
         let mut buf = vec![0u8; 64 << 10];

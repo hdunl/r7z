@@ -280,7 +280,8 @@ fn recover_unit(
         let mut m = HashMap::with_capacity(unit.entries.len());
         for &i in &unit.entries {
             m.insert(i, pos);
-            pos += entries[i].size?;
+            // Sizes come from the header; a total past u64 means the starts are unknown.
+            pos = pos.checked_add(entries[i].size?)?;
         }
         Some(m)
     })();

@@ -1509,8 +1509,8 @@ impl Wim {
         let h = &self.vols[1].as_ref().unwrap().header;
         let mut p: Vec<(&'static str, String)> = Vec::new();
         p.push(("Physical Size", phys.to_string()));
-        let size: u64 = self.streams.iter().map(|s| s.res.size).sum();
-        let packed: u64 = self.streams.iter().map(|s| s.res.packed).sum();
+        let size = crate::util::saturating_sum(self.streams.iter().map(|s| s.res.size));
+        let packed = crate::util::saturating_sum(self.streams.iter().map(|s| s.res.packed));
         p.push(("Size", size.to_string()));
         p.push(("Packed Size", packed.to_string()));
         let mut mask = 0u32;

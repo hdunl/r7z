@@ -334,7 +334,7 @@ pub fn extract(a: &Args, full_paths: bool, test_only: bool) -> Result<i32> {
         .enumerate()
         .filter(|(i, _)| selected.as_ref().is_none_or(|s| s[*i]))
         .map(|(_, e)| e.size_or_zero())
-        .sum();
+        .fold(0, u64::saturating_add);
     let verb = if test_only { "Testing" } else { "Extracting" };
     let cb = ui::ExtractUi {
         pb: ui::bar(total, !a.no_progress, verb),
@@ -434,7 +434,7 @@ fn recover(a: &Args, full_paths: bool, test_only: bool) -> Result<i32> {
         .enumerate()
         .filter(|(i, _)| selected.as_ref().is_none_or(|s| s[*i]))
         .map(|(_, e)| e.size_or_zero())
-        .sum();
+        .fold(0, u64::saturating_add);
     let cb = ui::ExtractUi {
         pb: ui::bar(total, !a.no_progress, "Recovering"),
         assume_yes: a.yes,

@@ -179,7 +179,7 @@ pub fn inspect(entries: &[Entry], packed_total: Option<u64>) -> Vec<Finding> {
         ));
     }
 
-    let total: u64 = files.iter().map(|(_, e)| e.size_or_zero()).sum();
+    let total = crate::util::saturating_sum(files.iter().map(|(_, e)| e.size_or_zero()));
     if let Some(packed) = packed_total.filter(|&p| p > 0) {
         let ratio = total as f64 / packed as f64;
         if total > (1 << 30) && ratio > 200.0 {

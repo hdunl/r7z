@@ -423,11 +423,8 @@ pub(crate) fn stamp_dirs(a: &dyn Archive, plan: Plan) {
     let mut dirs = plan.dirs_to_stamp;
     dirs.sort_by_key(|(p, _)| std::cmp::Reverse(p.components().count()));
     for (p, i) in dirs {
-        if let Some(mt) = a.entries()[i].mtime {
-            let _ = filetime::set_file_mtime(
-                &p,
-                filetime::FileTime::from_system_time(from_filetime(mt)),
-            );
+        if let Some(mt) = a.entries()[i].mtime.and_then(from_filetime) {
+            let _ = filetime::set_file_mtime(&p, filetime::FileTime::from_system_time(mt));
         }
     }
 }
@@ -812,18 +809,18 @@ fn write_whole(path: &Path, existed: bool, e: &Entry, data: &[u8]) -> Result<()>
 pub(crate) fn finish_file(f: File, path: &Path, e: &Entry) {
     let mut times = FileTimes::new();
     let mut any = false;
-    if let Some(t) = e.mtime {
-        times = times.set_modified(from_filetime(t));
+    if let Some(t) = e.mtime.and_then(from_filetime) {
+        times = times.set_modified(t);
         any = true;
     }
-    if let Some(t) = e.atime {
-        times = times.set_accessed(from_filetime(t));
+    if let Some(t) = e.atime.and_then(from_filetime) {
+        times = times.set_accessed(t);
         any = true;
     }
     #[cfg(windows)]
-    if let Some(t) = e.ctime {
+    if let Some(t) = e.ctime.and_then(from_filetime) {
         use std::os::windows::fs::FileTimesExt;
-        times = times.set_created(from_filetime(t));
+        times = times.set_created(t);
         any = true;
     }
     if any {

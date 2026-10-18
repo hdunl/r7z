@@ -507,7 +507,7 @@ fn extract_to_disk() {
         }
     }
     let mt = fs::metadata(out.join("tiny")).unwrap().modified().unwrap();
-    assert_eq!(mt, r7z::util::time::from_filetime(T0 + 80_000_000));
+    assert_eq!(mt, r7z::util::time::from_filetime(T0 + 80_000_000).unwrap());
 }
 
 /// Every encoder/decoder pair over awkward inputs, through whole WIMs.

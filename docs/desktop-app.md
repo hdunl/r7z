@@ -93,7 +93,20 @@ single 10 MB executable with no installer, and it starts instantly.
   On Windows 11 those entries sit under "Show more options". Windows 11's main menu
   only takes commands from packaged apps, so r7z also registers a small package
   (`package\AppxManifest.xml`) whose command handler, `r7z_shell.dll`, adds an **r7z**
-  submenu there. Windows installs such a package only when it is signed with a trusted
+  submenu there. The submenu changes with the selection:
+
+  | Selection | Entries |
+  |---|---|
+  | One archive | Open with r7z, Extract here, Extract to "name\", Test archive, Convert to .7z (not on a .7z), Add to "name.7z", Add to "name.zip", Add to archive… |
+  | Several archives | Extract here, Extract to…, and the three Add entries |
+  | One folder | Open in r7z and the three Add entries |
+  | Other files, or a mix | Add to "name.7z", Add to "name.zip", Add to archive… |
+
+  The quick Add entries compress with the default settings (normal level, solid 7z) next
+  to the selection, named after the item or, for several, after their folder; an
+  existing archive is never replaced, the new one gets a number instead. They call
+  `r7z-gui --add-7z|--add-zip <paths>`; Test and Convert call `--test` and `--convert`.
+  Windows installs such a package only when it is signed with a trusted
   certificate; releases ship it signed as `r7z-shell.msix`, so Settings → "Add to menu"
   puts r7z in the main menu on any Windows 11 PC. Development builds use the loose
   manifest instead, which registers only with Developer Mode on.

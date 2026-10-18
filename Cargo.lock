@@ -2044,7 +2044,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "r7z"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "aes",
  "bzip2",
@@ -2074,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "r7z-gui"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "crc32fast",
  "ed25519-dalek",
@@ -2092,7 +2092,7 @@ dependencies = [
 
 [[package]]
 name = "r7z-shell"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "r7z",
  "windows",

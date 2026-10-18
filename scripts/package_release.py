@@ -72,9 +72,14 @@ def main() -> None:
         "README.md": ROOT / "README.md",
         "LICENSE": ROOT / "LICENSE",
     }
-    # The Windows 11 context menu package, stamped with this version.
-    for asset in sorted((ROOT / "package").iterdir()):
-        files[f"package/{asset.name}"] = asset
+    # The Windows 11 context menu: the signed package when the release workflow built one,
+    # otherwise the loose manifest (registers only with Developer Mode on).
+    msix = ROOT / "target" / "release" / "r7z-shell.msix"
+    if msix.is_file():
+        files["r7z-shell.msix"] = msix
+    else:
+        for asset in sorted((ROOT / "package").iterdir()):
+            files[f"package/{asset.name}"] = asset
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, src in files.items():
             info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))

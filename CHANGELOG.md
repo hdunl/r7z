@@ -2,6 +2,13 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Releases are code-signed (Authenticode, Public Trust, timestamped) through Microsoft's
+  Artifact Signing, so Windows shows a verified publisher instead of a SmartScreen warning.
+- The Windows 11 menu package ships signed, so r7z joins the main context menu on any
+  Windows 11 PC, not only with Developer Mode on.
+
 ## 0.1.2 - 2026-10-18
 
 - A welcome tour on first launch shows the main features with screenshots; it can

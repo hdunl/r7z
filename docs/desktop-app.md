@@ -94,9 +94,9 @@ single 10 MB executable with no installer, and it starts instantly.
   only takes commands from packaged apps, so r7z also registers a small package
   (`package\AppxManifest.xml`) whose command handler, `r7z_shell.dll`, adds an **r7z**
   submenu there. Windows installs such a package only when it is signed with a trusted
-  certificate, or from a loose manifest with Developer Mode on. Until r7z releases are
-  code-signed, Settings offers the main menu only with Developer Mode, and says so
-  otherwise.
+  certificate; releases ship it signed as `r7z-shell.msix`, so Settings → "Add to menu"
+  puts r7z in the main menu on any Windows 11 PC. Development builds use the loose
+  manifest instead, which registers only with Developer Mode on.
 - **Updates:** once a day r7z checks GitHub for a newer release and offers it in a
   toast; Settings → Updates has "Check now", and options to stop checking or to install
   updates without asking. Each release's manifest is signed with Ed25519 and checked

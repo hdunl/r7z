@@ -22,7 +22,17 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/browse-light.png" alt="r7z desktop app browsing a 7z archive with an image preview" width="900">
+  <img src="docs/screenshots/demo.webp" alt="r7z browsing a 7z archive: image and code previews, the space map, search everywhere and Extract here" width="900">
+</p>
+
+<p align="center">
+  <a href="https://github.com/hdunl/r7z/releases/latest"><b>Download for Windows</b></a>
+  ·
+  <a href="docs/desktop-app.md">Desktop app</a>
+  ·
+  <a href="#usage">Command line</a>
+  ·
+  <a href="#performance">Benchmarks</a>
 </p>
 
 r7z comes as two programs: a command line tool that takes the same commands and switches
@@ -53,7 +63,7 @@ executables with no installer and no runtime to set up.
 ## Desktop app
 
 <p align="center">
-  <img src="docs/screenshots/space-map-dark.png" alt="Space map in the dark theme, showing what takes room in an archive" width="900">
+  <img src="docs/screenshots/browse-light.png" alt="r7z desktop app in the light theme, browsing a 7z archive with an image preview" width="900">
 </p>
 
 - Browse folders and archives in one window. Archives inside archives open in place.
@@ -67,8 +77,8 @@ executables with no installer and no runtime to set up.
 - Drag files out to Explorer, or copy and paste them.
 - Batch extract, convert between formats, and create archives with AES-256.
 - Light and dark themes that follow Windows, and Ctrl+Shift+F to search everywhere.
-- Explorer right-click menu, including Windows 11's main menu (see
-  [docs/desktop-app.md](docs/desktop-app.md) for what that needs).
+- **Right-click menu** in Explorer, including Windows 11's main menu: extract, test,
+  convert to 7z, or compress to `.7z` or `.zip` in one click without opening the app.
 - Updates itself from GitHub releases. Every update is signed, and the signature is
   checked before anything is installed.
 
@@ -102,8 +112,9 @@ r7z t driver.cab                     # verify every checksum
 r7z h -scrcSHA256 *.iso              # hash files
 ```
 
-`r7z-gui file.7z` opens an archive in the desktop app; `--extract-here`, `--extract-to` and
-`--add` are what the Explorer menu entries call.
+`r7z-gui file.7z` opens an archive in the desktop app. The Explorer menu entries call
+`--extract-here`, `--extract-to`, `--test`, `--convert`, `--add`, `--add-7z` and
+`--add-zip`.
 
 ## Formats
 

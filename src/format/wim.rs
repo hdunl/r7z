@@ -30,7 +30,7 @@ use crate::codec::lzx_wim::LzxDecoder;
 use crate::codec::xpress::XpressDecoder;
 use crate::error::{Error, Result};
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "wim",
     aliases: &[],
     extensions: &["wim", "swm", "esd", "ppkg"],

@@ -19,7 +19,7 @@ use crate::sevenz::attr;
 use crate::util::codepage;
 use crate::util::time::{filetime_to_unix, unix_to_filetime};
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "tar",
     aliases: &["ustar", "pax", "gnutar"],
     extensions: &["tar", "ova"],

@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::util::time::format_filetime;
 use crate::util::time::unix_to_filetime;
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "Rpm",
     aliases: &[],
     extensions: &["rpm"],

@@ -13,7 +13,7 @@ use crate::util::codepage;
 use crate::util::time::dos_datetime_to_filetime as dos_to_filetime;
 use crate::util::time::format_filetime;
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "Arj",
     aliases: &[],
     extensions: &["arj"],

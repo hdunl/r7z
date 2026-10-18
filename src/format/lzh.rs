@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::util::codepage;
 use crate::util::time::{dos_datetime_to_filetime as dos_to_filetime, unix_to_filetime};
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "Lzh",
     aliases: &["lha"],
     extensions: &["lzh", "lha"],

@@ -11,7 +11,7 @@ use crate::error::{Error, Result};
 // ---------------------------------------------------------------------------------------
 // Split volumes
 
-pub static SPLIT: Format = Format {
+pub const SPLIT: Format = Format {
     name: "Split",
     aliases: &["001"],
     extensions: &["001"],
@@ -71,7 +71,7 @@ fn open_split(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // Base64
 
-pub static BASE64: Format = Format {
+pub const BASE64: Format = Format {
     name: "Base64",
     aliases: &["b64"],
     extensions: &["b64"],
@@ -153,7 +153,7 @@ fn open_base64(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
 // ---------------------------------------------------------------------------------------
 // Intel HEX
 
-pub static IHEX: Format = Format {
+pub const IHEX: Format = Format {
     name: "IHex",
     aliases: &["hex"],
     extensions: &["ihex", "hex"],

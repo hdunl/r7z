@@ -13,7 +13,7 @@ use super::{
 };
 use crate::error::{Error, Result};
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "Xar",
     aliases: &[],
     extensions: &["xar", "pkg", "xip"],

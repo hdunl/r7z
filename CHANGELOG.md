@@ -2,6 +2,14 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Smaller download: the desktop app is 10.1 MB instead of 12.7 MB and the Explorer menu
+  extension 0.3 MB instead of 2.3 MB. The interface libraries are built for size (the
+  codecs keep full optimization), the app uses Windows' own fonts instead of carrying
+  copies, and the menu extension no longer links every archive parser to read a list of
+  file extensions.
+
 ## 0.1.7 - 2026-10-18
 
 - r7z can install itself: Install (on the welcome tour's last page, in Settings, or in a

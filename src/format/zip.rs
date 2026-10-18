@@ -26,7 +26,7 @@ use crate::sevenz::attr;
 use crate::util::codepage;
 use crate::util::time::{dos_to_filetime, filetime_to_dos, unix_to_filetime};
 
-pub static FORMAT: Format = Format {
+pub const FORMAT: Format = Format {
     name: "zip",
     aliases: &["zipx", "jar"],
     extensions: &[

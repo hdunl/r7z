@@ -26,6 +26,20 @@ pub fn saturating_sum(values: impl IntoIterator<Item = u64>) -> u64 {
     values.into_iter().fold(0, u64::saturating_add)
 }
 
+/// The name a new archive of `paths` gets, without its extension: the folder or the file
+/// name without its extension for one item, the name of their folder for several.
+pub fn archive_base_name(paths: &[std::path::PathBuf]) -> String {
+    let base = match paths {
+        [] => None,
+        [one] if one.is_dir() => one.file_name(),
+        [one] => one.file_stem(),
+        [first, ..] => first.parent().and_then(|p| p.file_name()),
+    };
+    base.map(|b| b.to_string_lossy().into_owned())
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| "archive".into())
+}
+
 /// Number of worker threads to use by default.
 pub fn default_threads() -> usize {
     std::thread::available_parallelism()

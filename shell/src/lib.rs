@@ -18,8 +18,8 @@ use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows::Win32::UI::Shell::{
     IEnumExplorerCommand, IEnumExplorerCommand_Impl, IExplorerCommand, IExplorerCommand_Impl,
-    IShellItemArray, SHStrDupW, ECF_DEFAULT, ECF_HASSUBCOMMANDS, ECS_ENABLED, ECS_HIDDEN,
-    SIGDN_FILESYSPATH,
+    IShellItemArray, SHStrDupW, ECF_DEFAULT, ECF_HASSUBCOMMANDS, ECF_ISSEPARATOR, ECS_ENABLED,
+    ECS_HIDDEN, SIGDN_FILESYSPATH,
 };
 use windows_core::{implement, Interface, Ref, BOOL, GUID, HRESULT, HSTRING, PWSTR};
 
@@ -28,14 +28,32 @@ const CLSID_R7Z_MENU: GUID = GUID::from_u128(0xf0cd81fa_1491_4776_a237_812d0f379
 
 static MODULE: OnceLock<usize> = OnceLock::new();
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Kind {
     Root,
     Open,
     ExtractHere,
     ExtractTo,
+    Test,
+    Convert,
+    Separator,
+    Add7z,
+    AddZip,
     Add,
 }
+
+/// The submenu, in order. Entries that don't apply to the selection are hidden.
+const SUBMENU: [Kind; 9] = [
+    Kind::Open,
+    Kind::ExtractHere,
+    Kind::ExtractTo,
+    Kind::Test,
+    Kind::Convert,
+    Kind::Separator,
+    Kind::Add7z,
+    Kind::AddZip,
+    Kind::Add,
+];
 
 /// The folder this DLL was loaded from, which also holds `r7z-gui.exe`.
 fn install_dir() -> Option<PathBuf> {
@@ -91,6 +109,11 @@ fn is_archive(path: &Path) -> bool {
     })
 }
 
+fn is_7z(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("7z"))
+}
+
 fn dup(s: &str) -> windows_core::Result<PWSTR> {
     unsafe { SHStrDupW(&HSTRING::from(s)) }
 }
@@ -104,6 +127,7 @@ impl Command {
     fn title(&self, paths: &[PathBuf]) -> String {
         match self.kind {
             Kind::Root => "r7z".into(),
+            Kind::Open if paths.iter().all(|p| p.is_dir()) => "Open in r7z".into(),
             Kind::Open => "Open with r7z".into(),
             Kind::ExtractHere => "Extract here".into(),
             Kind::ExtractTo => match paths {
@@ -113,16 +137,27 @@ impl Command {
                 ),
                 _ => "Extract to…".into(),
             },
+            Kind::Test => "Test archive".into(),
+            Kind::Convert => "Convert to .7z".into(),
+            Kind::Separator => String::new(),
+            Kind::Add7z => format!("Add to \"{}.7z\"", r7z::util::archive_base_name(paths)),
+            Kind::AddZip => format!("Add to \"{}.zip\"", r7z::util::archive_base_name(paths)),
             Kind::Add => "Add to archive…".into(),
         }
     }
 
     fn visible(&self, paths: &[PathBuf]) -> bool {
         let archives = !paths.is_empty() && paths.iter().all(|p| is_archive(p));
+        let one_archive = paths.len() == 1 && archives;
+        let one_folder = paths.len() == 1 && paths[0].is_dir();
         match self.kind {
-            Kind::Root | Kind::Add => !paths.is_empty(),
-            Kind::Open => paths.len() == 1 && archives,
+            Kind::Root | Kind::Add7z | Kind::AddZip | Kind::Add => !paths.is_empty(),
+            Kind::Open => one_archive || one_folder,
             Kind::ExtractHere | Kind::ExtractTo => archives,
+            Kind::Test => one_archive,
+            Kind::Convert => one_archive && !is_7z(&paths[0]),
+            // Splits the entries for what is selected from the ones that make an archive.
+            Kind::Separator => archives || one_folder,
         }
     }
 }
@@ -162,10 +197,14 @@ impl IExplorerCommand_Impl for Command_Impl {
         let paths = selected(items);
         let exe = gui_exe().ok_or_else(|| windows_core::Error::from(E_FAIL))?;
         let flag = match self.kind {
-            Kind::Root => return Ok(()),
+            Kind::Root | Kind::Separator => return Ok(()),
             Kind::Open => None,
             Kind::ExtractHere => Some("--extract-here"),
             Kind::ExtractTo => Some("--extract-to"),
+            Kind::Test => Some("--test"),
+            Kind::Convert => Some("--convert"),
+            Kind::Add7z => Some("--add-7z"),
+            Kind::AddZip => Some("--add-zip"),
             Kind::Add => Some("--add"),
         };
         let mut cmd = std::process::Command::new(exe);
@@ -176,10 +215,10 @@ impl IExplorerCommand_Impl for Command_Impl {
     }
 
     fn GetFlags(&self) -> windows_core::Result<u32> {
-        let flags = if self.kind == Kind::Root {
-            ECF_HASSUBCOMMANDS
-        } else {
-            ECF_DEFAULT
+        let flags = match self.kind {
+            Kind::Root => ECF_HASSUBCOMMANDS,
+            Kind::Separator => ECF_ISSEPARATOR,
+            _ => ECF_DEFAULT,
         };
         Ok(flags.0 as u32)
     }
@@ -188,9 +227,8 @@ impl IExplorerCommand_Impl for Command_Impl {
         if self.kind != Kind::Root {
             return Err(E_NOTIMPL.into());
         }
-        let kinds = [Kind::Open, Kind::ExtractHere, Kind::ExtractTo, Kind::Add];
         Ok(SubCommands {
-            items: kinds
+            items: SUBMENU
                 .into_iter()
                 .map(|kind| Command { kind }.into())
                 .collect(),
@@ -315,4 +353,125 @@ pub extern "system" fn DllMain(module: HINSTANCE, reason: u32, _reserved: *mut c
         let _ = MODULE.set(module.0 as usize);
     }
     BOOL::from(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::Common::ITEMIDLIST;
+    use windows::Win32::UI::Shell::{SHCreateShellItemArrayFromIDLists, SHParseDisplayName};
+    use windows_core::PCWSTR;
+
+    /// The submenu Explorer shows for `paths`, read through the same COM calls Explorer
+    /// makes: visible entries by title, with "-" for a separator.
+    fn menu(paths: &[PathBuf]) -> Vec<String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let pidls: Vec<*const ITEMIDLIST> = paths
+                .iter()
+                .map(|p| {
+                    let wide = HSTRING::from(p.as_os_str());
+                    let mut pidl = std::ptr::null_mut();
+                    SHParseDisplayName(PCWSTR(wide.as_ptr()), None, &mut pidl, 0, None).unwrap();
+                    pidl as *const ITEMIDLIST
+                })
+                .collect();
+            let items: IShellItemArray = SHCreateShellItemArrayFromIDLists(&pidls).unwrap();
+            let root: IExplorerCommand = Command { kind: Kind::Root }.into();
+            assert_eq!(root.GetState(&items, false).unwrap(), ECS_ENABLED.0 as u32);
+            let list = root.EnumSubCommands().unwrap();
+            let mut out = Vec::new();
+            loop {
+                let mut one = [None];
+                let mut got = 0;
+                let _ = list.Next(&mut one, Some(&mut got));
+                let Some(cmd) = one[0].take().filter(|_| got == 1) else {
+                    break;
+                };
+                if cmd.GetState(&items, false).unwrap() == ECS_HIDDEN.0 as u32 {
+                    continue;
+                }
+                if cmd.GetFlags().unwrap() == ECF_ISSEPARATOR.0 as u32 {
+                    out.push("-".to_string());
+                    continue;
+                }
+                let title = cmd.GetTitle(&items).unwrap();
+                out.push(title.to_string().unwrap());
+                CoTaskMemFree(Some(title.0 as *const c_void));
+            }
+            for p in pidls {
+                CoTaskMemFree(Some(p as *const c_void));
+            }
+            out
+        }
+    }
+
+    #[test]
+    fn submenu_fits_the_selection() {
+        let dir = std::env::temp_dir().join(format!("r7z-shell-test-{}", std::process::id()));
+        let photos = dir.join("Photos");
+        std::fs::create_dir_all(&photos).unwrap();
+        for f in ["Backup.zip", "Old.7z", "notes.txt"] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        let p = |n: &str| dir.join(n);
+
+        assert_eq!(
+            menu(&[p("Backup.zip")]),
+            [
+                "Open with r7z",
+                "Extract here",
+                "Extract to \"Backup\\\"",
+                "Test archive",
+                "Convert to .7z",
+                "-",
+                "Add to \"Backup.7z\"",
+                "Add to \"Backup.zip\"",
+                "Add to archive…",
+            ]
+        );
+        // Already a .7z: nothing to convert to.
+        assert!(!menu(&[p("Old.7z")]).contains(&"Convert to .7z".to_string()));
+        assert_eq!(
+            menu(std::slice::from_ref(&photos)),
+            [
+                "Open in r7z",
+                "-",
+                "Add to \"Photos.7z\"",
+                "Add to \"Photos.zip\"",
+                "Add to archive…",
+            ]
+        );
+        assert_eq!(
+            menu(&[p("notes.txt")]),
+            [
+                "Add to \"notes.7z\"",
+                "Add to \"notes.zip\"",
+                "Add to archive…",
+            ]
+        );
+        // Several items: the archive is named after their folder.
+        let folder = dir.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(
+            menu(&[p("notes.txt"), photos.clone()]),
+            [
+                format!("Add to \"{folder}.7z\""),
+                format!("Add to \"{folder}.zip\""),
+                "Add to archive…".to_string(),
+            ]
+        );
+        assert_eq!(
+            menu(&[p("Backup.zip"), p("Old.7z")]),
+            [
+                "Extract here".to_string(),
+                "Extract to…".to_string(),
+                "-".to_string(),
+                format!("Add to \"{folder}.7z\""),
+                format!("Add to \"{folder}.zip\""),
+                "Add to archive…".to_string(),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

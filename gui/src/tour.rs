@@ -54,7 +54,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         title: "Right from Explorer",
-        body: "Add r7z to the right-click menu to open, extract and compress files without starting the app first. r7z keeps itself up to date with signed updates.",
+        body: "Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. No need to open the app first, and r7z keeps itself up to date with signed updates.",
         image: Some(include_bytes!("../res/tour/menu.webp")),
     },
 ];

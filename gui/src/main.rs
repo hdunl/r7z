@@ -2,7 +2,9 @@
 //! r7z desktop app: a file browser that treats archives like folders.
 //!
 //! `r7z-gui [archive or folder]` opens it. Explorer menu verbs use
-//! `--extract-here <archives...>`, `--extract-to <archives...>` and `--add <paths...>`.
+//! `--extract-here <archives...>`, `--extract-to <archives...>`, `--test <archive>`,
+//! `--convert <archive>`, `--add <paths...>`, and `--add-7z` / `--add-zip <paths...>`
+//! to compress right away with the default settings.
 
 mod app;
 mod dialogs;
@@ -52,6 +54,25 @@ fn parse_args() -> app::Startup {
             many => app::Startup::ExtractToAll(many.iter().map(PathBuf::from).collect()),
         },
         Some("--add") => app::Startup::Add(args[1..].iter().map(PathBuf::from).collect()),
+        Some(flag @ ("--add-7z" | "--add-zip")) => match &args[1..] {
+            [] => app::Startup::None,
+            paths => app::Startup::Compress(
+                paths.iter().map(PathBuf::from).collect(),
+                if flag == "--add-7z" {
+                    dialogs::Fmt::SevenZ
+                } else {
+                    dialogs::Fmt::Zip
+                },
+            ),
+        },
+        Some("--test") => match path(1) {
+            Some(p) => app::Startup::Test(p),
+            None => app::Startup::None,
+        },
+        Some("--convert") => match path(1) {
+            Some(p) => app::Startup::Convert(p),
+            None => app::Startup::None,
+        },
         Some(p) => app::Startup::Open(PathBuf::from(p)),
     }
 }
@@ -117,7 +138,7 @@ fn main() -> eframe::Result {
     };
     let compact = matches!(
         startup,
-        app::Startup::ExtractHere(_) | app::Startup::ExtractTo(_)
+        app::Startup::ExtractHere(_) | app::Startup::ExtractTo(_) | app::Startup::Compress(..)
     );
     let size = if compact {
         [720.0, 420.0]

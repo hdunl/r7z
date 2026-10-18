@@ -31,6 +31,19 @@ pub enum Startup {
     /// Several archives selected in Explorer: the batch dialog asks where.
     ExtractToAll(Vec<PathBuf>),
     Add(Vec<PathBuf>),
+    /// Compress right away into a new archive next to the items, with default settings.
+    Compress(Vec<PathBuf>, crate::dialogs::Fmt),
+    Test(PathBuf),
+    Convert(PathBuf),
+}
+
+/// What to do once the archive r7z was started with has opened.
+#[derive(Clone, Copy)]
+pub enum Pending {
+    ExtractHere,
+    ExtractTo,
+    Test,
+    Convert,
 }
 
 /// One opened archive. Nested archives sit on top of the archive that contains them.
@@ -160,7 +173,7 @@ pub struct App {
     pub cjk: bool,
     cjk_pending: bool,
     title: String,
-    pub pending_extract: Option<bool>,
+    pub pending: Option<Pending>,
     pub exit_when_done: bool,
     pub explorer: Option<bool>,
     /// Windows 11 main-menu registration, checked in the background when Settings opens.
@@ -306,7 +319,7 @@ impl App {
             cjk: false,
             cjk_pending: false,
             title: String::new(),
-            pending_extract: None,
+            pending: None,
             exit_when_done: false,
             explorer: None,
             modern_menu: None,
@@ -334,7 +347,12 @@ impl App {
             Startup::None => {}
             Startup::Open(p) if p.is_dir() => app.loc = Loc::Disk(p),
             Startup::Open(p) => app.open_disk_archive(ctx, p, None),
-            Startup::ExtractHere(p) | Startup::ExtractTo(p) if !p.exists() => {
+            Startup::ExtractHere(p)
+            | Startup::ExtractTo(p)
+            | Startup::Test(p)
+            | Startup::Convert(p)
+                if !p.exists() =>
+            {
                 app.message(
                     "Can't find the file",
                     &format!("{} does not exist.", p.display()),
@@ -343,12 +361,22 @@ impl App {
             }
             Startup::ExtractHere(p) => {
                 app.exit_when_done = true;
-                app.pending_extract = Some(true);
+                app.pending = Some(Pending::ExtractHere);
                 app.open_disk_archive(ctx, p, None);
             }
             Startup::ExtractTo(p) => {
                 app.exit_when_done = true;
-                app.pending_extract = Some(false);
+                app.pending = Some(Pending::ExtractTo);
+                app.open_disk_archive(ctx, p, None);
+            }
+            // The result of a test stays on screen, so the window stays open.
+            Startup::Test(p) => {
+                app.pending = Some(Pending::Test);
+                app.open_disk_archive(ctx, p, None);
+            }
+            Startup::Convert(p) => {
+                app.exit_when_done = true;
+                app.pending = Some(Pending::Convert);
                 app.open_disk_archive(ctx, p, None);
             }
             Startup::ExtractHereAll(archives) => {
@@ -379,6 +407,21 @@ impl App {
                 }
                 app.exit_when_done = true;
                 app.dialog = Some(Dialog::pack(paths));
+            }
+            Startup::Compress(paths, format) => {
+                if let Some(dir) = paths.first().and_then(|p| p.parent()) {
+                    app.loc = Loc::Disk(dir.to_path_buf());
+                }
+                app.exit_when_done = true;
+                let req = jobs::CreateRequest {
+                    archive: PathBuf::from(crate::dialogs::default_archive_path(&paths, format)),
+                    paths,
+                    level: 5,
+                    password: None,
+                    encrypt_names: false,
+                    solid: true,
+                };
+                app.enqueue(ctx, move |ctx| jobs::create(ctx, req));
             }
         }
         app
@@ -976,25 +1019,30 @@ impl App {
 
     fn after_open(&mut self, ctx: &egui::Context) {
         self.mount_if_asked(ctx);
-        if let Some(here) = self.pending_extract.take() {
-            let Some(level) = self.stack.first() else {
-                return;
-            };
-            let dest = if here {
-                jobs::smart_destination(level.opened.archive().entries(), &level.disk)
-            } else {
-                level
-                    .disk
-                    .parent()
-                    .map(|p| p.join(stem_of(&level.disk)))
-                    .unwrap_or_default()
-            };
-            let mut form = crate::dialogs::ExtractForm::new(self);
-            form.dest = dest.display().to_string();
-            form.selected_only = false;
-            form.open_after = false;
-            self.start_extract(ctx, form);
-        }
+        let here = match self.pending.take() {
+            None => return,
+            Some(Pending::Test) => return self.start_test(ctx),
+            Some(Pending::Convert) => return self.open_convert(),
+            Some(Pending::ExtractHere) => true,
+            Some(Pending::ExtractTo) => false,
+        };
+        let Some(level) = self.stack.first() else {
+            return;
+        };
+        let dest = if here {
+            jobs::smart_destination(level.opened.archive().entries(), &level.disk)
+        } else {
+            level
+                .disk
+                .parent()
+                .map(|p| p.join(stem_of(&level.disk)))
+                .unwrap_or_default()
+        };
+        let mut form = crate::dialogs::ExtractForm::new(self);
+        form.dest = dest.display().to_string();
+        form.selected_only = false;
+        form.open_after = false;
+        self.start_extract(ctx, form);
     }
 
     /// Double-click / Enter on a row.

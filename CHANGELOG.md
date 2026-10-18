@@ -2,6 +2,16 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## 0.1.5 - 2026-10-18
+
+- More entries in the Windows 11 right-click menu: **Add to "name.7z"** and **Add to
+  "name.zip"** compress right away with the default settings, **Test archive** checks an
+  archive without extracting it, **Convert to .7z** repacks a zip or other archive, and
+  **Open in r7z** browses a folder. A divider separates them from the entries that make
+  an archive.
+- The welcome tour's Explorer page shows the new menu.
+- `r7z-gui` takes `--add-7z`, `--add-zip`, `--test` and `--convert`, which the menu uses.
+
 ## 0.1.4 - 2026-10-18
 
 The first code-signed release. 0.1.3 was tagged, but its release build stopped at the

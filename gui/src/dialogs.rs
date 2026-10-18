@@ -217,17 +217,7 @@ pub fn default_archive_path(paths: &[PathBuf], fmt: Fmt) -> String {
         return String::new();
     };
     let parent = first.parent().map(Path::to_path_buf).unwrap_or_default();
-    let base = if paths.len() == 1 {
-        if first.is_dir() {
-            first.file_name().map(|n| n.to_string_lossy().into_owned())
-        } else {
-            first.file_stem().map(|n| n.to_string_lossy().into_owned())
-        }
-    } else {
-        parent.file_name().map(|n| n.to_string_lossy().into_owned())
-    }
-    .filter(|b| !b.is_empty())
-    .unwrap_or_else(|| "archive".into());
+    let base = r7z::util::archive_base_name(paths);
     let mut candidate = parent.join(format!("{base}.{}", fmt.ext()));
     let mut n = 2;
     while candidate.exists() {
@@ -1034,6 +1024,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 app.enqueue(ctx, move |ctx| jobs::convert(ctx, a, pw, req, scratch));
                 None
             } else if cancel || close {
+                app.exit_when_done = false;
                 None
             } else {
                 Some(Dialog::Convert(form))

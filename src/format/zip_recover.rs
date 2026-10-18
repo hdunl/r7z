@@ -204,7 +204,7 @@ fn data_end(d: &[u8], f: &mut Found, start: usize, notes: &mut Vec<String>) -> u
     let name = String::from_utf8_lossy(&f.name).into_owned();
     let deferred = f.flags & FLAG_DESCRIPTOR != 0 && f.packed == 0;
     if !deferred {
-        let end = start as u64 + f.packed;
+        let end = (start as u64).saturating_add(f.packed);
         if end > d.len() as u64 {
             let have = d.len() - start;
             notes.push(format!(

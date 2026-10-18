@@ -1,18 +1,18 @@
 //! Extraction and testing for any format. Independent units (7z folders, zip entries)
 //! decode in parallel; a single large LZMA2 folder decodes its blocks in parallel instead.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fs::{self, File, FileTimes};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::mpsc::{self, SyncSender};
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
 
 use rayon::prelude::*;
 
 use crate::error::{Error, Result};
 use crate::format::{Archive, Ctx, Entry, Flow, Link};
 use crate::sevenz::attr;
+use crate::util::saturating_sum;
 use crate::util::time::from_filetime;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +209,8 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
         _ => Overwrite::All,
     };
     let mut dirs_to_stamp: Vec<(PathBuf, usize)> = Vec::new();
+    // New directories, created after the loop (see `create_dirs`).
+    let mut to_create: Vec<(PathBuf, usize)> = Vec::new();
     // Directories this run created: files inside them cannot already exist.
     let mut fresh: HashSet<PathBuf> = HashSet::new();
     if let Target::Disk { dir, .. } = &opts.target {
@@ -281,11 +283,10 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
                     let existed = !parent_fresh && path.is_dir();
                     if let Err(err) = cb.will_write(&path, true, existed) {
                         plan_errors.push((i, err));
-                    } else if let Err(err) = fs::create_dir_all(&path) {
-                        plan_errors.push((i, err.into()));
                     } else {
                         if !existed {
                             fresh.insert(path.clone());
+                            to_create.push((path.clone(), i));
                         }
                         dirs += 1;
                         dirs_to_stamp.push((path, i));
@@ -349,6 +350,11 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
         };
         actions.push(act);
     }
+    for (i, err) in create_dirs(to_create) {
+        dirs -= 1;
+        dirs_to_stamp.retain(|(_, d)| *d != i);
+        plan_errors.push((i, err));
+    }
 
     Ok(Plan {
         actions,
@@ -358,6 +364,22 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
         dirs,
         skipped,
     })
+}
+
+/// Creates directories parents first, one depth level at a time with the directories of
+/// a level in parallel: each creation is a filesystem round trip, and source trees have
+/// hundreds of them. Returns the entries whose directory could not be created.
+fn create_dirs(mut dirs: Vec<(PathBuf, usize)>) -> Vec<(usize, Error)> {
+    dirs.sort_by_key(|(p, _)| p.components().count());
+    let mut errors = Vec::new();
+    for level in dirs.chunk_by(|a, b| a.0.components().count() == b.0.components().count()) {
+        let failed: Vec<(usize, Error)> = level
+            .par_iter()
+            .filter_map(|(p, i)| fs::create_dir_all(p).err().map(|e| (*i, e.into())))
+            .collect();
+        errors.extend(failed);
+    }
+    errors
 }
 
 /// Entries outside every unit have no data: empty files. (Hard links are done last.)
@@ -418,15 +440,40 @@ pub(crate) fn link_hard(a: &dyn Archive, plan: &Plan) -> Vec<(usize, Result<()>)
     out
 }
 
-/// Directory times last, deepest first, since writing children updates them.
+/// Directory times last, deepest first, since writing children updates them. The
+/// directories of one depth level are stamped in parallel.
 pub(crate) fn stamp_dirs(a: &dyn Archive, plan: Plan) {
-    let mut dirs = plan.dirs_to_stamp;
+    let mut dirs = last_per_path(plan.dirs_to_stamp);
     dirs.sort_by_key(|(p, _)| std::cmp::Reverse(p.components().count()));
-    for (p, i) in dirs {
-        if let Some(mt) = a.entries()[i].mtime.and_then(from_filetime) {
-            let _ = filetime::set_file_mtime(&p, filetime::FileTime::from_system_time(mt));
-        }
+    for level in dirs.chunk_by(|a, b| a.0.components().count() == b.0.components().count()) {
+        level.par_iter().for_each(|(p, i)| {
+            if let Some(mt) = a.entries()[*i].mtime.and_then(from_filetime) {
+                let _ = filetime::set_file_mtime(p, filetime::FileTime::from_system_time(mt));
+            }
+        });
     }
+}
+
+/// One entry per directory, the last in archive order: a directory listed twice (an
+/// appended tar, or names differing only in case on Windows) gets the later entry's time,
+/// and no two parallel stamps touch the same directory.
+fn last_per_path(dirs: Vec<(PathBuf, usize)>) -> Vec<(PathBuf, usize)> {
+    let key = |p: &Path| {
+        let s = p.to_string_lossy();
+        if cfg!(windows) {
+            s.to_lowercase()
+        } else {
+            s.into_owned()
+        }
+    };
+    let mut seen = HashSet::new();
+    let mut out: Vec<(PathBuf, usize)> = dirs
+        .into_iter()
+        .rev()
+        .filter(|(p, _)| seen.insert(key(p)))
+        .collect();
+    out.reverse();
+    out
 }
 
 pub fn extract(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -> Result<Report> {
@@ -462,65 +509,93 @@ pub fn extract(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -> Re
     let report = Mutex::new(report);
     let stdout = matches!(opts.target, Target::Stdout);
     let threads = opts.threads.max(1);
-    // Spread threads across concurrently decoded units.
-    let per_unit = if stdout {
-        threads
-    } else {
-        (threads / units.len().max(1)).max(1)
-    };
-    let ctx = Ctx {
-        password: opts.password.clone(),
-        threads: per_unit,
+    // Spread threads across concurrently decoded units by their unpacked size, so a large
+    // unit next to a small one (a 7z with a separate BCJ folder) isn't held to half.
+    let sizes: Vec<u64> = units
+        .iter()
+        .map(|&u| {
+            saturating_sum(
+                a.units()[u]
+                    .entries
+                    .iter()
+                    .map(|&i| entries[i].size.unwrap_or(0)),
+            )
+        })
+        .collect();
+    let total: u64 = saturating_sum(sizes.iter().copied());
+    let ctx_for = |k: usize| {
+        let share = if stdout {
+            threads
+        } else if total == 0 || sizes.contains(&0) {
+            threads / units.len().max(1)
+        } else {
+            (threads as u128 * sizes[k] as u128 / total as u128) as usize
+        };
+        Ctx {
+            password: opts.password.clone(),
+            threads: share.max(1),
+        }
     };
     let to_disk = matches!(opts.target, Target::Disk { .. });
     let check_crc = !a.verifies_data();
 
-    let (tx, rx) = mpsc::sync_channel::<(usize, Vec<u8>)>(64);
-    let rx = Mutex::new(rx);
+    let queue = WriteQueue::new(write_budget());
     std::thread::scope(|scope| -> Result<()> {
         let writers = if to_disk { threads.clamp(2, 8) } else { 0 };
         let handles: Vec<_> = (0..writers)
             .map(|_| {
-                let (rx, report) = (&rx, &report);
-                scope.spawn(move || loop {
-                    let job = rx.lock().unwrap().recv();
-                    let Ok((i, data)) = job else { return };
-                    let e = &entries[i];
-                    if let Action::Write { path, existed } = &actions[i] {
-                        let r = write_whole(path, *existed, e, &data);
-                        let mut rep = report.lock().unwrap();
-                        match r {
-                            Ok(()) => {
-                                rep.files += 1;
-                                rep.bytes += data.len() as u64;
-                                cb.file_done(&e.name);
+                let (queue, report) = (&queue, &report);
+                scope.spawn(move || {
+                    while let Some((i, data)) = queue.pop() {
+                        let e = &entries[i];
+                        // After a cancel the backlog is dropped, not written.
+                        if let (false, Action::Write { path, existed }) =
+                            (cb.cancelled(), &actions[i])
+                        {
+                            let r = write_whole(path, *existed, e, &data);
+                            let mut rep = report.lock().unwrap();
+                            match r {
+                                Ok(()) => {
+                                    rep.files += 1;
+                                    rep.bytes += data.len() as u64;
+                                    cb.file_done(&e.name);
+                                }
+                                Err(err) => rep.errors.push((e.name.clone(), err)),
                             }
-                            Err(err) => rep.errors.push((e.name.clone(), err)),
                         }
+                        queue.done(data.len());
                     }
                 })
             })
             .collect();
-        let sender = if writers > 0 { Some(tx.clone()) } else { None };
-        drop(tx);
+        let sender = (writers > 0).then_some(&queue);
+        // Writers stop once the queue is drained, also when decoding fails early.
+        struct Close<'q>(&'q WriteQueue);
+        impl Drop for Close<'_> {
+            fn drop(&mut self) {
+                self.0.close();
+            }
+        }
+        let close = Close(&queue);
 
-        let run = |u: usize| {
-            let r = decode_unit(a, u, actions, &ctx, check_crc, cb, sender.as_ref());
+        let run = |k: usize, u: usize| {
+            let ctx = ctx_for(k);
+            let r = decode_unit(a, u, actions, &ctx, check_crc, cb, sender);
             let mut rep = report.lock().unwrap();
             rep.files += r.files;
             rep.bytes += r.bytes;
             rep.errors.extend(r.errors);
         };
         if stdout || units.len() <= 1 || threads == 1 {
-            units.iter().for_each(|&u| run(u));
+            units.iter().enumerate().for_each(|(k, &u)| run(k, u));
         } else {
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(threads)
                 .build()
                 .map_err(|e| Error::Other(e.to_string()))?;
-            pool.install(|| units.par_iter().for_each(|&u| run(u)));
+            pool.install(|| units.par_iter().enumerate().for_each(|(k, &u)| run(k, u)));
         }
-        drop(sender);
+        drop(close);
         for h in handles {
             let _ = h.join();
         }
@@ -555,6 +630,93 @@ fn link_or_copy(src: &Path, dst: &Path, existed: bool) -> Result<()> {
     Ok(())
 }
 
+/// How many bytes of decoded small files may wait for the writer threads: enough for the
+/// decoder to run well ahead of file creation, which is the slower side on Windows, and
+/// at most a sixteenth of physical memory. On a source tree, 32 MiB was about as fast as
+/// 64 and 128 MiB, which only raised peak memory.
+fn write_budget() -> u64 {
+    const BUDGET: u64 = 32 << 20;
+    match crate::util::mem::memory() {
+        Some((total, _)) => BUDGET.min(total / 16).max(SMALL_FILE * 4),
+        None => BUDGET,
+    }
+}
+
+/// Decoded files on their way to the writer threads, bounded by their total size rather
+/// than their count: thousands of tiny files fit, a few large ones make the decoder wait.
+/// A file counts against the budget until a writer has finished with it.
+pub(crate) struct WriteQueue {
+    state: Mutex<QueueState>,
+    ready: Condvar,
+    room: Condvar,
+    budget: u64,
+}
+
+struct QueueState {
+    jobs: VecDeque<(usize, Vec<u8>)>,
+    bytes: u64,
+    closed: bool,
+}
+
+impl WriteQueue {
+    fn new(budget: u64) -> Self {
+        WriteQueue {
+            state: Mutex::new(QueueState {
+                jobs: VecDeque::new(),
+                bytes: 0,
+                closed: false,
+            }),
+            ready: Condvar::new(),
+            room: Condvar::new(),
+            budget,
+        }
+    }
+
+    /// Waits for room, then queues the file. False when the writers have stopped.
+    fn push(&self, index: usize, data: Vec<u8>) -> bool {
+        let len = data.len() as u64;
+        let mut st = self.state.lock().unwrap();
+        // An empty queue always takes the file, however large, so nothing waits forever.
+        while !st.closed && st.bytes > 0 && st.bytes + len > self.budget {
+            st = self.room.wait(st).unwrap();
+        }
+        if st.closed {
+            return false;
+        }
+        st.bytes += len;
+        st.jobs.push_back((index, data));
+        self.ready.notify_one();
+        true
+    }
+
+    /// The next file, or None once the queue is closed and empty.
+    fn pop(&self) -> Option<(usize, Vec<u8>)> {
+        let mut st = self.state.lock().unwrap();
+        loop {
+            if let Some(job) = st.jobs.pop_front() {
+                return Some(job);
+            }
+            if st.closed {
+                return None;
+            }
+            st = self.ready.wait(st).unwrap();
+        }
+    }
+
+    /// A writer finished with `len` bytes.
+    fn done(&self, len: usize) {
+        let mut st = self.state.lock().unwrap();
+        st.bytes -= len as u64;
+        self.room.notify_all();
+    }
+
+    fn close(&self) {
+        self.state.lock().unwrap().closed = true;
+        self.ready.notify_all();
+        self.room.notify_all();
+    }
+}
+
 enum Outcome {
     /// Handled here; counts as a finished file.
     Done(u64),
@@ -571,7 +733,7 @@ fn decode_unit(
     ctx: &Ctx,
     check_crc: bool,
     cb: &dyn Callbacks,
-    writers: Option<&SyncSender<(usize, Vec<u8>)>>,
+    writers: Option<&WriteQueue>,
 ) -> Report {
     let unit = &a.units()[u];
     let entries = a.entries();
@@ -689,7 +851,7 @@ fn copy_entry(
     buf: &mut [u8],
     verify: bool,
     cb: &dyn Callbacks,
-    writers: Option<&SyncSender<(usize, Vec<u8>)>>,
+    writers: Option<&WriteQueue>,
 ) -> Result<Outcome> {
     if matches!(action, Action::Skip) {
         return Ok(Outcome::Skipped);
@@ -719,7 +881,7 @@ fn copy_entry(
                 if cb.cancelled() {
                     return Err(Error::Cancelled);
                 }
-                if tx.send((index, data)).is_err() {
+                if !tx.push(index, data) {
                     return Err(Error::Other("file writer stopped".into()));
                 }
                 return Ok(Outcome::Queued);
@@ -886,6 +1048,24 @@ fn set_attributes(_p: &Path, _a: u32) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_directory_listed_twice_keeps_its_last_entry() {
+        let dirs = vec![
+            (PathBuf::from("a"), 0),
+            (PathBuf::from("a").join("b"), 1),
+            (PathBuf::from("a"), 2),
+        ];
+        assert_eq!(
+            last_per_path(dirs),
+            vec![(PathBuf::from("a").join("b"), 1), (PathBuf::from("a"), 2)]
+        );
+        if cfg!(windows) {
+            let dirs = vec![(PathBuf::from("Docs"), 0), (PathBuf::from("docs"), 1)];
+            assert_eq!(last_per_path(dirs), vec![(PathBuf::from("docs"), 1)]);
+        }
+    }
+
     #[test]
     fn path_sanitizing() {
         assert_eq!(

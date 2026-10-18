@@ -2,6 +2,19 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Faster extraction: decoded files wait for the writer threads in a queue bounded by
+  size (32 MiB) instead of by count, so decoding runs ahead of file creation; new
+  directories are created, and directory times set, a depth level at a time in parallel;
+  and a large solid block next to a small one gets most of the decode threads. Extracting
+  a 7-Zip-made 7z of a source tree took 17-25% less time in back-to-back runs.
+- Deflate (zip, gzip, tar.gz) uses the zlib-rs backend: zip creation about 1.5-2x faster,
+  tar.gz testing about 25% faster. The default zip/gzip level moves from zlib 6 to 7,
+  which keeps sizes where they were. Parallel gzip chunks are primed with a preset
+  dictionary instead of compressing the previous 32 KiB again.
+- Adds about 100 KB to each program.
+
 ## 0.1.8 - 2026-10-18
 
 - Smaller download: the desktop app is 10.1 MB instead of 12.7 MB and the Explorer menu

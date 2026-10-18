@@ -40,6 +40,28 @@ How to read this:
   (`lzma-rust2`) against 7-Zip's hand-tuned C and assembly. Archives that r7z writes with
   several blocks decode in parallel.
 - mx1 is on par in speed, with about 1% larger output.
+- **Why mx7-9 aren't split like mx5.** Splitting a group into sub-blocks primed with the
+  whole dictionary keeps the ratio (within 0.03%), but priming a byte through the bt4
+  match finder costs nearly as much as encoding it. On `rea` at mx9: 1 sub-block 32.4 s
+  and 911 MiB; 2 sub-blocks 30.4 s and 1311 MiB; 3 sub-blocks 30.6 s and 1514 MiB; 4
+  sub-blocks 38.2 s. Closing this gap needs a match finder on its own thread, as 7-Zip
+  has.
+
+### Since 0.1.8
+
+Measured back to back on the same machine and `rea` tree (best of 5 runs each):
+
+| | 0.1.8 | Now |
+|---|---|---|
+| Extract 7-Zip's mx5 `.7z` | 1.13-1.38 s | 0.88-1.15 s |
+| Test `.tar.gz` | 0.32 s | 0.23-0.26 s |
+| Create zip (mx5) | 0.78-1.11 s, 24.45 MB | 0.49-0.61 s, 24.38 MB |
+| Create `.tar.gz` | 1.05-1.06 s, 20.54 MB | 0.86-1.10 s, 20.48 MB |
+| Peak memory, extract 7z / zip | 67 / 43 MiB | 83 / 88 MiB |
+
+The ranges are across separate runs on a machine that wasn't idle. Extraction of zip and
+`.tar.gz` changed by less than the run-to-run noise. The tables above predate these
+changes.
 
 `r7z b` runs a self-contained LZMA2 benchmark (`-mmt`, `-mx`, `-md` apply).
 

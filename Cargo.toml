@@ -40,7 +40,7 @@ console = "0.16"
 filetime = "0.2"
 getrandom = "0.4"
 rpassword = "7"
-flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs", "runtime_detection"] }
 bzip2 = "0.6"
 deflate64 = "0.1.12"
 ruzstd = "0.9.1"

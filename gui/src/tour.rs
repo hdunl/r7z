@@ -54,7 +54,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         title: "Right from Explorer",
-        body: "Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. No need to open the app first, and r7z keeps itself up to date with signed updates.",
+        body: "Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. Install r7z to add these menus, and to find r7z in the Start menu and Windows search. It keeps itself up to date with signed updates.",
         image: Some(include_bytes!("../res/tour/menu.webp")),
     },
 ];
@@ -261,17 +261,16 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if page > 0 && button(ui, None, "Back", false, true).clicked() {
                         go = Some(page - 1);
                     }
-                    let installed = *app.explorer.get_or_insert_with(shell::explorer_installed);
                     if page == last
-                        && !installed
-                        && button(ui, None, "Add to right-click menu", false, true).clicked()
+                        && cfg!(windows)
+                        && app.install_state() == crate::install::State::NotInstalled
+                        && button(ui, None, "Install r7z", false, app.install_task.is_none())
+                            .clicked()
                     {
-                        if shell::install_explorer() {
-                            app.toast("r7z is in the right-click menu".into(), true, None);
-                        } else {
-                            app.toast("Couldn't add the menu entries".into(), false, None);
-                        }
-                        app.explorer = Some(shell::explorer_installed());
+                        // The installed copy starts in place of this one; it shouldn't
+                        // show the tour again.
+                        shell::save_setting("tour", "seen");
+                        app.start_install(ctx);
                     }
                 });
             });

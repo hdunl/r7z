@@ -2480,6 +2480,7 @@ fn toasts(app: &mut App, ctx: &egui::Context, p: &Palette) {
             ToastAct::Update => app.install_update(ctx),
             ToastAct::Restart => app.restart(ctx),
             ToastAct::Link(url) => shell::open_path(std::path::Path::new(&url)),
+            ToastAct::Install => app.start_install(ctx),
         }
     } else if let Some(i) = dismiss {
         app.toasts.remove(i);

@@ -79,7 +79,8 @@ def main() -> None:
         files["r7z-shell.msix"] = msix
     else:
         for asset in sorted((ROOT / "package").iterdir()):
-            files[f"package/{asset.name}"] = asset
+            if asset.is_file():  # package/store is the Microsoft Store package
+                files[f"package/{asset.name}"] = asset
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, src in files.items():
             info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))

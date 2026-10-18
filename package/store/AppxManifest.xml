@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Microsoft Store package of r7z. Unlike the sparse package in package/ (which only
+  adds the context menu to a copy installed from the zip), this one contains the programs:
+  the Store installs, updates and signs it. Identity comes from Partner Center; the
+  version is stamped by scripts/make_store_msix.ps1.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 desktop4 desktop5 com rescap">
+  <Identity Name="hdunl.r7zArchiver" Publisher="CN=9C433C95-4122-47AE-9594-04D46037722E" Version="0.0.0.0" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>r7z Archiver</DisplayName>
+    <PublisherDisplayName>hdunl</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+  <Applications>
+    <Application Id="r7z" Executable="r7z-gui.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="r7z Archiver" Description="Open, extract and create archives"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap:Extension Category="windows.fileTypeAssociation">
+          <uap:FileTypeAssociation Name="archive">
+            <uap:DisplayName>Archive</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.7z</uap:FileType>
+              <uap:FileType>.zip</uap:FileType>
+              <uap:FileType>.tar</uap:FileType>
+              <uap:FileType>.gz</uap:FileType>
+              <uap:FileType>.tgz</uap:FileType>
+              <uap:FileType>.bz2</uap:FileType>
+              <uap:FileType>.tbz</uap:FileType>
+              <uap:FileType>.tbz2</uap:FileType>
+              <uap:FileType>.xz</uap:FileType>
+              <uap:FileType>.txz</uap:FileType>
+              <uap:FileType>.zst</uap:FileType>
+              <uap:FileType>.tzst</uap:FileType>
+              <uap:FileType>.lz4</uap:FileType>
+              <uap:FileType>.lzma</uap:FileType>
+              <uap:FileType>.z</uap:FileType>
+              <uap:FileType>.taz</uap:FileType>
+              <uap:FileType>.cab</uap:FileType>
+              <uap:FileType>.cpio</uap:FileType>
+              <uap:FileType>.arj</uap:FileType>
+              <uap:FileType>.lzh</uap:FileType>
+              <uap:FileType>.lha</uap:FileType>
+              <uap:FileType>.rpm</uap:FileType>
+              <uap:FileType>.deb</uap:FileType>
+              <uap:FileType>.xar</uap:FileType>
+              <uap:FileType>.wim</uap:FileType>
+              <uap:FileType>.swm</uap:FileType>
+              <uap:FileType>.esd</uap:FileType>
+              <uap:FileType>.001</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="r7z-gui.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="r7z-gui.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="r7z" Clsid="66a1bda9-0c76-42ff-aad9-95b64d70eb8b" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="r7z" Clsid="66a1bda9-0c76-42ff-aad9-95b64d70eb8b" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="r7z context menu">
+              <com:Class Id="66a1bda9-0c76-42ff-aad9-95b64d70eb8b" Path="r7z_shell.dll" ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+      </Extensions>
+    </Application>
+    <!-- The command line tool: no Start entry, but `r7z` works in any terminal. -->
+    <Application Id="cli" Executable="r7z.exe" EntryPoint="Windows.FullTrustApplication" desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements AppListEntry="none" DisplayName="r7z command line" Description="r7z command line tool"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="r7z.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="r7z.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

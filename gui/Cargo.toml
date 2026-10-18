@@ -11,6 +11,11 @@ repository = "https://github.com/hdunl/r7z"
 name = "r7z-gui"
 path = "src/main.rs"
 
+[features]
+# The Microsoft Store build: the Store installs and updates r7z and its package adds the
+# Explorer menu, so the app's own updater, installer and menu settings are left out.
+store = []
+
 [dependencies]
 r7z = { path = ".." }
 eframe = { version = "0.37", default-features = false, features = ["glow"] }

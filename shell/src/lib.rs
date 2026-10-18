@@ -23,8 +23,12 @@ use windows::Win32::UI::Shell::{
 };
 use windows_core::{implement, Interface, Ref, BOOL, GUID, HRESULT, HSTRING, PWSTR};
 
-/// Registered in the package manifest for the `r7z` verb.
+/// Registered in the package manifest for the `r7z` verb (`package/AppxManifest.xml`, or
+/// `package/store/AppxManifest.xml` for the Microsoft Store build).
+#[cfg(not(feature = "store"))]
 const CLSID_R7Z_MENU: GUID = GUID::from_u128(0xf0cd81fa_1491_4776_a237_812d0f379e9d);
+#[cfg(feature = "store")]
+const CLSID_R7Z_MENU: GUID = GUID::from_u128(0x66a1bda9_0c76_42ff_aad9_95b64d70eb8b);
 
 static MODULE: OnceLock<usize> = OnceLock::new();
 

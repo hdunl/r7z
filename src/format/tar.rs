@@ -640,7 +640,8 @@ fn parse_into(
     Ok(())
 }
 
-/// Reads a sparse 1.0 map (decimal lines, padded to a block) from the data area.
+/// Reads a sparse 1.0 map (decimal lines, padded to a block) from the start of an entry's
+/// `size` data bytes. Returns the map and the bytes it occupied, which never exceed `size`.
 fn read_sparse10(cur: &mut Cursor<'_>, size: u64) -> Result<(Vec<(u64, u64)>, u64)> {
     let mut buf: Vec<u8> = Vec::new();
     let mut nums: Vec<u64> = Vec::new();
@@ -655,6 +656,9 @@ fn read_sparse10(cur: &mut Cursor<'_>, size: u64) -> Result<(Vec<(u64, u64)>, u6
             return Err(Error::corrupt("sparse map truncated"));
         }
         consumed += BLOCK as u64;
+        if consumed > size {
+            return Err(Error::corrupt("sparse map runs past the data"));
+        }
         buf.extend_from_slice(&block);
         while let Some(nl) = buf.iter().position(|&b| b == b'\n') {
             let line: Vec<u8> = buf.drain(..=nl).collect();

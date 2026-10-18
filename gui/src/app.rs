@@ -26,6 +26,10 @@ pub enum Startup {
     Open(PathBuf),
     ExtractHere(PathBuf),
     ExtractTo(PathBuf),
+    /// Several archives selected in Explorer: each goes next to itself, in one batch.
+    ExtractHereAll(Vec<PathBuf>),
+    /// Several archives selected in Explorer: the batch dialog asks where.
+    ExtractToAll(Vec<PathBuf>),
     Add(Vec<PathBuf>),
 }
 
@@ -159,6 +163,9 @@ pub struct App {
     pub pending_extract: Option<bool>,
     pub exit_when_done: bool,
     pub explorer: Option<bool>,
+    /// Windows 11 main-menu registration, checked in the background when Settings opens.
+    pub modern_menu: Option<shell::ModernMenu>,
+    pub modern_task: Option<Task<shell::ModernMenu>>,
     pub focus_search: bool,
     pub scroll_to: Option<usize>,
     title_dark: Option<bool>,
@@ -300,6 +307,8 @@ impl App {
             pending_extract: None,
             exit_when_done: false,
             explorer: None,
+            modern_menu: None,
+            modern_task: None,
             focus_search: false,
             scroll_to: None,
             title_dark: None,
@@ -334,6 +343,28 @@ impl App {
                 app.pending_extract = Some(false);
                 app.open_disk_archive(ctx, p, None);
             }
+            Startup::ExtractHereAll(archives) => {
+                if let Some(dir) = archives.first().and_then(|p| p.parent()) {
+                    app.loc = Loc::Disk(dir.to_path_buf());
+                }
+                app.exit_when_done = true;
+                app.enqueue(ctx, move |ctx| {
+                    jobs::batch_extract(
+                        ctx,
+                        archives,
+                        jobs::BatchDest::Smart,
+                        r7z::ops::extract::Overwrite::Ask,
+                        None,
+                    )
+                });
+            }
+            Startup::ExtractToAll(archives) => {
+                if let Some(dir) = archives.first().and_then(|p| p.parent()) {
+                    app.loc = Loc::Disk(dir.to_path_buf());
+                }
+                app.exit_when_done = true;
+                app.dialog = Some(Dialog::batch(archives));
+            }
             Startup::Add(paths) => {
                 if let Some(dir) = paths.first().and_then(|p| p.parent()) {
                     app.loc = Loc::Disk(dir.to_path_buf());
@@ -358,6 +389,13 @@ impl App {
         self.toast_with(text, ok, actions);
         if let Some(t) = self.toasts.last_mut() {
             t.until = Instant::now() + Duration::from_secs(60);
+        }
+    }
+
+    /// Runs a Windows 11 menu action (status, install, uninstall) off the UI thread.
+    pub fn modern_menu_job(&mut self, ctx: &egui::Context, f: fn() -> shell::ModernMenu) {
+        if self.modern_task.is_none() {
+            self.modern_task = Some(Task::spawn(ctx, move |_| Ok(f())));
         }
     }
 
@@ -1849,6 +1887,10 @@ impl eframe::App for App {
             }
         }
         self.poll_updates(ctx);
+        if let Some(Ok(state)) = self.modern_task.as_mut().and_then(|t| t.take()) {
+            self.modern_task = None;
+            self.modern_menu = Some(state);
+        }
         if self.cjk_pending {
             self.cjk_pending = false;
             theme::install_fonts(ctx, true);

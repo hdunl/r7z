@@ -195,6 +195,165 @@ pub fn uninstall_explorer() -> bool {
     false
 }
 
+/// Whether r7z is in Windows 11's main context menu, which (unlike the classic menu)
+/// only shows commands from packaged apps: r7z registers a sparse package that points at
+/// `r7z_shell.dll` next to the program.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ModernMenu {
+    Installed,
+    /// This copy of r7z can register it.
+    Available,
+    /// It cannot be registered; the reason is shown in Settings.
+    Unavailable(String),
+}
+
+#[cfg(windows)]
+fn powershell(script: &str) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr);
+        Err(err
+            .lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .unwrap_or("PowerShell failed")
+            .to_string())
+    }
+}
+
+/// A path as a single-quoted PowerShell string.
+#[cfg(windows)]
+fn ps_path(p: &Path) -> String {
+    format!("'{}'", p.display().to_string().replace('\'', "''"))
+}
+
+#[cfg(windows)]
+fn reg_value(key: &str, name: &str) -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = Command::new("reg")
+        .args(["query", key, "/v", name])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.lines().find(|l| l.trim_start().starts_with(name))?;
+    line.split_whitespace().last().map(str::to_string)
+}
+
+#[cfg(windows)]
+fn windows_11() -> bool {
+    reg_value(
+        r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+        "CurrentBuild",
+    )
+    .and_then(|b| b.parse::<u32>().ok())
+    .is_some_and(|b| b >= 22000)
+}
+
+#[cfg(windows)]
+fn developer_mode() -> bool {
+    reg_value(
+        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock",
+        "AllowDevelopmentWithoutDevLicense",
+    )
+    .is_some_and(|v| v == "0x1")
+}
+
+/// The package next to this program: a signed `r7z-shell.msix` (releases) or the loose
+/// `package\AppxManifest.xml` of a development build, which needs Developer Mode.
+#[cfg(windows)]
+fn modern_menu_package() -> Result<(PathBuf, bool), String> {
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+        .ok_or("cannot tell where r7z is installed")?;
+    if !dir.join("r7z_shell.dll").is_file() {
+        return Err("This copy of r7z doesn't include the Windows 11 menu.".into());
+    }
+    let msix = dir.join("r7z-shell.msix");
+    if msix.is_file() {
+        return Ok((msix, true));
+    }
+    let loose = dir.join("package").join("AppxManifest.xml");
+    if loose.is_file() && developer_mode() {
+        return Ok((loose, false));
+    }
+    Err("Windows 11's main menu needs a signed release of r7z; until then the entries are under \"Show more options\".".into())
+}
+
+#[cfg(windows)]
+pub fn modern_menu_status() -> ModernMenu {
+    if !windows_11() {
+        return ModernMenu::Unavailable("Windows 10 has only the classic menu.".into());
+    }
+    let installed =
+        powershell("(Get-AppxPackage -Name r7z).Name").is_ok_and(|out| out.trim() == "r7z");
+    if installed {
+        return ModernMenu::Installed;
+    }
+    match modern_menu_package() {
+        Ok(_) => ModernMenu::Available,
+        Err(why) => ModernMenu::Unavailable(why),
+    }
+}
+
+#[cfg(windows)]
+pub fn install_modern_menu() -> ModernMenu {
+    let (package, signed) = match modern_menu_package() {
+        Ok(p) => p,
+        Err(why) => return ModernMenu::Unavailable(why),
+    };
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+        .unwrap_or_default();
+    let script = if signed {
+        format!(
+            "Add-AppxPackage -Path {} -ExternalLocation {}",
+            ps_path(&package),
+            ps_path(&dir)
+        )
+    } else {
+        format!(
+            "Add-AppxPackage -Register {} -ExternalLocation {}",
+            ps_path(&package),
+            ps_path(&dir)
+        )
+    };
+    match powershell(&script) {
+        Ok(_) => modern_menu_status(),
+        Err(e) => ModernMenu::Unavailable(format!("Windows refused the menu package: {e}")),
+    }
+}
+
+#[cfg(windows)]
+pub fn uninstall_modern_menu() -> ModernMenu {
+    let _ = powershell("Get-AppxPackage -Name r7z | Remove-AppxPackage");
+    modern_menu_status()
+}
+
+#[cfg(not(windows))]
+pub fn modern_menu_status() -> ModernMenu {
+    ModernMenu::Unavailable("Only on Windows 11.".into())
+}
+#[cfg(not(windows))]
+pub fn install_modern_menu() -> ModernMenu {
+    modern_menu_status()
+}
+#[cfg(not(windows))]
+pub fn uninstall_modern_menu() -> ModernMenu {
+    modern_menu_status()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Known {
     Home,

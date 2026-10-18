@@ -1,0 +1,24 @@
+[package]
+name = "r7z-shell"
+version = "0.1.1"
+edition = "2021"
+rust-version = "1.95"
+license = "Apache-2.0"
+repository = "https://github.com/hdunl/r7z"
+description = "Windows 11 context menu entries for r7z"
+
+[lib]
+name = "r7z_shell"
+crate-type = ["cdylib"]
+
+[target.'cfg(windows)'.dependencies]
+r7z = { path = ".." }
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+] }
+windows-core = "0.62"

@@ -13,6 +13,9 @@
   <a href="https://github.com/hdunl/r7z/releases/latest"><img src="https://img.shields.io/github/v/release/hdunl/r7z" alt="Latest release"></a>
   <a href="https://github.com/hdunl/r7z/actions/workflows/ci.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/hdunl/r7z"><img src="https://api.scorecard.dev/projects/github.com/hdunl/r7z/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://github.com/hdunl/r7z/actions/workflows/codeql.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/hdunl/r7z/actions/workflows/cflite_batch.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/cflite_batch.yml/badge.svg" alt="Fuzzing"></a>
+  <a href="https://slsa.dev/spec/v1.0/levels#build-l2"><img src="https://slsa.dev/images/gh-badge-level2.svg" alt="SLSA Build Level 2"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <img src="https://img.shields.io/badge/rust-1.95%2B-orange" alt="Rust 1.95+">
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4" alt="Windows 10 | 11">
@@ -63,8 +66,9 @@ executables with no installer and no runtime to set up.
 - **Undo extract:** take back the last five extractions, with any replaced files restored.
 - Drag files out to Explorer, or copy and paste them.
 - Batch extract, convert between formats, and create archives with AES-256.
-- Light and dark themes that follow Windows, Explorer right-click menu, and Ctrl+Shift+F to
-  search everywhere.
+- Light and dark themes that follow Windows, and Ctrl+Shift+F to search everywhere.
+- Explorer right-click menu, including Windows 11's main menu (see
+  [docs/desktop-app.md](docs/desktop-app.md) for what that needs).
 - Updates itself from GitHub releases. Every update is signed, and the signature is
   checked before anything is installed.
 
@@ -156,9 +160,16 @@ Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supp
 
 ## Security
 
-Releases are built and signed by GitHub Actions, with a build provenance attestation
-for every file. Updates are verified against a key built into the app. Details, and how to
-report a vulnerability privately: [SECURITY.md](SECURITY.md).
+| | |
+|---|---|
+| [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/hdunl/r7z) | Automated review of the repository's security practices, updated on every change |
+| [Fuzzing](https://github.com/hdunl/r7z/actions/workflows/cflite_batch.yml) | Archive parsing and damaged-archive recovery are fuzzed on every pull request and daily; every crash found so far is fixed and kept as a regression test |
+| [Code scanning](https://github.com/hdunl/r7z/actions/workflows/codeql.yml) | CodeQL and Clippy on every change |
+| [Dependencies](https://github.com/hdunl/r7z/actions/workflows/ci.yml) | Locked, audited against the RustSec advisory database, and kept current by Dependabot |
+| [Build provenance](https://github.com/hdunl/r7z/attestations) | Releases are built by GitHub Actions from a tag and carry SLSA provenance and a Sigstore bundle (`gh attestation verify`) |
+| [Signed updates](SECURITY.md#how-updates-work) | The app installs an update only if its manifest carries a valid Ed25519 signature and the version is newer |
+
+Details, and how to report a vulnerability privately: [SECURITY.md](SECURITY.md).
 
 ## Contributing
 

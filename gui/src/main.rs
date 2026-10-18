@@ -2,7 +2,7 @@
 //! r7z desktop app: a file browser that treats archives like folders.
 //!
 //! `r7z-gui [archive or folder]` opens it. Explorer menu verbs use
-//! `--extract-here <archive>`, `--extract-to <archive>` and `--add <paths...>`.
+//! `--extract-here <archives...>`, `--extract-to <archives...>` and `--add <paths...>`.
 
 mod app;
 mod dialogs;
@@ -40,12 +40,16 @@ fn parse_args() -> app::Startup {
     let path = |i: usize| args.get(i).map(PathBuf::from);
     match args.first().map(String::as_str) {
         None => app::Startup::None,
-        Some("--extract-here") => path(1)
-            .map(app::Startup::ExtractHere)
-            .unwrap_or(app::Startup::None),
-        Some("--extract-to") => path(1)
-            .map(app::Startup::ExtractTo)
-            .unwrap_or(app::Startup::None),
+        Some("--extract-here") => match &args[1..] {
+            [] => app::Startup::None,
+            [_] => app::Startup::ExtractHere(path(1).unwrap_or_default()),
+            many => app::Startup::ExtractHereAll(many.iter().map(PathBuf::from).collect()),
+        },
+        Some("--extract-to") => match &args[1..] {
+            [] => app::Startup::None,
+            [_] => app::Startup::ExtractTo(path(1).unwrap_or_default()),
+            many => app::Startup::ExtractToAll(many.iter().map(PathBuf::from).collect()),
+        },
         Some("--add") => app::Startup::Add(args[1..].iter().map(PathBuf::from).collect()),
         Some(p) => app::Startup::Open(PathBuf::from(p)),
     }

@@ -13,6 +13,10 @@ Security and maintenance release.
 - AES block handling no longer needs an `unsafe` cast.
 - Both programs carry Windows version information (product name, description, version).
 - Releases include SLSA build provenance (`.intoto.jsonl`) and a Sigstore bundle.
+- An r7z submenu in Windows 11's main context menu (`r7z_shell.dll`), for now with
+  Developer Mode on; the classic entries stay under "Show more options".
+- Selecting several archives and choosing Extract here or Extract to handles them in
+  one batch.
 - Continuous fuzzing of archive parsing and recovery with ClusterFuzzLite, CodeQL code
   scanning, and an OpenSSF Scorecard.
 - Text fields center their text again.

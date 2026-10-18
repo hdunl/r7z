@@ -59,6 +59,7 @@ jobs:
             dist/*.zip
             target/release/r7z.exe
             target/release/r7z-gui.exe
+            target/release/r7z_shell.dll
 
       - name: Attach the provenance to the release
         # The Sigstore bundle verifies offline (`gh attestation verify --bundle`); the

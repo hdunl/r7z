@@ -4,7 +4,7 @@
 
 Reads target/release/r7z.exe and r7z-gui.exe and writes to the output folder:
 
-    r7z-0.1.0-windows-x64.zip   the programs, README and license
+    r7z-0.1.0-windows-x64.zip   the programs, the Windows 11 menu package, README, license
     SHA256SUMS                  hashes of everything above
     r7z-update.txt              manifest the desktop app's updater reads
     r7z-update.sig              Ed25519 signature of r7z-update.txt (hex)
@@ -68,15 +68,29 @@ def main() -> None:
     files = {
         "r7z.exe": ROOT / "target" / "release" / "r7z.exe",
         "r7z-gui.exe": ROOT / "target" / "release" / "r7z-gui.exe",
+        "r7z_shell.dll": ROOT / "target" / "release" / "r7z_shell.dll",
         "README.md": ROOT / "README.md",
         "LICENSE": ROOT / "LICENSE",
     }
+    # The Windows 11 context menu package, stamped with this version.
+    for asset in sorted((ROOT / "package").iterdir()):
+        files[f"package/{asset.name}"] = asset
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, src in files.items():
             info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o644 << 16
-            z.writestr(info, src.read_bytes())
+            data = src.read_bytes()
+            if name == "package/AppxManifest.xml":
+                stamped, n = re.subn(
+                    rb'(<Identity [^>]*Version=")[0-9.]+(")',
+                    rb"\g<1>" + f"{version}.0".encode() + rb"\g<2>",
+                    data,
+                )
+                if n != 1:
+                    sys.exit("package/AppxManifest.xml has no Identity version")
+                data = stamped
+            z.writestr(info, data)
 
     data = zip_path.read_bytes()
     digest = hashlib.sha256(data).hexdigest()

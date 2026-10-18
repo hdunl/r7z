@@ -88,7 +88,15 @@ single 10 MB executable with no installer, and it starts instantly.
 - **Explorer integration:** Settings → "Add to menu" adds "Open with r7z", "Extract here",
   "Extract to folder" and "Add to archive…" to the right-click menu. It writes per-user
   registry keys only (no administrator rights); "Remove from menu" deletes them. These
-  verbs call `r7z-gui --extract-here|--extract-to|--add <path>`.
+  verbs call `r7z-gui --extract-here|--extract-to|--add <paths>`; with several archives
+  selected, "Extract here" runs one batch and "Extract to" asks for one destination.
+  On Windows 11 those entries sit under "Show more options". Windows 11's main menu
+  only takes commands from packaged apps, so r7z also registers a small package
+  (`package\AppxManifest.xml`) whose command handler, `r7z_shell.dll`, adds an **r7z**
+  submenu there. Windows installs such a package only when it is signed with a trusted
+  certificate, or from a loose manifest with Developer Mode on. Until r7z releases are
+  code-signed, Settings offers the main menu only with Developer Mode, and says so
+  otherwise.
 - **Updates:** once a day r7z checks GitHub for a newer release and offers it in a
   toast; Settings → Updates has "Check now", and options to stop checking or to install
   updates without asking. Each release's manifest is signed with Ed25519 and checked

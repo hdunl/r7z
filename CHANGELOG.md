@@ -2,7 +2,7 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.8 - 2026-10-18
 
 - Smaller download: the desktop app is 10.1 MB instead of 12.7 MB and the Explorer menu
   extension 0.3 MB instead of 2.3 MB. The interface libraries are built for size (the

@@ -59,6 +59,13 @@ the user agent `r7z/<version>`.
 
 ## Code signing
 
-The executables are not yet Authenticode-signed, so Windows SmartScreen may warn the first
-time you run a download. The attestation and the hashes above confirm that a file came
-from this repository's release workflow.
+From 0.1.3, `r7z.exe`, `r7z-gui.exe`, `r7z_shell.dll` and the Windows 11 menu package
+(`r7z-shell.msix`) are Authenticode-signed with a Public Trust certificate from
+Microsoft's Artifact Signing service, and timestamped, so the signatures stay valid after
+the certificate rotates. Signing happens in the release workflow, which signs in to Azure
+with GitHub's OIDC token rather than a stored secret; Azure trusts that token only for the
+`release` environment, which only version tags can use. The workflow fails the release if
+any file is unsigned, untimestamped or signed by another certificate.
+
+To check a file, open its Properties → Digital Signatures, or run
+`Get-AuthenticodeSignature r7z-gui.exe` in PowerShell.

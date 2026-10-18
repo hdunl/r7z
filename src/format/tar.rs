@@ -154,7 +154,7 @@ fn pax_time(v: &[u8]) -> Option<u64> {
     for (i, c) in frac.chars().take(7).enumerate() {
         ticks += c.to_digit(10)? as u64 * 10u64.pow(6 - i as u32);
     }
-    Some(unix_to_filetime(secs) + ticks)
+    Some(unix_to_filetime(secs).saturating_add(ticks))
 }
 
 /// Reads a tar stream sequentially, tracking the absolute position.

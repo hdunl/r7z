@@ -2,7 +2,7 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.1.3 - 2026-10-18
 
 - Releases are code-signed (Authenticode, Public Trust, timestamped) through Microsoft's
   Artifact Signing, so Windows shows a verified publisher instead of a SmartScreen warning.

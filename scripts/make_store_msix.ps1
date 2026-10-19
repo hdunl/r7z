@@ -1,4 +1,4 @@
-# Builds the Microsoft Store package of r7z from package/store and a `store` build of the
+# Builds the Microsoft Store package of r7z from crates/r7z-shell/package/store and a `store` build of the
 # programs. The package is not signed: Partner Center signs it when it is published.
 #
 #   cargo build --release --target-dir target/store -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
@@ -14,8 +14,8 @@ $work = Join-Path ([IO.Path]::GetTempPath()) "r7z-store-$PID"
 $stage = Join-Path $work "package"
 Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $stage | Out-Null
-Copy-Item (Join-Path $root "package/store/AppxManifest.xml") $stage
-Copy-Item -Recurse (Join-Path $root "package/store/Assets") $stage
+Copy-Item (Join-Path $root "crates/r7z-shell/package/store/AppxManifest.xml") $stage
+Copy-Item -Recurse (Join-Path $root "crates/r7z-shell/package/store/Assets") $stage
 foreach ($f in "r7z.exe", "r7z-gui.exe", "r7z_shell.dll") {
     Copy-Item (Join-Path $BinDir $f) $stage
 }

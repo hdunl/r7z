@@ -1,8 +1,8 @@
-"""Renders the Microsoft Store package's logos into package/store/Assets.
+"""Renders the Microsoft Store package's logos into crates/r7z-shell/package/store/Assets.
 
     python scripts/store_assets.py
 
-Draws the same mark as gui/src/logo.rs (a graphite tile with an orange zipper) at each
+Draws the same mark as crates/r7z-gui/src/logo.rs (a graphite tile with an orange zipper) at each
 size Windows asks for, instead of scaling one bitmap, so small icons stay sharp.
 """
 from pathlib import Path
@@ -11,7 +11,7 @@ from PIL import Image
 
 TILE = (0x1B, 0x1C, 0x21)
 ACCENT = (0xFF, 0x6B, 0x2C)
-OUT = Path(__file__).resolve().parent.parent / "package" / "store" / "Assets"
+OUT = Path(__file__).resolve().parent.parent / "crates" / "r7z-shell" / "package" / "store" / "Assets"
 
 
 def rounded_rect_sd(x, y, x0, y0, x1, y1, rad):

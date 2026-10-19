@@ -156,7 +156,7 @@ Rust 1.95 or newer with the MSVC toolchain:
 ```bash
 git clone https://github.com/hdunl/r7z
 cd r7z
-cargo build --release
+cargo build --release --workspace
 ```
 
 This builds `target/release/r7z.exe` and `target/release/r7z-gui.exe`. The desktop app's
@@ -182,9 +182,9 @@ Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supp
 | [Code scanning](https://github.com/hdunl/r7z/actions/workflows/codeql.yml) | CodeQL and Clippy on every change |
 | [Dependencies](https://github.com/hdunl/r7z/actions/workflows/ci.yml) | Locked, audited against the RustSec advisory database, and kept current by Dependabot |
 | [Build provenance](https://github.com/hdunl/r7z/attestations) | Releases are built by GitHub Actions from a tag and carry SLSA provenance and a Sigstore bundle (`gh attestation verify`) |
-| [Signed updates](SECURITY.md#how-updates-work) | The app installs an update only if its manifest carries a valid Ed25519 signature and the version is newer |
+| [Signed updates](.github/SECURITY.md#how-updates-work) | The app installs an update only if its manifest carries a valid Ed25519 signature and the version is newer |
 
-Details, and how to report a vulnerability privately: [SECURITY.md](SECURITY.md).
+Details, and how to report a vulnerability privately: [SECURITY.md](.github/SECURITY.md).
 
 ## Contributing
 

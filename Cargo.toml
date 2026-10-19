@@ -1,56 +1,8 @@
 [workspace]
-members = [".", "gui", "shell"]
-exclude = ["fuzz"]
-
-[package]
-name = "r7z"
-version = "0.1.9"
-edition = "2021"
-rust-version = "1.95"
+members = ["crates/r7z", "crates/r7z-gui", "crates/r7z-shell"]
+exclude = ["crates/fuzz"]
+default-members = ["crates/r7z"]
 resolver = "3"
-description = "A fast, lightweight 7z archiver written in Rust, interoperable with 7-Zip"
-license = "Apache-2.0"
-repository = "https://github.com/hdunl/r7z"
-readme = "README.md"
-keywords = ["7z", "zip", "archive", "compression", "lzma"]
-categories = ["compression", "command-line-utilities"]
-default-run = "r7z"
-
-[lib]
-name = "r7z"
-path = "src/lib.rs"
-
-[[bin]]
-name = "r7z"
-path = "src/main.rs"
-
-[dependencies]
-lzma-rust2 = { version = "0.22", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
-aes = "0.9"
-sha2 = "0.11"
-sha1 = "0.11"
-sha3 = "0.12"
-md-5 = "0.11"
-crc32fast = "1.5"
-xxhash-rust = { version = "0.8", features = ["xxh64"] }
-memmap2 = "0.9"
-rayon = "1.12"
-indicatif = "0.18"
-console = "0.16"
-filetime = "0.2"
-getrandom = "0.4"
-rpassword = "7"
-flate2 = { version = "1.1", default-features = false, features = ["zlib-rs", "runtime_detection"] }
-bzip2 = "0.6"
-deflate64 = "0.1.12"
-ruzstd = "0.9.1"
-lz4_flex = { version = "0.14", default-features = false, features = ["std", "frame", "safe-decode", "safe-encode"] }
-hmac = "0.13"
-pbkdf2 = { version = "0.13", default-features = false, features = ["hmac"] }
-ppmd-rust = "1.5"
-encoding_rs = "0.8.35"
-
-[dev-dependencies]
 
 [profile.release]
 opt-level = 3

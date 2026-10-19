@@ -11,7 +11,7 @@ Reads target/release/r7z.exe and r7z-gui.exe and writes to the output folder:
 
 The private key comes from the R7Z_UPDATE_KEY environment variable (PKCS#8 PEM). The script
 refuses to sign when the key does not match the public key built into the app
-(RELEASE_KEY in gui/src/update.rs), so a release can never ship an update that installed
+(RELEASE_KEY in crates/r7z-gui/src/update.rs), so a release can never ship an update that installed
 copies would reject.
 """
 
@@ -42,7 +42,7 @@ def main() -> None:
     version = tag.removeprefix("v")
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         sys.exit(f"tag {tag} is not vMAJOR.MINOR.PATCH")
-    for manifest in (ROOT / "Cargo.toml", ROOT / "gui" / "Cargo.toml"):
+    for manifest in (ROOT / "crates" / "r7z" / "Cargo.toml", ROOT / "crates" / "r7z-gui" / "Cargo.toml"):
         if cargo_version(manifest) != version:
             sys.exit(f"{manifest} is not at version {version}")
 
@@ -57,10 +57,10 @@ def main() -> None:
     ).hex()
     built_in = re.search(
         r'const RELEASE_KEY: &str = "([0-9a-f]{64})"',
-        (ROOT / "gui" / "src" / "update.rs").read_text(encoding="utf-8"),
+        (ROOT / "crates" / "r7z-gui" / "src" / "update.rs").read_text(encoding="utf-8"),
     )
     if not built_in or built_in.group(1) != public:
-        sys.exit("R7Z_UPDATE_KEY does not match RELEASE_KEY in gui/src/update.rs")
+        sys.exit("R7Z_UPDATE_KEY does not match RELEASE_KEY in crates/r7z-gui/src/update.rs")
 
     out.mkdir(parents=True, exist_ok=True)
     zip_name = f"r7z-{version}-windows-x64.zip"
@@ -78,7 +78,7 @@ def main() -> None:
     if msix.is_file():
         files["r7z-shell.msix"] = msix
     else:
-        for asset in sorted((ROOT / "package").iterdir()):
+        for asset in sorted((ROOT / "crates" / "r7z-shell" / "package").iterdir()):
             if asset.is_file():  # package/store is the Microsoft Store package
                 files[f"package/{asset.name}"] = asset
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:

@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4.13"
-r7z = { path = ".." }
+r7z = { path = "../r7z" }
 
 # Kept out of the main workspace; built with `cargo fuzz`.
 [workspace]

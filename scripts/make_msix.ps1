@@ -1,5 +1,5 @@
 # Builds r7z-shell.msix, the sparse package that puts r7z in Windows 11's main context
-# menu, from package/ with the release version and the signing certificate's subject as
+# menu, from crates/r7z-shell/package with the release version and the signing certificate's subject as
 # publisher (Windows installs the package only when the two match).
 #
 #   pwsh scripts/make_msix.ps1 -Version 0.1.3 -Publisher "CN=..., O=..., C=US" -Out target/release/r7z-shell.msix
@@ -13,8 +13,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $stage = Join-Path ([IO.Path]::GetTempPath()) "r7z-msix-$PID"
 Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory $stage | Out-Null
-# package/store holds the Microsoft Store package, which is built separately.
-Get-ChildItem -File (Join-Path $root "package") | Copy-Item -Destination $stage
+# Its store/ folder holds the Microsoft Store package, which is built separately.
+Get-ChildItem -File (Join-Path $root "crates/r7z-shell/package") | Copy-Item -Destination $stage
 
 $manifest = Join-Path $stage "AppxManifest.xml"
 [xml]$xml = Get-Content -Raw $manifest

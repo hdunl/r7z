@@ -3,26 +3,33 @@
 ## Layout
 
 ```text
-src/
-  sevenz/   7z container: data model, header reader (memory-mapped), header writer
-  format/   the format layer: Archive trait, registry and detection, nesting, one module
-            per format (zip, tar, stream compressors, cab, cpio, ar, rpm, arj, lzh, xar,
-            wim, split/base64/ihex), non-7z writers
-  codec/    method registry, decode graph, encode chain, 7zAES, parallel LZMA2, parallel
-            Deflate/bzip2/xz encoders, parallel bzip2 decoder, zip crypto, LZW, LZX,
-            Quantum, MSZIP, LZH/ARJ decoders
-  ops/      create, extract/test (format-neutral), damaged-archive recovery, hash,
-            benchmark workflows
-  util/     CRC64, wildcards, FILETIME/DOS time conversion, code pages, memory, formatting
-  cli/      7-Zip-compatible argument parser, terminal UI
-gui/        desktop app (egui): archive tree model, background jobs, dialogs, theme,
-            painter-drawn icons, Explorer integration, Open as folder (ProjFS provider)
-tests/      round trips and fixture reads per format (no external tools needed)
-scripts/    interop.sh (two-way 7-Zip matrix), compare.py (benchmarks)
+crates/
+  r7z/          library and command line tool
+    src/
+      sevenz/   7z container: data model, header reader (memory-mapped), header writer
+      format/   the format layer: Archive trait, registry and detection, nesting, one
+                module per format (zip, tar, stream compressors, cab, cpio, ar, rpm, arj,
+                lzh, xar, wim, split/base64/ihex), non-7z writers
+      codec/    method registry, decode graph, encode chain, 7zAES, parallel LZMA2,
+                parallel Deflate/bzip2/xz encoders, parallel bzip2 decoder, zip crypto,
+                LZW, LZX, Quantum, MSZIP, LZH/ARJ decoders
+      ops/      create, extract/test (format-neutral), damaged-archive recovery, hash,
+                benchmark workflows
+      util/     CRC64, wildcards, FILETIME/DOS time conversion, code pages, memory,
+                formatting
+      cli/      7-Zip-compatible argument parser, terminal UI
+    tests/      round trips and fixture reads per format (no external tools needed)
+  r7z-gui/      desktop app (egui): archive tree model, background jobs, dialogs, theme,
+                painter-drawn icons, Explorer integration, Open as folder (ProjFS)
+  r7z-shell/    Windows 11 context menu (a COM server) and its package manifests
+  fuzz/         cargo-fuzz targets, outside the workspace
+  winres.rs     version information and icons, shared by the build scripts
+scripts/        interop.sh (two-way 7-Zip matrix), compare.py (benchmarks), release
+                packaging
 ```
 
 Third-party codecs, all pure Rust: [`lzma-rust2`](https://crates.io/crates/lzma-rust2)
-(LZMA/LZMA2/xz, BCJ, BCJ2, Delta), `flate2` with `miniz_oxide` (Deflate), `deflate64`,
+(LZMA/LZMA2/xz, BCJ, BCJ2, Delta), `flate2` with `zlib-rs` (Deflate), `deflate64`,
 `bzip2` with `libbz2-rs-sys`, `ruzstd`, `lz4_flex` and `ppmd-rust`. Everything else is r7z
 code: the containers, the coder graph, 7zAES and zip encryption, the parallel encoders,
 the parallel bzip2 decoder, the LZW, LZX, Quantum, LZH and ARJ decoders, the extraction
@@ -31,7 +38,7 @@ pipeline and the CLI.
 ## Testing
 
 ```bash
-cargo test --release                   # unit, round-trip and fixture tests
+cargo test --release --workspace       # unit, round-trip and fixture tests
 scripts/interop.sh target/release/r7z 7z
 R7Z_MOUNT_TEST=some.7z cargo test --release -p r7z-gui -- --ignored mount
 ```
@@ -66,6 +73,6 @@ and 4), LZH methods `-lh1-` to `-lh6-`, `-lzs-` and `-lz5-` (each checked agains
 Bandizip when they can read it), Quantum CABs, crc and big-endian cpio, rpm, deb, MS
 `.lib`, zstd, lz4, lzma86, Base64, Intel HEX, ZIP64 and GNU/pax sparse tars. Every fixture
 is also truncated and bit-flipped to check that damage is reported without a panic.
-`tests/recover.rs` damages archives it builds on purpose (a zeroed central directory, a
+`crates/r7z/tests/recover.rs` damages archives it builds on purpose (a zeroed central directory, a
 truncated zip, 7z, tar.gz and bzip2, a zeroed 7z start header, changed bytes in the middle
 of a solid block, a destroyed tar header) and checks exactly which files come back.

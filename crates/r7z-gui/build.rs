@@ -2,7 +2,7 @@
 //! is rendered from the same code as the window icon.
 
 include!("src/logo.rs");
-include!("../build/winres.rs");
+include!("../winres.rs");
 
 use std::path::PathBuf;
 
@@ -64,7 +64,7 @@ fn main() {
             manifest.display()
         );
     }
-    println!("cargo:rerun-if-changed=../build/winres.rs");
+    println!("cargo:rerun-if-changed=../winres.rs");
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let ico_path = out.join("r7z.ico");
     std::fs::write(&ico_path, ico(&[16, 20, 24, 32, 40, 48, 64, 128, 256])).unwrap();

@@ -15,19 +15,19 @@ Security problems go through [private reporting](SECURITY.md) instead.
 You need Rust 1.95 or newer with the MSVC toolchain.
 
 ```bash
-cargo build --release          # target/release/r7z.exe and r7z-gui.exe
-cargo test --release           # unit, round-trip and fixture tests
+cargo build --release --workspace   # target/release/r7z.exe, r7z-gui.exe, r7z_shell.dll
+cargo test --release --workspace    # unit, round-trip and fixture tests
 cargo clippy --workspace       # should print no warnings
 ```
 
 `scripts/interop.sh target/release/r7z 7z` runs the two-way compatibility matrix against
 an installed 7-Zip. The source layout is described in
-[docs/development.md](docs/development.md).
+[docs/development.md](../docs/development.md).
 
 ## Pull requests
 
 - Keep each pull request to one change, and include a test when you fix a bug or add a
-  format. Fixture archives go in `tests/fixtures/`; keep them small and make sure you are
+  format. Fixture archives go in `crates/r7z/tests/fixtures/`; keep them small and make sure you are
   allowed to share them.
 - Archives are untrusted input. New parsing code must not panic, allocate without a bound,
   or write outside the destination, whatever the archive says.
@@ -35,4 +35,4 @@ an installed 7-Zip. The source layout is described in
 - CI must pass: build, tests, clippy and the dependency audit.
 
 By submitting a pull request you agree that your contribution is licensed under the
-[Apache License 2.0](LICENSE), like the rest of the project.
+[Apache License 2.0](../LICENSE), like the rest of the project.

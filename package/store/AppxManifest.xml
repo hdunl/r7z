@@ -30,7 +30,7 @@
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
   <Applications>
-    <Application Id="r7z" Executable="r7z-gui.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="r7z" Executable="r7z-gui.exe" EntryPoint="Windows.FullTrustApplication" desktop4:SupportsMultipleInstances="true">
       <uap:VisualElements DisplayName="r7z Archiver" Description="Open, extract and create archives"
         BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
       <Extensions>
@@ -70,9 +70,11 @@
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>
-        <uap5:Extension Category="windows.appExecutionAlias" Executable="r7z-gui.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap5:AppExecutionAlias>
-            <uap5:ExecutionAlias Alias="r7z-gui.exe" />
+        <!-- The command line tool. The Store accepts only apps with a Start entry, and an
+             app declares one alias, so the desktop app's entry carries `r7z`. -->
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="r7z.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="r7z.exe" />
           </uap5:AppExecutionAlias>
         </uap5:Extension>
         <desktop4:Extension Category="windows.fileExplorerContextMenus">
@@ -92,18 +94,6 @@
             </com:SurrogateServer>
           </com:ComServer>
         </com:Extension>
-      </Extensions>
-    </Application>
-    <!-- The command line tool: no Start entry, but `r7z` works in any terminal. -->
-    <Application Id="cli" Executable="r7z.exe" EntryPoint="Windows.FullTrustApplication" desktop4:Subsystem="console" desktop4:SupportsMultipleInstances="true">
-      <uap:VisualElements AppListEntry="none" DisplayName="r7z command line" Description="r7z command line tool"
-        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
-      <Extensions>
-        <uap5:Extension Category="windows.appExecutionAlias" Executable="r7z.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap5:AppExecutionAlias desktop4:Subsystem="console">
-            <uap5:ExecutionAlias Alias="r7z.exe" />
-          </uap5:AppExecutionAlias>
-        </uap5:Extension>
       </Extensions>
     </Application>
   </Applications>

@@ -2,6 +2,8 @@
   <img src="docs/logo.png" width="96" alt="r7z logo">
 </p>
 
+<a href="https://apps.microsoft.com/detail/9pk1s8689jln"><b>Windows Store Download</b></a>
+
 <h1 align="center">r7z</h1>
 
 <p align="center">

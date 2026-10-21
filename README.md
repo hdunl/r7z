@@ -2,14 +2,14 @@
   <img src="docs/logo.png" width="96" alt="r7z logo">
 </p>
 
-<a href="https://apps.microsoft.com/detail/9pk1s8689jln"><b>Windows Store Download</b></a>
-
 <h1 align="center">r7z</h1>
 
 <p align="center">
   A fast archiver for Windows, written in Rust.<br>
   Opens what 7-Zip opens, writes 7z, zip and tar, and extracts several times faster.
 </p>
+
+<a href="https://apps.microsoft.com/detail/9pk1s8689jln"><b>Windows Store Download</b></a>
 
 <p align="center">
   <a href="https://github.com/hdunl/r7z/releases/latest"><img src="https://img.shields.io/github/v/release/hdunl/r7z" alt="Latest release"></a>

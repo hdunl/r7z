@@ -2,7 +2,7 @@
 
 | Area | Support |
 |---|---|
-| Commands | `a` add, `x` extract, `e` extract flat, `l` list (`-slt`), `t` test, `h` hash, `b` benchmark, `i` formats and codecs |
+| Commands | `a` add (or replace, in an existing archive), `u` update (replace only older entries), `d` delete, `rn` rename, `x` extract, `e` extract flat, `l` list (`-slt`), `t` test, `h` hash, `b` benchmark, `i` formats and codecs |
 | Formats | see the table below; `-t{type}` forces a type, otherwise r7z detects it by signature, then extension |
 | Nested archives | a tar (or cpio) inside gzip, bzip2, xz, zstd, lz4, Z or lzma opens as one archive; so do split volumes, an rpm's payload and a deb's `data.tar.*`. `-tgzip` (or any stream type) stops at the outer level |
 | 7z codecs | write LZMA2, LZMA, Copy, BCJ, Delta, 7zAES; read also PPMd, BZip2, Deflate, Deflate64, BCJ2, ARM, ARMT, ARM64, PPC, SPARC, IA64, RISC-V |
@@ -46,6 +46,36 @@ are 0 (ok), 1 (warning), 2 (error) and 7 (usage), as in 7-Zip.
 `a` picks the format from `-t` or the archive name (`.zip`, `.tar`, `.tar.gz`, `.tgz`,
 `.tar.bz2`, `.tar.xz`, `.gz`, `.bz2`, `.xz`; anything else is 7z).
 
+### Updating archives
+
+`a`, `u`, `d` and `rn` change an existing 7z, zip, tar, tar.gz, tar.bz2 or tar.xz archive
+(and a single-file `.gz`, `.bz2` or `.xz`):
+
+- `a` adds the named files and directories, replacing entries of the same name; `u` does
+  the same only for entries the file on disk is newer than (compared to the second, since
+  tar stores whole seconds). Entries not named are kept.
+- `d` deletes the entries the names, `-i` and `-x` select; a name that is a directory
+  takes its contents with it. `rn` takes pairs, `old new`: a directory moves with its
+  contents, and wildcards in `old` (matched against the last component, or the whole path
+  when it has a `/`) carry into `new` through its `*` and `?`.
+- 7z copies every folder that keeps all its entries as it is, packed bytes included, and
+  decodes and encodes again only the solid blocks that lost an entry. A rename changes
+  only the header. Zip copies the local header and data of each kept entry byte for byte
+  and writes a new central directory, so ZIP64, AES and data descriptors are preserved.
+  Tar streams are rewritten, compressed again for tar.gz, tar.bz2 and tar.xz.
+- The new archive is written to a temporary file beside the archive, which replaces it
+  only when the whole update succeeded. A failed or cancelled update leaves the archive
+  as it was.
+- Adding and deleting in an archive with encrypted data needs its password (`-p`);
+  renaming changes names without decoding anything, so it needs none. A wrong password is
+  found before anything is written. New data is encrypted with the password; the existing
+  encrypted entries must open with it, so an archive never ends up with two passwords. A
+  7z whose header was encrypted keeps that encryption.
+- Not updatable: archives with data before their first entry (self-extracting zip stubs),
+  zip archives whose entries overlap, and other formats (r7z reports which). A tar hard
+  link names its target, so renaming or deleting that target leaves the link pointing at
+  nothing; update the link too, or re-create it.
+
 Compared with 7-Zip's console tool, r7z also:
 
 - shows a live progress bar with throughput and ETA (on a terminal; `-bd` turns it off);
@@ -72,8 +102,6 @@ Compared with 7-Zip's console tool, r7z also:
 
 ## Not supported yet
 
-- Updating an existing archive (`a` on an existing file, `u`, `d`, `rn`). `a` refuses to
-  overwrite an existing archive.
 - RAR, disk images (ISO, UDF, VHD, VMDK, DMG, QCOW, file systems) and installers (NSIS,
   MSI/Compound, PE resources, SFX archives behind a stub).
 - Writing zstd, lz4, Z and the read-only formats above; writing ZipCrypto (r7z encrypts

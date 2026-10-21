@@ -19,6 +19,22 @@ use crate::sevenz::attr;
 use crate::util::codepage;
 use crate::util::time::{filetime_to_unix, unix_to_filetime};
 
+#[path = "tar_update.rs"]
+mod rewrite;
+
+/// Carries out an update: rewrites the tar stream from `open` into `tmp`, compressed with
+/// `compress` when given.
+pub fn update(
+    open: Opener,
+    tmp: &std::path::Path,
+    plan: &crate::ops::update::Plan,
+    compress: Option<super::write::Compressor>,
+    opts: &super::write::WriteOptions,
+    progress: &dyn crate::ops::create::Progress,
+) -> Result<crate::ops::update::Outcome> {
+    rewrite::update(open, tmp, plan, compress, opts, progress)
+}
+
 pub const FORMAT: Format = Format {
     name: "tar",
     aliases: &["ustar", "pax", "gnutar"],
@@ -268,10 +284,36 @@ struct Pending {
     pax: HashMap<String, Vec<u8>>,
 }
 
-fn parse(cur: &mut Cursor<'_>) -> Result<(Vec<Entry>, Vec<Option<DataRef>>)> {
+/// Where a record's bytes sit in the stream, for rewriting it (see `tar_update`).
+#[derive(Clone, Copy, Debug)]
+enum Span {
+    /// An entry: its extension headers and main header (`start..data`), its data
+    /// (`data..end`, padded to whole blocks).
+    Entry {
+        index: usize,
+        start: u64,
+        data: u64,
+        end: u64,
+    },
+    /// A pax global header, which applies to the entries after it.
+    Global { start: u64, end: u64 },
+}
+
+impl Span {
+    fn end(&self) -> u64 {
+        match *self {
+            Span::Entry { end, .. } | Span::Global { end, .. } => end,
+        }
+    }
+}
+
+fn parse(
+    cur: &mut Cursor<'_>,
+    spans: Option<&mut Vec<Span>>,
+) -> Result<(Vec<Entry>, Vec<Option<DataRef>>)> {
     let mut entries = Vec::new();
     let mut refs = Vec::new();
-    match parse_into(cur, &mut entries, &mut refs) {
+    match parse_into(cur, &mut entries, &mut refs, spans) {
         Ok(()) => Ok((entries, refs)),
         // Recovery keeps the entries before the damage.
         Err(e) if cur.lenient.is_some() && !matches!(e, Error::Cancelled) => {
@@ -318,11 +360,15 @@ fn parse_into(
     cur: &mut Cursor<'_>,
     entries: &mut Vec<Entry>,
     refs: &mut Vec<Option<DataRef>>,
+    mut spans: Option<&mut Vec<Span>>,
 ) -> Result<()> {
     let mut global: HashMap<String, Vec<u8>> = HashMap::new();
     let mut pend = Pending::default();
     let mut h = [0u8; BLOCK];
+    // Where the current record starts: its first extension header, or its main header.
+    let mut record_start: Option<u64> = None;
     loop {
+        let header_at = cur.pos;
         if !cur.read_block(&mut h)? {
             break;
         }
@@ -366,19 +412,28 @@ fn parse_into(
         match typ {
             b'L' => {
                 pend.long_name = Some(cstr(&cur.read_vec(size)?).to_vec());
+                record_start.get_or_insert(header_at);
                 continue;
             }
             b'K' => {
                 pend.long_link = Some(cstr(&cur.read_vec(size)?).to_vec());
+                record_start.get_or_insert(header_at);
                 continue;
             }
             b'x' | b'X' => {
                 let recs = pax_records(&cur.read_vec(size)?);
                 pend.pax.extend(recs);
+                record_start.get_or_insert(header_at);
                 continue;
             }
             b'g' => {
                 global.extend(pax_records(&cur.read_vec(size)?));
+                if let Some(spans) = spans.as_deref_mut() {
+                    spans.push(Span::Global {
+                        start: header_at,
+                        end: cur.pos,
+                    });
+                }
                 continue;
             }
             _ => {}
@@ -634,6 +689,15 @@ fn parse_into(
                 d.stored = size;
             }
         }
+        let start = record_start.take().unwrap_or(header_at);
+        if let Some(spans) = spans.as_deref_mut() {
+            spans.push(Span::Entry {
+                index: entries.len(),
+                start,
+                data: at,
+                end: cur.pos,
+            });
+        }
         entries.push(e);
         refs.push(dref);
     }
@@ -702,7 +766,7 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
                 lenient,
                 legacy_links: Vec::new(),
             };
-            let (e, refs) = parse(&mut cur)?;
+            let (e, refs) = parse(&mut cur, None)?;
             let end = cur.pos;
             notes = cur.lenient.take().unwrap_or_default();
             links = std::mem::take(&mut cur.legacy_links);
@@ -723,7 +787,7 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
                 lenient,
                 legacy_links: Vec::new(),
             };
-            let (e, refs) = parse(&mut cur)?;
+            let (e, refs) = parse(&mut cur, None)?;
             let end = cur.pos;
             notes = cur.lenient.take().unwrap_or_default();
             links = std::mem::take(&mut cur.legacy_links);

@@ -4,6 +4,7 @@ pub mod ui;
 
 use args::Command;
 use r7z::error::{Error, Result};
+use r7z::ops::update::Replace;
 
 pub const EXIT_OK: i32 = 0;
 pub const EXIT_WARNING: i32 = 1;
@@ -13,7 +14,10 @@ pub const EXIT_USAGE: i32 = 7;
 pub fn run(argv: Vec<String>) -> Result<i32> {
     let a = args::parse(argv)?;
     match a.command {
-        Command::Add => commands::add(&a),
+        Command::Add => commands::add(&a, Replace::Always),
+        Command::Update => commands::add(&a, Replace::IfNewer),
+        Command::Delete => commands::delete(&a),
+        Command::Rename => commands::rename(&a),
         Command::Extract { full_paths } => commands::extract(&a, full_paths, false),
         Command::Test => commands::extract(&a, true, true),
         Command::List => commands::list(&a),

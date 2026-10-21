@@ -143,7 +143,7 @@ const EXE_EXTS: &[&str] = &[
     "lib", "a", "node", "pyd",
 ];
 
-fn is_executable_name(name: &str) -> bool {
+pub(crate) fn is_executable_name(name: &str) -> bool {
     let ext = name
         .rsplit_once('.')
         .map(|(_, e)| e.to_ascii_lowercase())
@@ -157,17 +157,17 @@ fn sort_for_solid(items: &[Item], group: &mut [usize]) {
     group.sort_by(|&a, &b| items[a].name.cmp(&items[b].name));
 }
 
-struct Job {
-    items: Vec<usize>,
-    filter: Option<EncMethod>,
-    total: u64,
+pub(crate) struct Job {
+    pub(crate) items: Vec<usize>,
+    pub(crate) filter: Option<EncMethod>,
+    pub(crate) total: u64,
 }
 
-struct FolderResult {
-    folder: Folder,
-    pack_size: u64,
+pub(crate) struct FolderResult {
+    pub(crate) folder: Folder,
+    pub(crate) pack_size: u64,
     /// (item index, bytes, crc) for each stored stream, in order.
-    streams: Vec<(usize, u64, u32)>,
+    pub(crate) streams: Vec<(usize, u64, u32)>,
 }
 
 fn lzma_options(opts: &CreateOptions, data_size: u64) -> LzmaOptions {
@@ -352,8 +352,29 @@ pub fn bench_method(opts: &CreateOptions, total: u64, threads: usize) -> EncMeth
     main_method(opts, total, threads)
 }
 
+/// Where a folder's file data comes from.
+pub(crate) enum Feed<'r> {
+    /// The files named by the items.
+    Disk,
+    /// Consecutive entries of an already decoded folder, each `size` bytes long.
+    Decoded(&'r mut dyn Read),
+}
+
+/// Reads up to `buf.len()` bytes of decoded folder data, failing when the data ends early.
+fn read_decoded(src: &mut dyn Read, buf: &mut [u8]) -> Result<usize> {
+    loop {
+        match src.read(buf) {
+            Ok(0) => return Err(Error::corrupt("folder data ends early")),
+            Ok(n) => return Ok(n),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(Error::corrupt(format!("folder data is damaged: {e}"))),
+        }
+    }
+}
+
 /// Encodes one folder's files into `out`. Unreadable files are skipped with a warning.
-fn encode_folder<W: Write>(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn encode_folder<W: Write>(
     job: &Job,
     items: &[Item],
     opts: &CreateOptions,
@@ -361,6 +382,7 @@ fn encode_folder<W: Write>(
     threads: usize,
     out: &mut W,
     progress: &dyn Progress,
+    feed: Feed<'_>,
 ) -> Result<FolderResult> {
     let mut methods = Vec::new();
     if let Some(f) = &job.filter {
@@ -390,7 +412,8 @@ fn encode_folder<W: Write>(
     let mut streams = Vec::with_capacity(job.items.len());
     let paths: Vec<&Path> = job.items.iter().map(|&i| items[i].src.as_path()).collect();
     let sizes: Vec<u64> = job.items.iter().map(|&i| items[i].size).collect();
-    let readers = if job.items.len() >= 16 {
+    let mut feed = feed;
+    let readers = if matches!(feed, Feed::Disk) && job.items.len() >= 16 {
         threads.clamp(2, 8)
     } else {
         0
@@ -399,6 +422,25 @@ fn encode_folder<W: Write>(
         let pre = Prefetch::start(scope, &paths, &sizes, readers);
         for (k, &i) in job.items.iter().enumerate() {
             let item = &items[i];
+            if let Feed::Decoded(src) = &mut feed {
+                let mut crc = crc32fast::Hasher::new();
+                let mut left = item.size;
+                while left > 0 {
+                    let want = left.min(buf.len() as u64) as usize;
+                    let n = read_decoded(&mut **src, &mut buf[..want])?;
+                    crc.update(&buf[..n]);
+                    enc.write_all(&buf[..n]).map_err(Error::from_codec)?;
+                    left -= n as u64;
+                    if count_reads {
+                        progress.add(n as u64);
+                    }
+                    if progress.cancelled() {
+                        return Err(Error::Cancelled);
+                    }
+                }
+                streams.push((i, item.size, crc.finalize()));
+                continue;
+            }
             let mut crc = crc32fast::Hasher::new();
             let mut n = 0u64;
             match pre.as_ref().and_then(|p| p.take(k)) {
@@ -464,7 +506,7 @@ fn encode_folder<W: Write>(
     })
 }
 
-fn plan_jobs(items: &[Item], stream_items: &[usize], opts: &CreateOptions) -> Vec<Job> {
+pub(crate) fn plan_jobs(items: &[Item], stream_items: &[usize], opts: &CreateOptions) -> Vec<Job> {
     let compressing = opts.method != MainMethod::Copy;
     let (mut exe, mut other): (Vec<usize>, Vec<usize>) = match opts.filter {
         FilterMode::Auto if compressing => stream_items
@@ -525,6 +567,99 @@ fn plan_jobs(items: &[Item], stream_items: &[usize], opts: &CreateOptions) -> Ve
     jobs
 }
 
+/// Encodes every job into `out`, in job order. Non-solid jobs are compressed concurrently in
+/// batches; large jobs get the multithreaded encoder. Returns the folders and the number of
+/// threads used.
+pub(crate) fn encode_jobs<W: Write>(
+    jobs: &[Job],
+    items: &[Item],
+    opts: &CreateOptions,
+    aes_key: Option<&[u8; 32]>,
+    progress: &dyn Progress,
+    out: &mut W,
+) -> Result<(Vec<FolderResult>, usize)> {
+    let threads = opts.threads.max(1);
+    let mut results: Vec<FolderResult> = Vec::with_capacity(jobs.len());
+    let mut threads_used = 1usize;
+    if opts.solid_limit.is_none() && jobs.len() > 1 {
+        // Non-solid: many small folders. Compress batches of them concurrently into memory,
+        // then append in order. Large files use the multithreaded encoder.
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let big = 32u64 << 20;
+        let batch_limit = (256u64 << 20).max(big * threads as u64);
+        let mut i = 0;
+        while i < jobs.len() {
+            if jobs[i].total >= big {
+                results.push(encode_folder(
+                    &jobs[i],
+                    items,
+                    opts,
+                    aes_key,
+                    threads,
+                    out,
+                    progress,
+                    Feed::Disk,
+                )?);
+                threads_used = threads_used.max(threads);
+                i += 1;
+                continue;
+            }
+            let start = i;
+            let mut acc = 0u64;
+            while i < jobs.len()
+                && jobs[i].total < big
+                && (acc == 0 || acc + jobs[i].total <= batch_limit)
+            {
+                acc += jobs[i].total;
+                i += 1;
+            }
+            let batch: Vec<Result<(Vec<u8>, FolderResult)>> = pool.install(|| {
+                jobs[start..i]
+                    .par_iter()
+                    .map(|job| {
+                        let mut buf = Vec::with_capacity((job.total / 2) as usize + 64);
+                        let r = encode_folder(
+                            job,
+                            items,
+                            opts,
+                            aes_key,
+                            1,
+                            &mut buf,
+                            progress,
+                            Feed::Disk,
+                        )?;
+                        Ok((buf, r))
+                    })
+                    .collect()
+            });
+            threads_used = threads_used.max(threads.min(i - start));
+            for r in batch {
+                let (buf, fr) = r?;
+                out.write_all(&buf)?;
+                results.push(fr);
+            }
+        }
+    } else {
+        for job in jobs {
+            results.push(encode_folder(
+                job,
+                items,
+                opts,
+                aes_key,
+                threads,
+                out,
+                progress,
+                Feed::Disk,
+            )?);
+        }
+        threads_used = threads;
+    }
+    Ok((results, threads_used))
+}
+
 /// Creates `archive` from `items`. Writes to a temporary file and renames it into place.
 pub fn create(
     archive: &Path,
@@ -532,7 +667,6 @@ pub fn create(
     opts: &CreateOptions,
     progress: &dyn Progress,
 ) -> Result<Summary> {
-    let threads = opts.threads.max(1);
     let aes_key = match &opts.password {
         Some(p) => Some(derive_key(p, &[], DEFAULT_CYCLES_POWER)?),
         None => None,
@@ -556,81 +690,8 @@ pub fn create(
         let mut out = BufWriter::with_capacity(1 << 20, file);
         out.write_all(&[0u8; SIGNATURE_HEADER_SIZE as usize])?;
 
-        let mut results: Vec<FolderResult> = Vec::with_capacity(jobs.len());
-        let mut threads_used = 1usize;
-        if opts.solid_limit.is_none() && jobs.len() > 1 {
-            // Non-solid: many small folders. Compress batches of them concurrently into
-            // memory, then append in order. Large files use the multithreaded encoder.
-            let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(threads)
-                .build()
-                .map_err(|e| Error::Other(e.to_string()))?;
-            let big = 32u64 << 20;
-            let batch_limit = (256u64 << 20).max(big * threads as u64);
-            let mut i = 0;
-            while i < jobs.len() {
-                if jobs[i].total >= big {
-                    results.push(encode_folder(
-                        &jobs[i],
-                        items,
-                        opts,
-                        aes_key.as_ref(),
-                        threads,
-                        &mut out,
-                        progress,
-                    )?);
-                    threads_used = threads_used.max(threads);
-                    i += 1;
-                    continue;
-                }
-                let start = i;
-                let mut acc = 0u64;
-                while i < jobs.len()
-                    && jobs[i].total < big
-                    && (acc == 0 || acc + jobs[i].total <= batch_limit)
-                {
-                    acc += jobs[i].total;
-                    i += 1;
-                }
-                let batch: Vec<Result<(Vec<u8>, FolderResult)>> = pool.install(|| {
-                    jobs[start..i]
-                        .par_iter()
-                        .map(|job| {
-                            let mut buf = Vec::with_capacity((job.total / 2) as usize + 64);
-                            let r = encode_folder(
-                                job,
-                                items,
-                                opts,
-                                aes_key.as_ref(),
-                                1,
-                                &mut buf,
-                                progress,
-                            )?;
-                            Ok((buf, r))
-                        })
-                        .collect()
-                });
-                threads_used = threads_used.max(threads.min(i - start));
-                for r in batch {
-                    let (buf, fr) = r?;
-                    out.write_all(&buf)?;
-                    results.push(fr);
-                }
-            }
-        } else {
-            for job in &jobs {
-                results.push(encode_folder(
-                    job,
-                    items,
-                    opts,
-                    aes_key.as_ref(),
-                    threads,
-                    &mut out,
-                    progress,
-                )?);
-            }
-            threads_used = threads;
-        }
+        let (results, threads_used) =
+            encode_jobs(&jobs, items, opts, aes_key.as_ref(), progress, &mut out)?;
 
         // Assemble metadata: empty entries first, then streams in folder order.
         let mut entries: Vec<Entry> = Vec::new();
@@ -673,29 +734,7 @@ pub fn create(
         }
         summary.folders = si.folders.len();
 
-        let header = write_header(&si, &entries);
-        let (next_off, block) =
-            if opts.compress_header || (opts.encrypt_header && aes_key.is_some()) {
-                let header_key = if opts.encrypt_header {
-                    aes_key.as_ref()
-                } else {
-                    None
-                };
-                encode_header(
-                    &header,
-                    header_key,
-                    opts.compress_header,
-                    data_end,
-                    &mut out,
-                )?
-            } else {
-                (data_end - SIGNATURE_HEADER_SIZE, header)
-            };
-        out.write_all(&block)?;
-        let sig = signature_header(next_off, block.len() as u64, crc32fast::hash(&block));
-        out.seek(SeekFrom::Start(0))?;
-        out.write_all(&sig)?;
-        out.flush()?;
+        finish_archive(&mut out, &si, &entries, data_end, opts, aes_key.as_ref())?;
         let f = out.into_inner().map_err(|e| Error::Io(e.into_error()))?;
         summary.archive_bytes = f.metadata()?.len();
         f.sync_all().ok();
@@ -717,8 +756,40 @@ pub fn create(
     }
 }
 
+/// Writes the header for `si` and `entries` after the pack streams, which end at `data_end`,
+/// then the signature header at the start of the file. The header is encrypted with
+/// `aes_key` when `opts.encrypt_header` is set. An archive with no entries gets no header.
+pub(crate) fn finish_archive(
+    out: &mut BufWriter<File>,
+    si: &StreamsInfo,
+    entries: &[Entry],
+    data_end: u64,
+    opts: &CreateOptions,
+    aes_key: Option<&[u8; 32]>,
+) -> Result<()> {
+    if entries.is_empty() && si.folders.is_empty() {
+        out.seek(SeekFrom::Start(0))?;
+        out.write_all(&signature_header(0, 0, 0))?;
+        out.flush()?;
+        return Ok(());
+    }
+    let header = write_header(si, entries);
+    let (next_off, block) = if opts.compress_header || (opts.encrypt_header && aes_key.is_some()) {
+        let header_key = if opts.encrypt_header { aes_key } else { None };
+        encode_header(&header, header_key, opts.compress_header, data_end, out)?
+    } else {
+        (data_end - SIGNATURE_HEADER_SIZE, header)
+    };
+    out.write_all(&block)?;
+    let sig = signature_header(next_off, block.len() as u64, crc32fast::hash(&block));
+    out.seek(SeekFrom::Start(0))?;
+    out.write_all(&sig)?;
+    out.flush()?;
+    Ok(())
+}
+
 /// Writes the header as its own packed stream and returns the `kEncodedHeader` block.
-fn encode_header<W: Write>(
+pub(crate) fn encode_header<W: Write>(
     header: &[u8],
     key: Option<&[u8; 32]>,
     compress: bool,
@@ -761,7 +832,7 @@ fn encode_header<W: Write>(
     ))
 }
 
-fn make_entry(
+pub(crate) fn make_entry(
     it: &Item,
     opts: &CreateOptions,
     has_stream: bool,

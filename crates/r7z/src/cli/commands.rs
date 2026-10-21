@@ -15,11 +15,13 @@ use r7z::error::{Error, Result};
 use r7z::format::write::{self, Kind, WriteOptions};
 use r7z::format::{self, find_format, Archive, Format, Link, OpenRequest, Opened, FORMATS};
 use r7z::ops::bench;
+use r7z::ops::create::Item;
 use r7z::ops::create::{
     self, default_solid_limit, level_dict_size, CreateOptions, FilterMode, MainMethod,
 };
 use r7z::ops::extract::{self, ExtractOptions, Overwrite, Target};
 use r7z::ops::hash::{hash_files, HashKind};
+use r7z::ops::update::{self, Replace};
 use r7z::util::fmt::human_size;
 use r7z::util::time::format_filetime;
 use r7z::util::wildcard::Pattern;
@@ -118,8 +120,15 @@ fn selection(arc: &dyn Archive, a: &Args) -> Option<Vec<bool>> {
     )
 }
 
-pub fn add(a: &Args) -> Result<i32> {
-    let mut archive = a.archive.clone().unwrap();
+/// `a` (`Replace::Always`) and `u` (`Replace::IfNewer`). An existing archive is updated in
+/// place; otherwise a new one is created.
+pub fn add(a: &Args, replace: Replace) -> Result<i32> {
+    let given = a.archive.clone().unwrap();
+    if std::fs::metadata(&given).is_ok_and(|m| m.is_file() && m.len() > 0) {
+        let (items, warnings) = scan_items(a, &given)?;
+        return update_existing(a, &given, replace, items, &warnings);
+    }
+    let mut archive = given;
     if archive.extension().is_none() {
         let ext = match a.archive_type.as_deref().and_then(find_format) {
             Some(f) if f.name == "gzip" => "gz",
@@ -130,19 +139,38 @@ pub fn add(a: &Args) -> Result<i32> {
         archive.set_extension(ext);
     }
     let kind = write::kind_for(&archive, a.archive_type.as_deref())?;
-    if archive.exists() {
-        return Err(Error::usage(format!(
-            "{} already exists; r7z does not update existing archives yet. Remove it or choose another name.",
-            archive.display()
-        )));
+    let (items, warnings) = scan_items(a, &archive)?;
+    let level = a.level.unwrap_or(5);
+    if kind != Kind::SevenZ {
+        return add_other(a, &archive, kind, &items, level, &warnings);
     }
+    let opts = sevenz_options(a, level, given_password(a, true)?)?;
+    let total: u64 = items.iter().map(|i| i.size).sum();
+    let progress = ui::BarProgress {
+        pb: ui::bar(total, !a.no_progress, "Compressing"),
+    };
+    let t0 = Instant::now();
+    let summary = create::create(&archive, &items, &opts, &progress)?;
+    let elapsed = t0.elapsed();
+    progress.pb.finish_and_clear();
+    report_created(&archive, &summary, elapsed);
+    Ok(if warnings.is_empty() && summary.skipped == 0 {
+        EXIT_OK
+    } else {
+        EXIT_WARNING
+    })
+}
+
+/// The items `a` and `u` store for the names and switches on the command line, and the
+/// warnings from scanning them.
+fn scan_items(a: &Args, archive: &Path) -> Result<(Vec<Item>, Vec<String>)> {
     let names = if a.names.is_empty() {
         vec![".".to_string()]
     } else {
         a.names.clone()
     };
     let exclude: Vec<Pattern> = a.exclude.iter().map(|s| Pattern::new(s)).collect();
-    let mut s = scan(&names, a.recurse.unwrap_or(false), &exclude, &archive);
+    let mut s = scan(&names, a.recurse.unwrap_or(false), &exclude, archive);
     if !a.include.is_empty() {
         let inc: Vec<Pattern> = a.include.iter().map(|p| Pattern::new(p)).collect();
         s.items
@@ -154,11 +182,116 @@ pub fn add(a: &Args) -> Result<i32> {
     if s.items.is_empty() {
         return Err(Error::usage("nothing to add"));
     }
+    Ok((s.items, s.warnings))
+}
 
+/// `a` or `u` on an archive that exists.
+fn update_existing(
+    a: &Args,
+    archive: &Path,
+    replace: Replace,
+    items: Vec<Item>,
+    warnings: &[String],
+) -> Result<i32> {
+    let (opened, password) = open(a, true)?;
+    let plan = update::plan_add(opened.archive().entries(), items, replace);
+    run_update(a, opened, archive, &plan, password, warnings)
+}
+
+/// Applies a plan to an opened archive and reports what changed.
+fn run_update(
+    a: &Args,
+    opened: Opened,
+    archive: &Path,
+    plan: &update::Plan,
+    password: Option<String>,
+    warnings: &[String],
+) -> Result<i32> {
+    let format = opened.archive().format().name;
     let level = a.level.unwrap_or(5);
-    if kind != Kind::SevenZ {
-        return add_other(a, &archive, kind, &s.items, level, &s.warnings);
+    let total: u64 = plan.add.iter().map(|i| i.size).sum();
+    let progress = ui::BarProgress {
+        pb: ui::bar(total, !a.no_progress, "Updating"),
+    };
+    let t0 = Instant::now();
+    let outcome = if format == "7z" {
+        let opts = sevenz_options(a, level, password)?;
+        update::apply(
+            opened,
+            archive,
+            plan,
+            update::Settings::SevenZ(&opts),
+            &progress,
+        )?
+    } else {
+        let kind = if format == "zip" {
+            Kind::Zip
+        } else {
+            Kind::Tar
+        };
+        let opts = other_options(a, kind, level, password)?;
+        update::apply(
+            opened,
+            archive,
+            plan,
+            update::Settings::Other(&opts),
+            &progress,
+        )?
+    };
+    let elapsed = t0.elapsed();
+    progress.pb.finish_and_clear();
+    if outcome.changed {
+        report_updated(archive, &outcome, elapsed);
+    } else {
+        ui::ok(&format!(
+            "{} is up to date",
+            style(archive.display()).bold()
+        ));
     }
+    Ok(if warnings.is_empty() && outcome.summary.skipped == 0 {
+        EXIT_OK
+    } else {
+        EXIT_WARNING
+    })
+}
+
+/// `d`: deletes the entries that the names, `-i` and `-x` select.
+pub fn delete(a: &Args) -> Result<i32> {
+    if a.names.is_empty() && a.include.is_empty() {
+        return Err(Error::usage(
+            "nothing to delete: name the entries (wildcards allowed) or give -i",
+        ));
+    }
+    let (opened, password) = open(a, true)?;
+    let selection = update::Selection::new(&a.names, &a.include, &a.exclude);
+    let plan = update::plan_delete(opened.archive().entries(), &selection);
+    if plan.counts.deleted == 0 {
+        return Err(Error::Other("no entries match".into()));
+    }
+    let archive = a.archive.clone().unwrap();
+    run_update(a, opened, &archive, &plan, password, &[])
+}
+
+/// `rn`: renames entries; the names come in pairs, `old new`.
+pub fn rename(a: &Args) -> Result<i32> {
+    if a.names.is_empty() || !a.names.len().is_multiple_of(2) {
+        return Err(Error::usage(
+            "rn takes pairs of names: rn archive old new [old new ...]",
+        ));
+    }
+    let pairs: Vec<(String, String)> = a
+        .names
+        .chunks(2)
+        .map(|c| (c[0].clone(), c[1].clone()))
+        .collect();
+    let (opened, password) = open(a, false)?;
+    let plan = update::plan_rename(opened.archive().entries(), &pairs)?;
+    let archive = a.archive.clone().unwrap();
+    run_update(a, opened, &archive, &plan, password, &[])
+}
+
+/// The 7z settings from the switches, for `a`, `u` and `rn`.
+fn sevenz_options(a: &Args, level: u32, password: Option<String>) -> Result<CreateOptions> {
     if let Some(m) = &a.method.other {
         return Err(Error::usage(format!(
             "7z archives use LZMA2, LZMA or Copy (method '{m}' is for zip)"
@@ -169,12 +302,11 @@ pub fn add(a: &Args) -> Result<i32> {
     } else {
         MainMethod::Lzma2
     });
-    let password = given_password(a, true)?;
     let encrypt_header = a.encrypt_header.unwrap_or(false);
     if encrypt_header && password.is_none() {
         return Err(Error::usage("-mhe=on requires a password (-p)"));
     }
-    let opts = CreateOptions {
+    Ok(CreateOptions {
         level: level.max(1),
         method,
         dict_size: a.method.dict,
@@ -193,33 +325,16 @@ pub fn add(a: &Args) -> Result<i32> {
         store_mtime: a.mtime.unwrap_or(true),
         store_ctime: a.ctime.unwrap_or(false),
         store_atime: a.atime.unwrap_or(false),
-    };
-
-    let total: u64 = s.items.iter().map(|i| i.size).sum();
-    let progress = ui::BarProgress {
-        pb: ui::bar(total, !a.no_progress, "Compressing"),
-    };
-    let t0 = Instant::now();
-    let summary = create::create(&archive, &s.items, &opts, &progress)?;
-    let elapsed = t0.elapsed();
-    progress.pb.finish_and_clear();
-    report_created(&archive, &summary, elapsed);
-    Ok(if s.warnings.is_empty() && summary.skipped == 0 {
-        EXIT_OK
-    } else {
-        EXIT_WARNING
     })
 }
 
-/// `a` for zip, tar and the single-stream compressors.
-fn add_other(
+/// The zip, tar and single-stream settings from the switches.
+fn other_options(
     a: &Args,
-    archive: &Path,
     kind: Kind,
-    items: &[r7z::ops::create::Item],
     level: u32,
-    warnings: &[String],
-) -> Result<i32> {
+    password: Option<String>,
+) -> Result<WriteOptions> {
     if a.encrypt_header == Some(true) {
         return Err(Error::usage("-mhe applies to 7z archives only"));
     }
@@ -236,7 +351,6 @@ fn add_other(
     if kind != Kind::Zip && (a.method.other.is_some() || a.method.main.is_some()) {
         return Err(Error::usage("-m0 / -mm select zip methods only"));
     }
-    let password = given_password(a, true)?;
     if password.is_some() && kind != Kind::Zip {
         return Err(Error::usage("only 7z and zip archives can be encrypted"));
     }
@@ -245,7 +359,7 @@ fn add_other(
             "writing ZipCrypto (weak); r7z encrypts zip with AES-256 (-mem=AES256)",
         ));
     }
-    let opts = WriteOptions {
+    Ok(WriteOptions {
         level,
         threads: threads(a),
         password,
@@ -253,7 +367,19 @@ fn add_other(
         store_mtime: a.mtime.unwrap_or(true),
         store_ctime: a.ctime.unwrap_or(false),
         store_atime: a.atime.unwrap_or(false),
-    };
+    })
+}
+
+/// `a` for zip, tar and the single-stream compressors.
+fn add_other(
+    a: &Args,
+    archive: &Path,
+    kind: Kind,
+    items: &[Item],
+    level: u32,
+    warnings: &[String],
+) -> Result<i32> {
+    let opts = other_options(a, kind, level, given_password(a, true)?)?;
     let total: u64 = items.iter().map(|i| i.size).sum();
     let progress = ui::BarProgress {
         pb: ui::bar(total, !a.no_progress, "Compressing"),
@@ -268,6 +394,40 @@ fn add_other(
     } else {
         EXIT_WARNING
     })
+}
+
+fn report_updated(archive: &Path, o: &update::Outcome, elapsed: std::time::Duration) {
+    let c = o.counts;
+    let mut parts = vec![format!("{} added", c.added)];
+    for (n, label) in [
+        (c.replaced, "replaced"),
+        (c.deleted, "deleted"),
+        (c.renamed, "renamed"),
+        (c.unchanged, "unchanged"),
+    ] {
+        if n > 0 {
+            parts.push(format!("{n} {label}"));
+        }
+    }
+    let repacked = if o.repacked > 0 {
+        format!(", {} solid blocks re-encoded", o.repacked)
+    } else {
+        String::new()
+    };
+    ui::ok(&format!(
+        "Updated {}  {}  {}{}  in {}",
+        style(archive.display()).bold(),
+        parts.join(", "),
+        style(human_size(o.summary.archive_bytes)).bold(),
+        repacked,
+        secs(elapsed),
+    ));
+    if o.summary.skipped > 0 {
+        ui::warn(&format!(
+            "{} items could not be read and were skipped",
+            o.summary.skipped
+        ));
+    }
 }
 
 fn report_created(
@@ -869,7 +1029,10 @@ pub fn help() {
     );
     println!("{}", b("Commands:"));
     for (c, d) in [
-        ("a", "Add files to a new archive"),
+        ("a", "Add files, replacing same-named entries"),
+        ("u", "Update: add files, replacing only older entries"),
+        ("d", "Delete entries (wildcards allowed)"),
+        ("rn", "Rename entries: old new [old new ...]"),
         ("x", "Extract with full paths"),
         ("e", "Extract without directory names"),
         ("l", "List contents (-slt for technical detail)"),
@@ -929,6 +1092,10 @@ pub fn help() {
     println!("\n{}", b("Examples:"));
     println!("  r7z a backup.7z Documents -mx7");
     println!("  r7z a secret.7z notes -p -mhe=on");
+    println!("  r7z a backup.7z newfiles        (adds to an existing backup.7z)");
+    println!("  r7z u backup.7z Documents -mx7  (replaces only the files that changed)");
+    println!("  r7z d backup.7z \"*.tmp\"");
+    println!("  r7z rn backup.7z Documents Docs");
     println!("  r7z x backup.7z -oRestore");
     println!("  r7z x damaged.zip -recover -oRescued");
     println!("  r7z l backup.7z \"*.pdf\"");

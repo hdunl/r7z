@@ -4,6 +4,15 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 
 ## Unreleased
 
+- Updating existing archives. `a` into an existing 7z, zip, tar or compressed tar adds
+  and replaces entries; `u` replaces only the entries the files on disk are newer than;
+  `d` deletes the entries a name, `-i` or `-x` selects; `rn` renames entries and folders
+  (`rn archive old new ...`, wildcards carry through with `*` and `?`). 7z copies every
+  folder an update does not touch and re-encodes only the solid blocks that lost an
+  entry; zip copies untouched entries byte for byte; tar streams are rewritten. Each
+  update is written beside the archive and replaces it only when it succeeds. Encrypted
+  archives take their password (`-p`), checked before anything is written, and keep
+  header encryption.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

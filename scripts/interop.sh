@@ -256,6 +256,45 @@ if [ -x "$BANDIZIP" ]; then
   check "Bandizip lzh (-lh7-)" bz_lzh
 fi
 
+echo "updates: r7z and 7-Zip take turns on one archive"
+# The steps change directory, so the r7z path must be absolute.
+R=$(cd "$(dirname "$R")" && pwd)/$(basename "$R")
+# update_turns creator archive-name: the creator makes the archive from a copy of the
+# corpus, r7z then adds a file, replaces a changed file, deletes one file and renames the
+# top folder; 7-Zip extracts the result, which must match the same edits made on disk.
+update_turns() { # creator (r|z) archive-name
+  local creator=$1 arc=$WORK/fmt/$2
+  local up=$WORK/upd exp=$WORK/exp out=$WORK/fmt/out
+  local victim
+  victim=$(cd "$CORPUS" && find . -type f | sed 's|^\./||' | head -1)
+  [ -n "$victim" ] || return 1
+  rm -rf "$up" "$exp" "$out" "$arc"; mkdir -p "$up" "$exp" "$WORK/fmt"
+  cp -r "$CORPUS" "$up/$NAME"; cp -r "$CORPUS" "$exp/$NAME"
+  if [ "$creator" = r ]; then
+    (cd "$up" && "$R" a -bd "$arc" "$NAME") >/dev/null || return 1
+  else
+    (cd "$up" && "$Z" a -bd "$arc" "$NAME") >/dev/null || return 1
+  fi
+  sleep 2
+  echo "extra" > "$up/extra.txt"; cp "$up/extra.txt" "$exp/extra.txt"
+  (cd "$up" && "$R" a -bd "$arc" extra.txt) >/dev/null || return 1
+  printf 'changed\n' > "$up/$NAME/$victim"; printf 'changed\n' > "$exp/$NAME/$victim"
+  (cd "$up" && "$R" u -bd "$arc" "$NAME") >/dev/null || return 1
+  (cd "$up" && "$R" d -bd "$arc" "$NAME/$victim") >/dev/null || return 1
+  rm "$exp/$NAME/$victim"
+  (cd "$up" && "$R" rn -bd "$arc" "$NAME" "$NAME-renamed") >/dev/null || return 1
+  mv "$exp/$NAME" "$exp/$NAME-renamed"
+  "$Z" t -bd "$arc" >/dev/null || return 1
+  z_extract "$arc" "$out" || return 1
+  diff -r "$exp" "$out"
+}
+for arc in t.zip t.7z t.tar.gz t.tar.xz; do
+  check "r7z creates and updates $arc; 7-Zip reads it" update_turns r "$arc"
+done
+for arc in t.zip t.7z; do
+  check "7-Zip creates, r7z updates $arc; 7-Zip reads it" update_turns z "$arc"
+done
+
 echo "negative cases"
 PW_R=""
 (cd "$PARENT" && "$Z" a -bd -psecret "$WORK/enc.7z" "$NAME" >/dev/null)

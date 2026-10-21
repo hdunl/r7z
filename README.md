@@ -53,7 +53,9 @@ executables with no installer and no runtime to set up.
   `-mx`, `-mhe`, `-ao`, `-x!`, `@listfile` and the rest) and the same exit codes, so
   scripts keep working.
 - **Works with 7-Zip both ways.** A 100-case matrix checks that archives r7z writes test
-  and extract with 7-Zip, and the other way round.
+  and extract with 7-Zip, and the other way round. Archives can be updated in place
+  (`a`, `u`, `d`, `rn`) for 7z, zip and tar; untouched 7z folders and zip entries are
+  copied byte for byte.
 - **Safe by default.** Paths that try to escape the destination are refused, archives
   are written to a temp file and renamed into place, and the desktop app flags zip bombs
   and disguised executables before you extract anything.
@@ -109,6 +111,9 @@ r7z a backup.7z Documents            # create (LZMA2, level 5, all cores)
 r7z a secret.7z notes -p -mhe=on     # AES-256, file names encrypted too (prompts)
 r7z a site.zip public_html -p        # zip with WinZip AES-256
 r7z a src.tar.gz project             # tar + gzip in one step
+r7z u backup.7z Documents            # update: replace only the files that changed
+r7z d backup.7z "*.tmp"              # delete entries
+r7z rn backup.7z Documents Docs      # rename an entry or a folder
 r7z x backup.7z -oRestore            # extract with paths
 r7z x linux-6.9.tar.xz               # the tar inside is extracted directly
 r7z x package.deb                    # the files inside data.tar.*
@@ -167,7 +172,6 @@ with the default icon. Source layout and testing: [docs/development.md](docs/dev
 
 ## Roadmap
 
-- Updating existing archives (`u`, `d`, `rn`, `a` into an existing file)
 - RAR and RAR5 extraction
 - Disk images and installers: ISO, UDF, VHD, VMDK, DMG, NSIS, MSI
 - Writing zstd and lz4

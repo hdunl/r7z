@@ -12,8 +12,17 @@ use r7z::util::fmt::parse_size;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
+    /// `a`: add, replacing entries of the same name.
     Add,
-    Extract { full_paths: bool },
+    /// `u`: add, replacing only entries the new files are newer than.
+    Update,
+    /// `d`: delete the entries named.
+    Delete,
+    /// `rn`: rename entries, given as `old new` pairs.
+    Rename,
+    Extract {
+        full_paths: bool,
+    },
     List,
     Test,
     Hash,
@@ -304,6 +313,9 @@ pub fn read_list_file(path: &str) -> Result<Vec<String>> {
 fn parse_command(s: &str) -> Option<Command> {
     Some(match s.to_ascii_lowercase().as_str() {
         "a" | "add" => Command::Add,
+        "u" | "update" => Command::Update,
+        "d" | "delete" => Command::Delete,
+        "rn" => Command::Rename,
         "x" | "extract" => Command::Extract { full_paths: true },
         "e" => Command::Extract { full_paths: false },
         "l" | "list" | "ls" => Command::List,
@@ -457,7 +469,13 @@ pub fn parse(argv: Vec<String>) -> Result<Args> {
     }
     a.command = command.unwrap_or(Command::Help);
     match a.command {
-        Command::Add | Command::Extract { .. } | Command::List | Command::Test => {
+        Command::Add
+        | Command::Update
+        | Command::Delete
+        | Command::Rename
+        | Command::Extract { .. }
+        | Command::List
+        | Command::Test => {
             if positional.is_empty() {
                 return Err(Error::usage("missing archive name"));
             }

@@ -6,3 +6,4 @@ pub mod inspect;
 pub mod peek;
 pub mod recover;
 pub mod scan;
+pub mod update;

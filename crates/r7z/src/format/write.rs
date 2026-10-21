@@ -129,7 +129,8 @@ pub fn deflate_level(mx: u32) -> u32 {
     }
 }
 
-enum Sink<W: Write + 'static> {
+/// A compressor stage (or none) in front of the output file.
+pub(crate) enum Sink<W: Write + 'static> {
     Plain(W),
     Gzip(GzipWriter<W>),
     Bzip2(Bzip2Writer<W>),
@@ -138,7 +139,7 @@ enum Sink<W: Write + 'static> {
 
 impl<W: Write + 'static> Sink<W> {
     /// `total` is the expected input size (it sizes the xz dictionary and threads).
-    fn new(
+    pub(crate) fn new(
         c: Option<Compressor>,
         out: W,
         opts: &WriteOptions,
@@ -161,7 +162,7 @@ impl<W: Write + 'static> Sink<W> {
         })
     }
 
-    fn finish(self) -> Result<W> {
+    pub(crate) fn finish(self) -> Result<W> {
         Ok(match self {
             Sink::Plain(w) => w,
             Sink::Gzip(w) => w.finish()?,
@@ -293,33 +294,19 @@ fn write_single(
     }
     let it = files[0];
     atomically(archive, |out| {
-        let name = it.name.rsplit('/').next().unwrap_or(&it.name);
-        let mtime = it
-            .mtime
-            .map(filetime_to_unix)
-            .unwrap_or(0)
-            .clamp(0, u32::MAX as i64) as u32;
-        let mtime = if opts.store_mtime { mtime } else { 0 };
-        let mut sink = Sink::new(Some(c), out, opts, Some(name), mtime, it.size)?;
         let mut f = File::open(&it.src)
             .map_err(|e| Error::Other(format!("cannot open {}: {e}", it.src.display())))?;
-        let mut buf = vec![0u8; 1 << 20];
-        let mut total = 0u64;
-        loop {
-            let n = match f.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => n,
-                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(e) => return Err(Error::Other(format!("reading {}: {e}", it.src.display()))),
-            };
-            sink.write_all(&buf[..n])?;
-            progress.add(n as u64);
-            if progress.cancelled() {
-                return Err(Error::Cancelled);
-            }
-            total += n as u64;
-        }
-        let out = sink.finish()?;
+        let (out, total) = compress_single(
+            out,
+            c,
+            opts,
+            single_name(&it.name),
+            single_mtime(it, opts),
+            &mut f,
+            it.size,
+            &it.src.display().to_string(),
+            progress,
+        )?;
         let file = out.into_inner().map_err(|e| Error::Io(e.into_error()))?;
         Ok((
             file,
@@ -331,4 +318,58 @@ fn write_single(
             },
         ))
     })
+}
+
+/// The name a single-file stream stores: the last component of the item's name.
+pub(crate) fn single_name(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
+}
+
+/// The modification time a gzip stream stores (zero when times are not stored).
+pub(crate) fn single_mtime(it: &Item, opts: &WriteOptions) -> u32 {
+    let mtime = it
+        .mtime
+        .map(filetime_to_unix)
+        .unwrap_or(0)
+        .clamp(0, u32::MAX as i64) as u32;
+    if opts.store_mtime {
+        mtime
+    } else {
+        0
+    }
+}
+
+/// Compresses everything `src` yields as one `c` stream into `out`. `size` is the expected
+/// input size and `label` names the source in error messages. Returns the output and the
+/// number of bytes read.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compress_single(
+    out: BufWriter<File>,
+    c: Compressor,
+    opts: &WriteOptions,
+    name: &str,
+    mtime: u32,
+    src: &mut dyn Read,
+    size: u64,
+    label: &str,
+    progress: &dyn Progress,
+) -> Result<(BufWriter<File>, u64)> {
+    let mut sink = Sink::new(Some(c), out, opts, Some(name), mtime, size)?;
+    let mut buf = vec![0u8; 1 << 20];
+    let mut total = 0u64;
+    loop {
+        let n = match src.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(Error::Other(format!("reading {label}: {e}"))),
+        };
+        sink.write_all(&buf[..n])?;
+        progress.add(n as u64);
+        if progress.cancelled() {
+            return Err(Error::Cancelled);
+        }
+        total += n as u64;
+    }
+    Ok((sink.finish()?, total))
 }

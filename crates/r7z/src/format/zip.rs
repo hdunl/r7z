@@ -84,6 +84,9 @@ pub struct Zip {
     comment: Option<String>,
     offset: u64,
     coding: Option<NameCoding>,
+    /// Where the central directory starts in `data`, when it was read from there (not when
+    /// rebuilt by recovery).
+    cd_start: Option<u64>,
 }
 
 fn u16le(b: &[u8], p: usize) -> u16 {
@@ -126,6 +129,20 @@ fn find_eocd(d: &[u8]) -> Option<usize> {
 
 #[path = "zip_recover.rs"]
 mod recover;
+
+#[path = "zip_update.rs"]
+mod rewrite;
+
+/// Carries out an update: writes the archive at `archive` with `plan` applied to `tmp`.
+pub fn update(
+    archive: &Path,
+    tmp: &Path,
+    plan: &crate::ops::update::Plan,
+    opts: &WriteOptions,
+    progress: &dyn Progress,
+) -> Result<crate::ops::update::Outcome> {
+    rewrite::update(archive, tmp, plan, opts, progress)
+}
 
 fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
     let data = input.into_mem()?;
@@ -190,7 +207,9 @@ fn open_central(data: &Slice, code_page: Option<CodePage>) -> Result<Zip> {
     }
     let offset = if delta < cd_start { delta } else { 0 };
     let cd = d.get(cd_start as usize..).unwrap_or_default();
-    from_central(data, cd, count, delta, comment, offset, code_page)
+    let mut zip = from_central(data, cd, count, delta, comment, offset, code_page)?;
+    zip.cd_start = Some(cd_start);
+    Ok(zip)
 }
 
 /// Builds the archive from `count` central directory records at the start of `cd`; local
@@ -392,6 +411,7 @@ fn from_central(
         comment,
         offset,
         coding,
+        cd_start: None,
     })
 }
 
@@ -741,16 +761,42 @@ fn write_to(
     opts: &WriteOptions,
     progress: &dyn Progress,
 ) -> Result<(File, Summary)> {
-    let level = deflate_level(opts.level);
-    let level = if opts.store { 0 } else { level };
-    let pw = opts.password.as_deref();
     let mut out = BufWriter::with_capacity(1 << 20, file);
-    let mut pos = 0u64;
-    let mut written: Vec<Written> = Vec::with_capacity(items.len());
     let mut s = Summary {
         threads_used: opts.threads,
         ..Default::default()
     };
+    let (written, cd_start) = write_items(&mut out, 0, items, opts, progress, &mut s)?;
+    let cd = central_directory(&written);
+    out.write_all(&cd)?;
+    write_end(
+        &mut out,
+        written.len() as u64,
+        cd_start,
+        cd.len() as u64,
+        &[],
+        false,
+    )?;
+    out.flush()?;
+    let file = out.into_inner().map_err(|e| Error::Io(e.into_error()))?;
+    Ok((file, s))
+}
+
+/// Writes `items` as local headers and data, starting at offset `start`. Returns what was
+/// written and the offset after the last byte.
+fn write_items(
+    out: &mut BufWriter<File>,
+    start: u64,
+    items: &[Item],
+    opts: &WriteOptions,
+    progress: &dyn Progress,
+    s: &mut Summary,
+) -> Result<(Vec<Written>, u64)> {
+    let level = deflate_level(opts.level);
+    let level = if opts.store { 0 } else { level };
+    let pw = opts.password.as_deref();
+    let mut pos = start;
+    let mut written: Vec<Written> = Vec::with_capacity(items.len());
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(opts.threads.max(1))
         .build()
@@ -759,7 +805,7 @@ fn write_to(
     while i < items.len() {
         let it = &items[i];
         if !it.is_dir && it.size > IN_MEMORY {
-            match stream_large(&mut out, &mut pos, it, opts, level, progress)? {
+            match stream_large(out, &mut pos, it, opts, level, progress)? {
                 Some(w) => {
                     s.files += 1;
                     s.input_bytes += w.size;
@@ -832,9 +878,13 @@ fn write_to(
             written.push(w);
         }
     }
-    let cd_start = pos;
+    Ok((written, pos))
+}
+
+/// The central directory records for `written`, in order.
+fn central_directory(written: &[Written]) -> Vec<u8> {
     let mut cd = Vec::new();
-    for w in &written {
+    for w in written {
         let zip64_size = w.size >= 0xFFFF_FFFF || w.packed >= 0xFFFF_FFFF;
         let zip64_off = w.offset >= 0xFFFF_FFFF;
         let mut extra = Vec::new();
@@ -882,10 +932,20 @@ fn write_to(
         cd.extend_from_slice(&w.name);
         cd.extend_from_slice(&extra);
     }
-    out.write_all(&cd)?;
-    let cd_size = cd.len() as u64;
-    let n = written.len() as u64;
-    let need64 = n >= 0xFFFF || cd_start >= 0xFFFF_FFFF || cd_size >= 0xFFFF_FFFF;
+    cd
+}
+
+/// The end records after the central directory at `cd_start`: the ZIP64 pair when `force64`
+/// or when counts and offsets need it, then the end-of-central-directory record.
+fn write_end(
+    out: &mut impl Write,
+    count: u64,
+    cd_start: u64,
+    cd_size: u64,
+    comment: &[u8],
+    force64: bool,
+) -> Result<()> {
+    let need64 = force64 || count >= 0xFFFF || cd_start >= 0xFFFF_FFFF || cd_size >= 0xFFFF_FFFF;
     if need64 {
         let z64 = cd_start + cd_size;
         let mut r = Vec::with_capacity(76);
@@ -895,8 +955,8 @@ fn write_to(
         r.extend_from_slice(&45u16.to_le_bytes());
         r.extend_from_slice(&0u32.to_le_bytes());
         r.extend_from_slice(&0u32.to_le_bytes());
-        r.extend_from_slice(&n.to_le_bytes());
-        r.extend_from_slice(&n.to_le_bytes());
+        r.extend_from_slice(&count.to_le_bytes());
+        r.extend_from_slice(&count.to_le_bytes());
         r.extend_from_slice(&cd_size.to_le_bytes());
         r.extend_from_slice(&cd_start.to_le_bytes());
         r.extend_from_slice(&LOCATOR_SIG.to_le_bytes());
@@ -905,19 +965,18 @@ fn write_to(
         r.extend_from_slice(&1u32.to_le_bytes());
         out.write_all(&r)?;
     }
-    let mut e = Vec::with_capacity(22);
+    let mut e = Vec::with_capacity(22 + comment.len());
     e.extend_from_slice(&EOCD_SIG.to_le_bytes());
     e.extend_from_slice(&0u32.to_le_bytes());
-    let n16 = n.min(0xFFFF) as u16;
+    let n16 = count.min(0xFFFF) as u16;
     e.extend_from_slice(&n16.to_le_bytes());
     e.extend_from_slice(&n16.to_le_bytes());
     e.extend_from_slice(&(cd_size.min(0xFFFF_FFFF) as u32).to_le_bytes());
     e.extend_from_slice(&(cd_start.min(0xFFFF_FFFF) as u32).to_le_bytes());
-    e.extend_from_slice(&0u16.to_le_bytes());
+    e.extend_from_slice(&(comment.len() as u16).to_le_bytes());
+    e.extend_from_slice(comment);
     out.write_all(&e)?;
-    out.flush()?;
-    let file = out.into_inner().map_err(|e| Error::Io(e.into_error()))?;
-    Ok((file, s))
+    Ok(())
 }
 
 /// Writes a large file: local header with placeholders, data through the parallel Deflate

@@ -334,22 +334,30 @@ fn parse(
     }
 }
 
-/// Reads blocks until one is a valid header (recovery past a damaged one). Returns false
-/// at the end of the data.
+/// Finds the next valid header after a damaged one (recovery). Damage in an earlier stream
+/// can shift everything after it by any number of bytes, so the search slides one byte at
+/// a time, checking the `ustar` magic before the checksum. Returns false at the end of
+/// the data.
 fn resync(cur: &mut Cursor<'_>, h: &mut [u8; BLOCK]) -> Result<bool> {
     let from = cur.pos - BLOCK as u64;
+    let mut window = *h;
+    let mut byte = [0u8; 1];
     loop {
-        if !cur.read_block(h)? {
+        if data::read_some(cur.r, &mut byte)? == 0 {
             cur.note(format!(
                 "the header at offset {from} is damaged and no valid header follows it"
             ));
             return Ok(false);
         }
-        if checksum_ok(h) {
-            let at = cur.pos - BLOCK as u64;
+        cur.keep(&byte);
+        cur.pos += 1;
+        window.copy_within(1.., 0);
+        window[BLOCK - 1] = byte[0];
+        if window[257..262] == *b"ustar" && checksum_ok(&window) {
+            *h = window;
             cur.note(format!(
                 "the header at offset {from} is damaged; skipped {} bytes to the next valid header",
-                at - from
+                cur.pos - BLOCK as u64 - from
             ));
             return Ok(true);
         }

@@ -13,6 +13,21 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   update is written beside the archive and replaces it only when it succeeds. Encrypted
   archives take their password (`-p`), checked before anything is written, and keep
   header encryption.
+- Writes zstd (`.zst`, `.tzst`, `.tar.zst`, and zip members with `-mm=zstd`, method 93),
+  lz4 frames (`.lz4`, `.tar.lz4`) and Unix `compress` (`.Z`, `.taz`, `.tar.Z`). zstd has
+  its own encoder (hash-chain matches, Huffman literals, predefined FSE tables): about
+  2-4% larger than `zstd -3` on text and 8% larger on executables, at 13-45 MB/s
+  against zstd's 120 MB/s at level 3.
+- Reads the legacy zip methods Implode, Shrink and Reduce (factors 1-4). Implode matches
+  Info-ZIP's `unzip` on every test stream, Shrink on 11 of 12; Reduce is checked only
+  against r7z's own encoder.
+- Reads split zips: `x.z01`, `x.z02`, … with `x.zip` as the last part, or any one of them.
+- Symbolic links in tar archives become links where the platform allows (on Windows with
+  Developer Mode or the symlink privilege) and only when the target stays inside the
+  extraction folder; otherwise the file holding the target text is written, as before.
+- Recovery resumes inside damaged bzip2 and xz streams: a damaged block costs only itself,
+  is reported, and the blocks after it come back. A tar inside them is found again by
+  searching for the next valid header, whatever the shift.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

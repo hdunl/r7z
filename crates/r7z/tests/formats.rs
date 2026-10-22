@@ -85,6 +85,7 @@ fn opts(level: u32, password: Option<&str>) -> WriteOptions {
         threads: 4,
         password: password.map(str::to_string),
         store: false,
+        zstd: false,
         store_mtime: true,
         store_ctime: false,
         store_atime: false,
@@ -429,7 +430,10 @@ fn tar_links_and_symlinks() {
     assert_eq!(a.entries()[2].link, Some(Link::Symbolic("f.txt".into())));
     let got = read_all(a);
     assert_eq!(got["hard.txt"], b"hello");
-    assert_eq!(got["sym.txt"], b"f.txt");
+    // Where the platform allows links, the symlink reads its target; otherwise it is the
+    // file holding the target's name.
+    let sym = &got["sym.txt"];
+    assert!(sym == b"hello" || sym == b"f.txt", "{sym:?}");
 }
 
 #[test]

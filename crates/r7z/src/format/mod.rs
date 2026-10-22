@@ -25,6 +25,7 @@ pub mod wim;
 pub mod write;
 pub mod xar;
 pub mod zip;
+pub mod zipsplit;
 
 use std::io::Read;
 use std::path::Path;
@@ -231,6 +232,8 @@ pub struct OpenOptions {
     /// The archive's path on disk for the outermost level (to find sibling volumes); `None`
     /// for nested archives.
     pub path: Option<std::path::PathBuf>,
+    /// The archive is a split zip joined from its parts; its disk numbers are not an error.
+    pub split: bool,
     /// Damaged-archive recovery: rebuild what can be rebuilt (a zip central directory, a
     /// lost 7z header, a tar past a bad header) instead of failing, and report it through
     /// `Archive::damage`.
@@ -371,6 +374,8 @@ pub struct OpenRequest {
     pub format: Option<&'static Format>,
     /// Code page for names the archive does not mark as Unicode (`-mcp`); detected if None.
     pub code_page: Option<CodePage>,
+    /// The archive is the joined parts of a split zip (see `zipsplit`).
+    pub split: bool,
 }
 
 /// The extension of `name` and, for `x.tar.gz`, the compound `tar.gz`.
@@ -420,6 +425,25 @@ pub fn detect_format(head: &[u8], file_name: &str) -> Option<&'static Format> {
 
 /// Opens `path`, detecting its format and descending into nested archives.
 pub fn open(path: &Path, req: &OpenRequest) -> Result<Opened> {
+    if let Some(parts) = zipsplit::volumes(path) {
+        // The name of a split zip is its last part's, with `.zip`.
+        let name = path.with_extension("zip");
+        let file_name = name
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let req = OpenRequest {
+            split: true,
+            ..req.clone()
+        };
+        return open_input(
+            Input::Mem(zipsplit::join(&parts)?),
+            &file_name,
+            &req,
+            None,
+            false,
+        );
+    }
     let data = Slice::map_file(path)?;
     let file_name = path
         .file_name()
@@ -495,6 +519,7 @@ fn open_level(
         name: name.to_string(),
         path: path.map(Path::to_path_buf),
         recover,
+        split: req.split,
     };
     let archive: Arc<dyn Archive> = Arc::from((fmt.open)(input, &opts)?);
     Ok(Level {

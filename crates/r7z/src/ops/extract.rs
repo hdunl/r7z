@@ -612,8 +612,141 @@ pub fn extract(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -> Re
             Err(err) => report.errors.push((entries[i].name.clone(), err)),
         }
     }
+    for (i, r) in link_symbolic(a, &plan) {
+        if let Err(err) = r {
+            report.errors.push((entries[i].name.clone(), err));
+        }
+    }
     stamp_dirs(a, plan);
     Ok(report)
+}
+
+/// Symbolic links become real links after everything else is written, so that no write
+/// goes through one. A link is made only when its target stays inside the extraction
+/// (judged from the archive names, and only when no folder on the way is a link) and the
+/// platform allows it. Otherwise the file that holds the target text stays, as before.
+pub(crate) fn link_symbolic(a: &dyn Archive, plan: &Plan) -> Vec<(usize, Result<()>)> {
+    let mut out = Vec::new();
+    for (i, e) in a.entries().iter().enumerate() {
+        let (Some(Link::Symbolic(target)), Action::Write { path, .. }) =
+            (&e.link, &plan.actions[i])
+        else {
+            continue;
+        };
+        if !link_stays_inside(&e.name, target) || has_linked_parent(path, &e.name) {
+            continue;
+        }
+        let Some(dir) = path.parent() else { continue };
+        let is_dir = dir.join(native_separators(target)).is_dir();
+        // Link beside the file and rename the link over it, so a refused link loses nothing.
+        let tmp = unique_link_name(path);
+        if make_link(target, &tmp, is_dir).is_err() {
+            continue;
+        }
+        if let Err(err) = fs::rename(&tmp, path) {
+            let _ = fs::remove_file(&tmp);
+            out.push((i, Err(err.into())));
+        }
+    }
+    out
+}
+
+/// Whether `target`, a link stored in the entry `name`, resolves to a place inside the
+/// extraction: it must not be absolute, and no `..` may climb above the extraction root.
+fn link_stays_inside(name: &str, target: &str) -> bool {
+    let has_drive = target.as_bytes().get(1) == Some(&b':');
+    if target.is_empty() || target.starts_with(['/', '\x5c']) || has_drive || target.contains('\0')
+    {
+        return false;
+    }
+    // Directories above the link: the entry's own name is the last component.
+    let mut depth = name
+        .split(['/', '\x5c'])
+        .filter(|c| !c.is_empty() && *c != ".")
+        .count() as isize
+        - 1;
+    for c in target.split(['/', '\x5c']) {
+        match c {
+            "" | "." => {}
+            ".." => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => depth += 1,
+        }
+    }
+    true
+}
+
+/// Whether a folder above `path` (within the entry's own folders) is a symbolic link.
+fn has_linked_parent(path: &Path, name: &str) -> bool {
+    let depth = name
+        .split(['/', '\x5c'])
+        .filter(|c| !c.is_empty() && *c != ".")
+        .count();
+    path.ancestors()
+        .skip(1)
+        .take(depth.saturating_sub(1))
+        .any(|p| {
+            p.symlink_metadata()
+                .is_ok_and(|m| m.file_type().is_symlink())
+        })
+}
+
+fn native_separators(target: &str) -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(target.replace('/', "\\"))
+    } else {
+        PathBuf::from(target)
+    }
+}
+
+fn unique_link_name(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    path.with_file_name(format!(
+        ".{name}.r7z-link-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+/// Creates a symbolic link. On Windows this needs Developer Mode or the link privilege;
+/// the unprivileged flag is tried first (Developer Mode), then the plain call.
+#[cfg(unix)]
+fn make_link(target: &str, link: &Path, _is_dir: bool) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+#[cfg(windows)]
+fn make_link(target: &str, link: &Path, is_dir: bool) -> io::Result<()> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    const DIRECTORY: u32 = 0x1;
+    const UNPRIVILEGED: u32 = 0x2;
+    const INVALID_PARAMETER: i32 = 87;
+    extern "system" {
+        fn CreateSymbolicLinkW(link: *const u16, target: *const u16, flags: u32) -> u8;
+    }
+    let wide = |s: &OsStr| -> Vec<u16> { s.encode_wide().chain(Some(0)).collect() };
+    let link_w = wide(link.as_os_str());
+    let target_w = wide(OsStr::new(&target.replace('/', "\\")));
+    let dir = if is_dir { DIRECTORY } else { 0 };
+    // SAFETY: both buffers are NUL-terminated UTF-16 strings that live across the call.
+    let create =
+        |flags: u32| unsafe { CreateSymbolicLinkW(link_w.as_ptr(), target_w.as_ptr(), flags) != 0 };
+    if create(dir | UNPRIVILEGED) {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    // Older Windows refuses the unprivileged flag with "invalid parameter".
+    if err.raw_os_error() == Some(INVALID_PARAMETER) && create(dir) {
+        return Ok(());
+    }
+    Err(err)
 }
 
 fn link_or_copy(src: &Path, dst: &Path, existed: bool) -> Result<()> {
@@ -1092,5 +1225,25 @@ mod tests {
                 Some(PathBuf::from("_con.txt"))
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::link_stays_inside;
+
+    #[test]
+    fn link_targets_must_stay_inside() {
+        assert!(link_stays_inside("a/link", "target"));
+        assert!(link_stays_inside("a/link", "../x"));
+        assert!(link_stays_inside("a/b/link", "../../x"));
+        assert!(link_stays_inside("a/link", "./b/../c"));
+        assert!(!link_stays_inside("link", "../x"));
+        assert!(!link_stays_inside("a/b/link", "../../../x"));
+        assert!(!link_stays_inside("a/link", "/etc/passwd"));
+        assert!(!link_stays_inside("a/link", "\x5cserver\x5cshare"));
+        assert!(!link_stays_inside("a/link", "C:/x"));
+        assert!(!link_stays_inside("a/link", "..\x5c..\x5cx"));
+        assert!(!link_stays_inside("a/link", ""));
     }
 }

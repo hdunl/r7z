@@ -5,7 +5,11 @@ use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 
+use lz4_flex::frame::{BlockSize, FrameEncoder, FrameInfo};
+
+use crate::codec::lzw::LzwWriter;
 use crate::codec::pcompress::{Bzip2Writer, GzipWriter, XzWriter};
+use crate::codec::zstdwrite::{Level as ZstdLevel, ZstdWriter};
 use crate::error::{Error, Result};
 use crate::ops::create::{temp_path, Item, Progress, Summary};
 use crate::util::time::filetime_to_unix;
@@ -27,6 +31,10 @@ pub enum Compressor {
     Gzip,
     Bzip2,
     Xz,
+    Zstd,
+    Lz4,
+    /// Unix `compress` (`.Z`).
+    Lzw,
 }
 
 impl Compressor {
@@ -35,6 +43,9 @@ impl Compressor {
             Compressor::Gzip => "gz",
             Compressor::Bzip2 => "bz2",
             Compressor::Xz => "xz",
+            Compressor::Zstd => "zst",
+            Compressor::Lz4 => "lz4",
+            Compressor::Lzw => "Z",
         }
     }
 }
@@ -60,9 +71,15 @@ pub fn kind_for(archive: &Path, forced: Option<&str>) -> Result<Kind> {
         "tgz" | "tpz" => Some(Kind::TarIn(Compressor::Gzip)),
         "tbz" | "tbz2" => Some(Kind::TarIn(Compressor::Bzip2)),
         "txz" => Some(Kind::TarIn(Compressor::Xz)),
+        "tzst" => Some(Kind::TarIn(Compressor::Zstd)),
+        "tlz4" => Some(Kind::TarIn(Compressor::Lz4)),
+        "taz" => Some(Kind::TarIn(Compressor::Lzw)),
+        "z" => Some(tar_in(Compressor::Lzw)),
         "gz" | "gzip" => Some(tar_in(Compressor::Gzip)),
         "bz2" | "bzip2" => Some(tar_in(Compressor::Bzip2)),
         "xz" => Some(tar_in(Compressor::Xz)),
+        "zst" | "zstd" => Some(tar_in(Compressor::Zstd)),
+        "lz4" => Some(tar_in(Compressor::Lz4)),
         "7z" => Some(Kind::SevenZ),
         _ => None,
     };
@@ -94,6 +111,21 @@ pub fn kind_for(archive: &Path, forced: Option<&str>) -> Result<Kind> {
             Some(Kind::TarIn(Compressor::Xz)) => Kind::TarIn(Compressor::Xz),
             _ => Kind::Single(Compressor::Xz),
         },
+        "zstd" => match by_ext() {
+            Some(Kind::TarIn(Compressor::Zstd)) => Kind::TarIn(Compressor::Zstd),
+            _ if t.eq_ignore_ascii_case("tzst") => Kind::TarIn(Compressor::Zstd),
+            _ => Kind::Single(Compressor::Zstd),
+        },
+        "Z" => match by_ext() {
+            Some(Kind::TarIn(Compressor::Lzw)) => Kind::TarIn(Compressor::Lzw),
+            _ if t.eq_ignore_ascii_case("taz") => Kind::TarIn(Compressor::Lzw),
+            _ => Kind::Single(Compressor::Lzw),
+        },
+        "lz4" => match by_ext() {
+            Some(Kind::TarIn(Compressor::Lz4)) => Kind::TarIn(Compressor::Lz4),
+            _ if t.eq_ignore_ascii_case("tlz4") => Kind::TarIn(Compressor::Lz4),
+            _ => Kind::Single(Compressor::Lz4),
+        },
         other => {
             return Err(Error::unsupported(format!(
                 "r7z cannot create {other} archives"
@@ -111,6 +143,8 @@ pub struct WriteOptions {
     pub password: Option<String>,
     /// zip: store instead of deflate.
     pub store: bool,
+    /// zip: compress with zstd (method 93) instead of deflate.
+    pub zstd: bool,
     pub store_mtime: bool,
     pub store_ctime: bool,
     pub store_atime: bool,
@@ -135,6 +169,9 @@ pub(crate) enum Sink<W: Write + 'static> {
     Gzip(GzipWriter<W>),
     Bzip2(Bzip2Writer<W>),
     Xz(XzWriter<W>),
+    Zstd(Box<ZstdWriter<W>>),
+    Lz4(Box<FrameEncoder<W>>),
+    Lzw(LzwWriter<W>),
 }
 
 impl<W: Write + 'static> Sink<W> {
@@ -159,6 +196,18 @@ impl<W: Write + 'static> Sink<W> {
             )?),
             Some(Compressor::Bzip2) => Sink::Bzip2(Bzip2Writer::new(out, level, opts.threads)),
             Some(Compressor::Xz) => Sink::Xz(XzWriter::new(out, level, opts.threads, total)?),
+            Some(Compressor::Zstd) => Sink::Zstd(Box::new(ZstdWriter::new(
+                out,
+                ZstdLevel::for_mx(opts.level),
+                Some(total),
+            )?)),
+            Some(Compressor::Lzw) => Sink::Lzw(LzwWriter::new(out, 16)?),
+            Some(Compressor::Lz4) => Sink::Lz4(Box::new(FrameEncoder::with_frame_info(
+                FrameInfo::new()
+                    .block_size(BlockSize::Max4MB)
+                    .content_checksum(true),
+                out,
+            ))),
         })
     }
 
@@ -168,6 +217,9 @@ impl<W: Write + 'static> Sink<W> {
             Sink::Gzip(w) => w.finish()?,
             Sink::Bzip2(w) => w.finish()?,
             Sink::Xz(w) => w.finish()?,
+            Sink::Zstd(w) => (*w).finish()?,
+            Sink::Lz4(w) => (*w).finish().map_err(|e| Error::Other(e.to_string()))?,
+            Sink::Lzw(w) => w.finish()?,
         })
     }
 }
@@ -179,6 +231,9 @@ impl<W: Write + 'static> Write for Sink<W> {
             Sink::Gzip(w) => w.write(buf),
             Sink::Bzip2(w) => w.write(buf),
             Sink::Xz(w) => w.write(buf),
+            Sink::Zstd(w) => w.write(buf),
+            Sink::Lz4(w) => w.write(buf),
+            Sink::Lzw(w) => w.write(buf),
         }
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -241,7 +296,10 @@ fn write_tar(
         let sink = Sink::new(c, out, opts, None, 0, total)?;
         let mut tw = super::tar::TarWriter::new(sink);
         let mut s = Summary {
-            threads_used: if c.is_some() { opts.threads } else { 1 },
+            threads_used: match c {
+                Some(Compressor::Gzip | Compressor::Bzip2 | Compressor::Xz) => opts.threads,
+                _ => 1,
+            },
             ..Default::default()
         };
         for it in items {
@@ -313,7 +371,12 @@ fn write_single(
             Summary {
                 files: 1,
                 input_bytes: total,
-                threads_used: opts.threads,
+                threads_used: if matches!(c, Compressor::Gzip | Compressor::Bzip2 | Compressor::Xz)
+                {
+                    opts.threads
+                } else {
+                    1
+                },
                 ..Default::default()
             },
         ))

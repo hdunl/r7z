@@ -790,6 +790,7 @@ fn write_archive(
                 None
             },
             store: req.level == 0,
+            zstd: false,
             store_mtime: true,
             store_ctime: false,
             store_atime: false,

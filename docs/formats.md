@@ -17,14 +17,14 @@
 | Type | Read | Write | Details |
 |---|---|---|---|
 | 7z | ✓ | ✓ | format 0.4, solid and non-solid, multi-volume through Split |
-| zip | ✓ | ✓ | read Store, Deflate, Deflate64, BZip2, LZMA, PPMd, Zstandard and xz; ZIP64; UTF-8 names and the Info-ZIP Unicode path and comment fields; names in legacy code pages detected per archive (see below); ZipCrypto, WinZip AES. Write Store and Deflate, ZIP64, UTF-8 names, NTFS times, AES-256 (`-mem=AES256` is the default with `-p`). Also `.jar .docx .xlsx .odt .epub .apk .ipa .appx .nupkg .whl` |
+| zip | ✓ | ✓ | read Store, Deflate, Deflate64, BZip2, LZMA, PPMd, Zstandard and xz, and the legacy Shrink, Reduce and Implode methods; split zips (`.z01`… and the `.zip` last part); ZIP64; UTF-8 names and the Info-ZIP Unicode path and comment fields; names in legacy code pages detected per archive (see below); ZipCrypto, WinZip AES. Write Store, Deflate and zstd (`-mm=zstd`, method 93), ZIP64, UTF-8 names, NTFS times, AES-256 (`-mem=AES256` is the default with `-p`). Also `.jar .docx .xlsx .odt .epub .apk .ipa .appx .nupkg .whl` |
 | tar | ✓ | ✓ | ustar, GNU (long names, old sparse, base-256 sizes), pax (extended headers, sparse 0.1 and 1.0), hard and symbolic links; non-UTF-8 names in old headers decoded with the detected code page. Writes ustar with pax headers for long or non-ASCII names and large files |
 | gzip | ✓ | ✓ | multi-member; `.tgz`/`.tar.gz` write and read in one step |
 | bzip2 | ✓ | ✓ | multi-stream; `.tbz2`/`.tar.bz2` |
 | xz | ✓ | ✓ | CRC32/CRC64/SHA-256 checks, several streams; `.txz`/`.tar.xz` |
-| zstd | ✓ | – | concatenated and skippable frames; `.tzst`/`.tar.zst` |
-| lz4 | ✓ | – | LZ4 frame format (concatenated frames) and the legacy format |
-| Z | ✓ | – | Unix `compress` (LZW, 9-16 bits); `.taz`/`.tar.Z` |
+| zstd | ✓ | ✓ | concatenated and skippable frames on read; written as one frame with a content checksum, `.tzst`/`.tar.zst`. See the note on zstd below |
+| lz4 | ✓ | ✓ | LZ4 frame format (concatenated frames) and the legacy format on read; written as LZ4 frames with `lz4_flex`'s fast compressor, so `-mx` does not change the output; `.tar.lz4` |
+| Z | ✓ | ✓ | Unix `compress` (LZW, 9-16 bits, block mode); written with 16-bit codes; `.taz`/`.tar.Z` |
 | lzma, lzma86 | ✓ | – | LZMA "alone" files; lzma86 with or without BCJ |
 | Cab | ✓ | – | MSZIP, LZX (15-21), Quantum, none; multi-cabinet sets; block checksums |
 | Cpio | ✓ | – | odc, newc, crc (checksum verified), old binary in both byte orders |
@@ -98,21 +98,34 @@ Compared with 7-Zip's console tool, r7z also:
   most plausible one; `l -slt` prints the choice as `Code Page`, the desktop app shows it on
   the archive card with a picker, and `-mcp=932` (any supported number) forces a page;
 - rescues what is readable from damaged and truncated archives (`x -recover`), described
-  below.
+  below; in bzip2 and xz streams a damaged block costs only itself, and the blocks after it
+  come back, with the lost ones reported;
+- extracts symbolic links as links where the platform allows it (on Windows with Developer
+  Mode or the symbolic link privilege). A link is made only when its target stays inside the
+  extraction folder and no folder on the way is a link; otherwise the file that holds the
+  target text is written, as before.
 
 ## Not supported yet
 
 - RAR, disk images (ISO, UDF, VHD, VMDK, DMG, QCOW, file systems) and installers (NSIS,
   MSI/Compound, PE resources, SFX archives behind a stub).
-- Writing zstd, lz4, Z and the read-only formats above; writing ZipCrypto (r7z encrypts
-  zip with AES-256); zip Shrink/Implode/Reduce and PKWARE strong encryption; split zips
-  (`.z01`); legacy LZ4 frames; garbled or multi-volume ARJ.
+- Legacy zip methods are read only, and checked unevenly: Implode matches Info-ZIP's
+  `unzip` on every test stream; Shrink matches it on 11 of 12 (one 150 KB stream with
+  periodic clears is still decoded differently); Reduce has only round-trip tests from
+  r7z's own encoder. Real archives from PKWARE's tools have not been tried.
+- Writing the read-only formats above, and writing ZipCrypto (r7z encrypts zip with
+  AES-256); writing zip Shrink, Reduce and Implode; PKWARE strong encryption; garbled or
+  multi-volume ARJ; zip split archives whose offsets count from each part (r7z reads
+  parts joined in order, as `cat` joins them).
+- zstd output: literals with more than 128 distinct byte values are stored raw (the
+  Huffman weights are not FSE-coded yet), so executables come out about 8% larger than
+  `zstd -3`; text about 2-3% larger. The encoder runs at 13-45 MB/s, from a third
+  (level 1) to a tenth (level 9) of `zstd -3`'s speed.
 - Encoding BCJ2 and the non-x86 branch filters in 7z.
-- NTFS alternate streams, security descriptors; symbolic links are extracted as files that
-  contain the link target.
-- Recovery does not yet resume inside a bzip2 or xz stream after damage (their blocks are
-  independent, so it could), or inside a gzip stream; a 7z cut off mid-stream loses the
-  partly present last LZMA2 chunk (up to 64 KiB packed).
+- NTFS alternate streams, security descriptors.
+- Recovery does not yet resume inside a gzip stream, nor inside an lz4 or zstd stream (their
+  frames could resume the same way); a 7z cut off mid-stream loses the partly present last
+  LZMA2 chunk (up to 64 KiB packed).
 - Split volumes larger than the memory budget are joined in a temporary file first.
 - Stopping r7z with Ctrl-C while creating can leave a `*.r7z-tmp-<pid>` file next to the
   target archive.

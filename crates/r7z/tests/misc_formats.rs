@@ -119,7 +119,10 @@ const CPIO_NAMES: &[&str] = &[
 fn check_cpio_tree(dir: &Path) {
     assert_eq!(fs::read(dir.join("hello.txt")).unwrap(), HELLO);
     assert_eq!(fs::read(dir.join("hard.txt")).unwrap(), HELLO);
-    assert_eq!(fs::read(dir.join("link.txt")).unwrap(), b"hello.txt");
+    // A symlink reads its target where links can be made; elsewhere it is the file holding
+    // the target's name.
+    let link = fs::read(dir.join("link.txt")).unwrap();
+    assert!(link == HELLO || link == b"hello.txt", "{link:?}");
     assert_eq!(fs::read(dir.join("dir/data.bin")).unwrap(), data_bin());
     assert_eq!(fs::read(dir.join("dir/empty")).unwrap(), b"");
     assert_eq!(fs::read(dir.join("dir/sub/deep.txt")).unwrap(), b"deep\n");
@@ -726,7 +729,8 @@ fn xar_tree_links_and_toc() {
     let out = tmp("xar");
     extract_to(a, &out);
     assert_eq!(fs::read(out.join("hard.txt")).unwrap(), HELLO);
-    assert_eq!(fs::read(out.join("link.txt")).unwrap(), b"hello.txt");
+    let link = fs::read(out.join("link.txt")).unwrap();
+    assert!(link == HELLO || link == b"hello.txt", "{link:?}");
     assert_eq!(fs::read(out.join("dir/sub/deep.txt")).unwrap(), b"deep\n");
     assert_eq!(fs::read(out.join("dir/empty")).unwrap(), b"");
     let _ = fs::remove_dir_all(&out);

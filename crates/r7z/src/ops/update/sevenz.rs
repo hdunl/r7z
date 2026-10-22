@@ -72,7 +72,12 @@ pub fn write(
         // Copied encrypted folders keep their own key. Check that this password opens them,
         // so new data is never encrypted under a different password than the old.
         if let Some(f) = (0..folders).find(|&f| !dirty[f] && a.streams.folders[f].is_encrypted()) {
-            verify_password(&src, f, pw)?;
+            match password_opens(&src, f, pw) {
+                PasswordCheck::Opens => {}
+                PasswordCheck::Wrong => return Err(Error::WrongPassword),
+                PasswordCheck::NoCrc => return Err(Error::Other(NO_CRC_MESSAGE.into())),
+                PasswordCheck::Damaged => return Err(Error::corrupt(DAMAGED_MESSAGE)),
+            }
         }
     }
 
@@ -367,43 +372,62 @@ fn repack_filter(items: &[Item], opts: &CreateOptions) -> Option<EncMethod> {
     }
 }
 
-/// Decodes the first file of folder `f` and checks it against its CRC. Fails with
-/// `WrongPassword` when the password does not open the folder.
-fn verify_password(src: &ArchiveFile, f: usize, password: &str) -> Result<()> {
+/// What decoding the first encrypted file of a folder shows about a password.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PasswordCheck {
+    /// The file decodes to its stored CRC, or the folder has no file to check.
+    Opens,
+    /// The file does not decode to its stored CRC.
+    Wrong,
+    /// The archive stores no CRC for the file, so nothing can be checked.
+    NoCrc,
+    /// The folder's packed data cannot be read at all.
+    Damaged,
+}
+
+const NO_CRC_MESSAGE: &str =
+    "cannot check the password: the first encrypted file has no stored CRC";
+const DAMAGED_MESSAGE: &str = "cannot check the password: the encrypted folder's data is damaged";
+
+/// Decodes the first file of folder `f` with `password` and compares it with its stored CRC.
+/// A decoder failure counts as `Wrong`: a damaged file and a wrong key look the same to it.
+/// The result is one of a fixed set of values, so no error or message can carry the password.
+fn password_opens(src: &ArchiveFile, f: usize, password: &str) -> PasswordCheck {
     let a = &src.archive;
     let folder = &a.streams.folders[f];
     let Some(&first) = a.folder_entries[f].iter().find(|&&i| a.entries[i].size > 0) else {
-        return Ok(());
+        return PasswordCheck::Opens;
     };
     let e = &a.entries[first];
     let Some(expect) = e.crc else {
-        return Err(Error::Other(
-            "cannot check the password: the first encrypted file has no stored CRC".into(),
-        ));
+        return PasswordCheck::NoCrc;
     };
-    let wrong = |_: Error| Error::WrongPassword;
-    let packs = src.folder_packs(f)?;
+    let Ok(packs) = src.folder_packs(f) else {
+        return PasswordCheck::Damaged;
+    };
     let dopts = DecodeOptions {
         password: Some(password.to_string()),
         threads: 1,
     };
-    let mut reader = folder_reader(folder, &packs, &dopts).map_err(wrong)?;
+    let Ok(mut reader) = folder_reader(folder, &packs, &dopts) else {
+        return PasswordCheck::Wrong;
+    };
     let mut hasher = crc32fast::Hasher::new();
     let mut left = e.size;
     let mut buf = vec![0u8; 1 << 16];
     while left > 0 {
         let want = left.min(buf.len() as u64) as usize;
-        let n = reader
-            .read(&mut buf[..want])
-            .map_err(|err| wrong(Error::from_codec(err)))?;
-        if n == 0 {
-            return Err(Error::WrongPassword);
+        match reader.read(&mut buf[..want]) {
+            Ok(n) if n > 0 => {
+                hasher.update(&buf[..n]);
+                left -= n as u64;
+            }
+            _ => return PasswordCheck::Wrong,
         }
-        hasher.update(&buf[..n]);
-        left -= n as u64;
     }
-    if hasher.finalize() != expect {
-        return Err(Error::WrongPassword);
+    if hasher.finalize() == expect {
+        PasswordCheck::Opens
+    } else {
+        PasswordCheck::Wrong
     }
-    Ok(())
 }

@@ -7,18 +7,28 @@
 //! can decode units in parallel.
 //!
 //! [`open`] detects the format by signature, then by extension, and opens archives nested
-//! inside single-stream compressors (`.tar.gz` lists as the tar inside).
+//! inside single-stream compressors (`.tar.gz` lists as the tar inside). Disk images nest
+//! the same way, as random-access inputs: a virtual disk holds a partition table, which
+//! holds a file system.
 
 pub mod ar;
 pub mod arj;
 pub mod cab;
 pub mod cpio;
 pub mod data;
+pub mod disk;
 pub mod dmg;
+pub mod exfat;
+pub mod ext;
+pub mod fat;
+pub mod gpt;
 pub mod hfs;
 pub mod iso;
 pub mod lzh;
+pub mod mbr;
 pub mod misc;
+pub mod ntfs;
+pub mod qcow2;
 pub mod rar;
 pub mod rpm;
 pub mod salvage;
@@ -26,6 +36,9 @@ pub mod sevenz;
 pub mod stream;
 pub mod tar;
 pub mod udf;
+pub mod vhd;
+pub mod vhdx;
+pub mod vmdk;
 pub mod wim;
 pub mod write;
 pub mod xar;
@@ -338,6 +351,16 @@ formats![
     misc::SPLIT,
     misc::BASE64,
     misc::IHEX,
+    vhdx::FORMAT,
+    vhd::FORMAT,
+    vmdk::FORMAT,
+    qcow2::FORMAT,
+    gpt::FORMAT,
+    ntfs::FORMAT,
+    exfat::FORMAT,
+    ext::FORMAT,
+    fat::FORMAT,
+    mbr::FORMAT,
 ];
 
 pub fn find_format(name: &str) -> Option<&'static Format> {
@@ -445,15 +468,18 @@ pub fn detect_format(head: &[u8], file_name: &str) -> Option<&'static Format> {
     if let Some(f) = by_sig.iter().find(|f| f.has_extension(&ext)) {
         return Some(f);
     }
-    if let Some(f) = by_sig.first() {
-        return Some(f);
-    }
     // Then by extension, confirmed by the format's content check (formats without a
-    // signature, and old tar files without the ustar magic).
-    FORMATS
+    // signature, old tar files without the ustar magic, and a fixed VHD, which starts like
+    // the disk inside it). This comes before a signature the name does not own, so a
+    // `.vhd` whose first sector is an MBR or a FAT boot sector is still a VHD.
+    if let Some(f) = FORMATS
         .iter()
         .copied()
         .find(|f| f.has_extension(&ext) && f.detect.is_some_and(|d| d(head)))
+    {
+        return Some(f);
+    }
+    by_sig.first().copied()
 }
 
 /// Opens `path`, detecting its format and descending into nested archives.
@@ -542,11 +568,7 @@ fn open_level(
     path: Option<&Path>,
     recover: bool,
 ) -> Result<Level> {
-    let physical_size = match &input {
-        Input::Mem(s) => Some(s.len() as u64),
-        Input::Volume(v) => Some(v.size()),
-        Input::Stream { size_hint, .. } => *size_hint,
-    };
+    let physical_size = input.size_hint();
     let input = if fmt.sequential {
         input
     } else {
@@ -653,17 +675,20 @@ fn inner_input(lvl: &Level) -> Option<(Input, String)> {
         a.main_entry()?
     };
     let e = &a.entries()[i];
-    if let Some(v) = a.volume(i) {
-        return Some((Input::Volume(v), e.name.clone()));
-    }
-    let open = a.stream(i)?;
-    Some((
-        Input::Stream {
-            open,
+    let input = match a.volume(i) {
+        Some(src) => Input::Volume(src),
+        None => Input::Stream {
+            open: a.stream(i)?,
             size_hint: e.size,
         },
-        e.name.clone(),
-    ))
+    };
+    Some((input, e.name.clone()))
+}
+
+/// Opens a random-access input (a disk image or a partition) as an archive, descending into
+/// what it holds like [`open`] does for nested archives.
+pub fn open_volume(src: Arc<dyn ReadAt>, name: &str, req: &OpenRequest) -> Result<Opened> {
+    open_input(Input::Volume(src), name, req, None, false)
 }
 
 /// Name for the single entry of a stream format: the archive name minus its extension,

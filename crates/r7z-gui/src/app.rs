@@ -1137,7 +1137,11 @@ impl App {
                 let node = &level.tree.nodes[*n];
                 if node.is_dir {
                     self.go(Loc::Archive { depth, node: *n });
-                } else if classify(&node.name) == FileClass::Archive {
+                } else if classify(&node.name) == FileClass::Archive
+                    || node
+                        .entry
+                        .is_some_and(|e| level.archive().volume(e).is_some())
+                {
                     self.open_nested(ctx, *n, None);
                 } else {
                     self.launch(ctx, *n);

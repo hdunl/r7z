@@ -113,6 +113,16 @@ pub fn open_nested(
     code_page: Option<CodePage>,
 ) -> Task<Opened> {
     Task::spawn(ctx, move |cancel| {
+        // A disk image or partition is opened where it lies: copying it out would read the
+        // whole disk into memory first.
+        if let Some(src) = parent.volume(entry) {
+            let req = OpenRequest {
+                password,
+                code_page,
+                ..Default::default()
+            };
+            return format::open_volume(src, &name, &req);
+        }
         let peeked =
             r7z::ops::peek::read_entry(&*parent, entry, password.as_deref(), 4 << 30, &|| {
                 cancel.load(Ordering::Relaxed)

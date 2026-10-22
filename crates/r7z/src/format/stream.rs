@@ -106,11 +106,7 @@ impl Archive for StreamArchive {
 fn base_entry(name: String, input: &Input) -> Entry {
     Entry {
         name,
-        packed_size: match input {
-            Input::Mem(s) => Some(s.len() as u64),
-            Input::Volume(v) => Some(v.size()),
-            Input::Stream { size_hint, .. } => *size_hint,
-        },
+        packed_size: input.size_hint(),
         ..Default::default()
     }
 }
@@ -119,15 +115,8 @@ fn base_entry(name: String, input: &Input) -> Entry {
 fn head(input: &Input, n: usize) -> Result<Vec<u8>> {
     match input {
         Input::Mem(s) => Ok(s[..s.len().min(n)].to_vec()),
-        Input::Volume(_) => head(
-            &Input::Stream {
-                open: input.opener(),
-                size_hint: None,
-            },
-            n,
-        ),
-        Input::Stream { open, .. } => {
-            let mut r = open()?;
+        other => {
+            let mut r = other.opener()()?;
             let mut buf = vec![0u8; n];
             let mut got = 0;
             while got < n {

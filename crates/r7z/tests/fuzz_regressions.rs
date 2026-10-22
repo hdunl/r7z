@@ -33,9 +33,10 @@ fn inputs(target: &str) -> Vec<(String, Vec<u8>)> {
 fn open_inputs_decode_without_panicking() {
     // Same choices as fuzz/fuzz_targets/open.rs: the last byte picks the file name and
     // whether a password is offered.
-    const NAMES: [&str; 18] = [
+    const NAMES: [&str; 22] = [
         "a.7z", "a.zip", "a.tar", "a.gz", "a.bz2", "a.xz", "a.zst", "a.lz4", "a.Z", "a.lzma",
-        "a.cab", "a.rpm", "a.deb", "a.wim", "a.001", "a.b64", "a.hex", "a.lzh",
+        "a.cab", "a.rpm", "a.deb", "a.wim", "a.001", "a.b64", "a.hex", "a.lzh", "a.vhd", "a.vhdx",
+        "a.vmdk", "a.qcow2",
     ];
     for (_, data) in inputs("open") {
         let pick = data.last().copied().unwrap_or(0);

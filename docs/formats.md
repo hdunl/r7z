@@ -42,6 +42,23 @@
 | Split | ✓ | – | `.001`, `.002`… joined in order, then the archive inside is opened |
 | Base64 | ✓ | – | plain or PEM-wrapped text |
 | IHex | ✓ | – | Intel HEX, one item per contiguous block |
+| VHD | ✓ | – | `.vhd`: fixed and dynamic disks; a differencing disk reads its unstored sectors from the parent next to it, and does not open without it |
+| VHDX | ✓ | – | `.vhdx`: header, region tables and block allocation table; a disk whose log was not replayed is refused, and differencing disks are not followed yet |
+| VMDK | ✓ | – | `.vmdk`: monolithic sparse, stream-optimized (zlib grains) and descriptor files with FLAT, SPARSE and ZERO extents next to them |
+| QCOW2 | ✓ | – | `.qcow2`, version 2 and 3: uncompressed, zlib and zero clusters; a backing file is listed and not followed, so reading a cluster only it holds is an error |
+| MBR | ✓ | – | primary and logical (extended) partitions, listed in table order |
+| GPT | ✓ | – | primary header, or the backup if the primary is damaged; partition labels; entries named `0.Basic data partition.fat` like 7-Zip |
+| FAT | ✓ | – | FAT12, FAT16 and FAT32 with long file names |
+| exFAT | ✓ | – | contiguous and chained files; bytes past the valid data length read as zeros |
+| NTFS | ✓ | – | master file table with attribute lists; resident and non-resident data, sparse runs, LZNT1 compression; alternate streams and reparse targets are not read |
+| Ext | ✓ | – | ext2, ext3 and ext4: indirect blocks, extent trees, inline data, symbolic links; devices, FIFOs and sockets are not listed |
+
+Disk images nest like 7-Zip's: a `.vhdx` holding a GPT holding NTFS lists as the NTFS files,
+with each level in the listing. A virtual disk holds a partition table or a file system;
+when a table has one partition, the partition's file system opens as the next level, and
+with several, each partition is an entry numbered from 0 (`0.fat`, `1.fat`, `2.img`; `img` is a partition r7z does
+not read). The desktop app opens a partition in place, without copying it out. Virtual disks
+are read by range, so a sparse terabyte costs only its allocation table.
 
 Switches follow 7-Zip: `-o`, `-p`, `-t`, `-mx0..9`, `-mmt[N]`, `-m0=LZMA2:d=..:c=..`, `-md`,
 `-mf=on|off|BCJ|BCJ2|ARM|ARMT|ARM64|PPC|SPARC|IA64|RISCV|Delta:N`, `-ms=on|off|SIZE`, `-mhe`, `-mhc`, `-mm=Deflate|Copy`,
@@ -120,9 +137,10 @@ and checked byte-for-byte against 7-Zip.
 
 ## Not supported yet
 
-- RAR 1.5 and RAR 2.0 (unpack versions 15 and 20) and RAR SFX archives; disk images other
-  than ISO, UDF, DMG and HFS+ (VHD, VMDK, QCOW, APFS and other file systems) and
-  installers (NSIS, MSI/Compound, PE resources, SFX archives behind a stub).
+- RAR 1.5 and RAR 2.0 (unpack versions 15 and 20) and RAR SFX archives; APFS and file
+  systems other than FAT, exFAT, NTFS, ext2/3/4 and HFS+; VHDX log replay, differencing
+  VHDX and QCOW2 backing files; installers (NSIS, MSI/Compound, PE resources, SFX
+  archives behind a stub).
 - Legacy zip methods are read only, and checked unevenly: Implode matches Info-ZIP's
   `unzip` on every test stream; Shrink matches it on 11 of 12 (one 150 KB stream with
   periodic clears is still decoded differently); Reduce has only round-trip tests from

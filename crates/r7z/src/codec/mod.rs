@@ -2,6 +2,7 @@
 
 pub mod aes;
 pub mod bzip2par;
+pub mod bzip2scan;
 pub mod decode;
 pub mod encode;
 pub mod huffman;
@@ -14,10 +15,13 @@ pub mod lzx;
 pub mod lzx_wim;
 pub mod mszip;
 pub mod pcompress;
+pub mod pkware;
 pub mod quantum;
 pub mod xpress;
+pub mod xzscan;
 pub mod xzwrite;
 pub mod zipcrypt;
+pub mod zstdwrite;
 
 use crate::sevenz::Coder;
 use crate::util::fmt::dict_label;

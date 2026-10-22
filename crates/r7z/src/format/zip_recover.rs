@@ -37,7 +37,7 @@ struct Found {
 }
 
 pub(super) fn open(data: Slice, code_page: Option<CodePage>) -> Result<Box<dyn Archive>> {
-    let why = match open_central(&data, code_page) {
+    let why = match open_central(&data, code_page, false) {
         Ok(z) => return Ok(Box::new(z)),
         Err(e) => e,
     };

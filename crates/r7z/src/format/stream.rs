@@ -10,8 +10,10 @@ use std::sync::Arc;
 
 use super::data::{BoxRead, Input, Opener, Slice};
 use super::{
-    stream_entry_name, Archive, Ctx, Entry, EntryFn, Format, OpenOptions, Signature, Unit,
+    stream_entry_name, Archive, Ctx, Entry, EntryFn, Format, Notes, OpenOptions, Signature, Unit,
 };
+use crate::codec::bzip2scan::Bzip2Recovery;
+use crate::codec::xzscan::XzRecovery;
 use crate::error::{Error, Result};
 use crate::util::time::unix_to_filetime;
 
@@ -26,6 +28,8 @@ pub struct StreamArchive {
     entries: Vec<Entry>,
     units: Vec<Unit>,
     props: Vec<(&'static str, String)>,
+    /// Damage found while decoding a recovery open.
+    damage: Notes,
 }
 
 impl StreamArchive {
@@ -35,6 +39,17 @@ impl StreamArchive {
         decoder: Decoder,
         entry: Entry,
         props: Vec<(&'static str, String)>,
+    ) -> Box<dyn Archive> {
+        Self::boxed_with_damage(fmt, input, decoder, entry, props, Notes::default())
+    }
+
+    fn boxed_with_damage(
+        fmt: &'static Format,
+        input: &Input,
+        decoder: Decoder,
+        entry: Entry,
+        props: Vec<(&'static str, String)>,
+        damage: Notes,
     ) -> Box<dyn Archive> {
         Box::new(StreamArchive {
             fmt,
@@ -46,6 +61,7 @@ impl StreamArchive {
                 encrypted: false,
             }],
             props,
+            damage,
         })
     }
 }
@@ -80,6 +96,10 @@ impl Archive for StreamArchive {
     fn stream(&self, _i: usize) -> Option<Opener> {
         let (input, decoder) = (self.input.clone(), self.decoder.clone());
         Some(Arc::new(move || decoder(input()?)))
+    }
+
+    fn damage(&self) -> Vec<String> {
+        self.damage.lock().unwrap().clone()
     }
 }
 
@@ -279,6 +299,25 @@ fn open_bzip2(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
         &input,
     );
     e.method = Some(format!("BZip2:{}", (h[3] - b'0') as u32 * 100));
+    if opts.recover {
+        if let Input::Mem(s) = &input {
+            // A recovery open decodes block by block, so one damaged block costs only itself.
+            let data = Arc::new(s.to_vec());
+            let damage: Notes = Default::default();
+            let notes = damage.clone();
+            let dec: Decoder = Arc::new(move |_r| {
+                Ok(Box::new(Bzip2Recovery::new(data.clone(), notes.clone())) as BoxRead)
+            });
+            return Ok(StreamArchive::boxed_with_damage(
+                &BZIP2,
+                &input,
+                dec,
+                e,
+                Vec::new(),
+                damage,
+            ));
+        }
+    }
     let dec: Decoder = match &input {
         // Blocks decode in parallel when the whole file is at hand.
         Input::Mem(s) if s.len() > 1 << 20 && crate::util::default_threads() > 1 => {
@@ -411,6 +450,20 @@ fn open_xz(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
     };
     e.method = Some(format!("LZMA2{check_name}"));
     props.push(("Method", format!("LZMA2{check_name}")));
+    if opts.recover {
+        if let Input::Mem(s) = &input {
+            // A recovery open decodes block by block, so one damaged block costs only itself.
+            let data = Arc::new(s.to_vec());
+            let damage: Notes = Default::default();
+            let notes = damage.clone();
+            let dec: Decoder = Arc::new(move |_r| {
+                Ok(Box::new(XzRecovery::new(data.clone(), notes.clone())) as BoxRead)
+            });
+            return Ok(StreamArchive::boxed_with_damage(
+                &XZ, &input, dec, e, props, damage,
+            ));
+        }
+    }
     let dec: Decoder = match &input {
         // Several independent blocks decode in parallel.
         Input::Mem(s) if blocks > 1 && crate::util::default_threads() > 1 => {
@@ -436,7 +489,7 @@ pub const ZSTD: Format = Format {
     extensions: &["zst", "tzst", "zstd"],
     signatures: &[Signature::at(0, &[0x28, 0xB5, 0x2F, 0xFD])],
     detect: None,
-    write: false,
+    write: true,
     stream: true,
     sequential: true,
     open: open_zstd,
@@ -571,7 +624,7 @@ pub const LZ4: Format = Format {
         Signature::at(0, &[0x02, 0x21, 0x4C, 0x18]),
     ],
     detect: None,
-    write: false,
+    write: true,
     stream: true,
     sequential: true,
     open: open_lz4,
@@ -731,7 +784,7 @@ pub const Z: Format = Format {
     extensions: &["z", "taz"],
     signatures: &[Signature::at(0, &[0x1F, 0x9D])],
     detect: Some(|h| h.len() >= 3 && (9..=16).contains(&(h[2] & 0x1F)) && h[2] & 0x60 == 0),
-    write: false,
+    write: true,
     stream: true,
     sequential: true,
     open: open_z,

@@ -61,6 +61,7 @@ fn open(a: &Args, need_data: bool) -> Result<(Opened, Option<String>)> {
             password: pw.clone(),
             format: forced_format(a),
             code_page: a.code_page,
+            split: false,
         };
         let opened = if a.recover {
             format::open_recover(path, &req)
@@ -341,10 +342,10 @@ fn other_options(
     let store = match a.method.other.as_deref() {
         None => a.method.main == Some(MainMethod::Copy) || level == 0,
         Some("copy") | Some("store") => true,
-        Some("deflate") => false,
+        Some("deflate") | Some("zstd") => false,
         Some(m) => {
             return Err(Error::unsupported(format!(
-                "method '{m}' for {kind:?} (r7z writes Deflate and Store in zip)"
+                "method '{m}' for {kind:?} (r7z writes Deflate, zstd and Store in zip)"
             )))
         }
     };
@@ -364,6 +365,7 @@ fn other_options(
         threads: threads(a),
         password,
         store,
+        zstd: a.method.other.as_deref() == Some("zstd"),
         store_mtime: a.mtime.unwrap_or(true),
         store_ctime: a.ctime.unwrap_or(false),
         store_atime: a.atime.unwrap_or(false),

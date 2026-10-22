@@ -131,8 +131,8 @@ r7z h -scrcSHA256 *.iso              # hash files
 
 | | Formats |
 |---|---|
-| **Read and write** | 7z, zip, tar, gzip, bzip2, xz (and `.tar.gz`, `.tar.bz2`, `.tar.xz` in one step) |
-| **Read** | zstd, lz4, Z, lzma, lzma86, cab, cpio, ar and deb, rpm, arj, lzh, xar and pkg, wim, esd and swm, split `.001` volumes, Base64, Intel HEX |
+| **Read and write** | 7z, zip (zstd members too), tar, gzip, bzip2, xz, zstd, lz4, Z (and `.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz4`, `.tar.Z` in one step) |
+| **Read** | lzma, lzma86, cab, cpio, ar and deb, rpm, arj, lzh, xar and pkg, wim, esd and swm, split `.001` and `.z01` volumes, zip Shrink, Reduce and Implode, Base64, Intel HEX |
 | **Zip-based** | jar, docx, xlsx, odt, epub, apk, ipa, appx, nupkg, whl |
 | **Encryption** | 7z AES-256 with header encryption; zip WinZip AES (read and write) and ZipCrypto (read) |
 
@@ -174,7 +174,6 @@ with the default icon. Source layout and testing: [docs/development.md](docs/dev
 
 - RAR and RAR5 extraction
 - Disk images and installers: ISO, UDF, VHD, VMDK, DMG, NSIS, MSI
-- Writing zstd and lz4
 - BCJ2 encoding and a threaded match finder for faster `-mx9`
 
 Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supported-yet).

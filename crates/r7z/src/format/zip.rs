@@ -1,6 +1,6 @@
-//! zip: reading (Stored, Deflate, Deflate64, BZip2, LZMA, Zstandard, xz; ZIP64; UTF-8 and
-//! OEM names; ZipCrypto and WinZip AES) and writing (Stored/Deflate, ZIP64, UTF-8 names,
-//! NTFS timestamps, WinZip AES-256).
+//! zip: reading (Stored, Shrink, Reduce, Implode, Deflate, Deflate64, BZip2, LZMA, Zstandard,
+//! xz; ZIP64; UTF-8 and OEM names; ZipCrypto and WinZip AES) and writing (Stored/Deflate,
+//! ZIP64, UTF-8 names, NTFS timestamps, WinZip AES-256).
 //!
 //! Every entry is its own unit, so extraction decodes entries in parallel. Writing
 //! compresses small files concurrently in memory and streams large ones through the
@@ -19,7 +19,9 @@ use super::{
     Unit,
 };
 use crate::codec::pcompress::{deflate_chunk, ParDeflate};
+use crate::codec::pkware;
 use crate::codec::zipcrypt::{wz_aes_encrypt, WzAesReader, ZipCryptoReader};
+use crate::codec::zstdwrite::{Level as ZstdLevel, ZstdWriter};
 use crate::error::{Error, Result};
 use crate::ops::create::{temp_path, Item, Progress, Summary};
 use crate::sevenz::attr;
@@ -103,6 +105,7 @@ fn method_name(m: u16) -> String {
     match m {
         0 => "Store".into(),
         1 => "Shrink".into(),
+        2..=5 => "Reduce".into(),
         6 => "Implode".into(),
         8 => "Deflate".into(),
         9 => "Deflate64".into(),
@@ -149,11 +152,11 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
     if opts.recover {
         return recover::open(data, opts.code_page);
     }
-    Ok(Box::new(open_central(&data, opts.code_page)?))
+    Ok(Box::new(open_central(&data, opts.code_page, opts.split)?))
 }
 
 /// Opens through the end-of-central-directory record.
-fn open_central(data: &Slice, code_page: Option<CodePage>) -> Result<Zip> {
+fn open_central(data: &Slice, code_page: Option<CodePage>, split: bool) -> Result<Zip> {
     let d: &[u8] = data;
     let eocd = find_eocd(d).ok_or_else(|| {
         if d.starts_with(b"PK\x03\x04") {
@@ -162,7 +165,7 @@ fn open_central(data: &Slice, code_page: Option<CodePage>) -> Result<Zip> {
             Error::NotArchive
         }
     })?;
-    if u16le(d, eocd + 4) != 0 && u16le(d, eocd + 4) != 0xFFFF {
+    if !split && u16le(d, eocd + 4) != 0 && u16le(d, eocd + 4) != 0xFFFF {
         return Err(Error::unsupported("multi-volume zip archives"));
     }
     let mut count = u16le(d, eocd + 10) as u64;
@@ -459,6 +462,9 @@ impl Zip {
         };
         Ok(match method {
             0 => src,
+            1 => Box::new(pkware::shrink(src, size)),
+            2..=5 => Box::new(pkware::reduce(src, (method - 1) as u8, size).map_err(data_err)?),
+            6 => Box::new(pkware::implode(src, ze.flags, size).map_err(data_err)?),
             8 => Box::new(flate2::read::DeflateDecoder::new(src)),
             9 => Box::new(deflate64::Deflate64Decoder::new(src)),
             12 => Box::new(bzip2::read::BzDecoder::new(src)),
@@ -607,6 +613,8 @@ fn version_needed(w: &Written, zip64: bool) -> u16 {
         51
     } else if zip64 {
         45
+    } else if w.method == 93 {
+        63
     } else if w.method == 8 || w.is_dir {
         20
     } else {
@@ -617,18 +625,47 @@ fn version_needed(w: &Written, zip64: bool) -> u16 {
 /// An in-memory file ready to write: method, CRC, unpacked size, stored body.
 type Encoded = (u16, u32, u64, Vec<u8>);
 
-/// Encodes one in-memory file: compressed (or stored, when that is smaller) and encrypted.
-fn encode_small(data: &[u8], level: u32, password: Option<&str>) -> Result<(u16, u32, Vec<u8>)> {
-    let crc = crc32fast::hash(data);
-    let (method, mut body) = if level == 0 || data.is_empty() {
-        (0u16, data.to_vec())
-    } else {
-        let c = deflate_chunk(&[], data, level, true)?;
-        if c.len() < data.len() {
-            (8, c)
+/// How member data is compressed: stored, Deflate at a zlib level, or zstd at a `-mx` level.
+#[derive(Clone, Copy)]
+enum Packer {
+    Store,
+    Deflate(u32),
+    Zstd(u32),
+}
+
+impl Packer {
+    fn new(opts: &WriteOptions, deflate_level: u32) -> Packer {
+        if deflate_level == 0 {
+            Packer::Store
+        } else if opts.zstd {
+            Packer::Zstd(opts.level)
         } else {
-            (0, data.to_vec())
+            Packer::Deflate(deflate_level)
         }
+    }
+}
+
+/// Encodes one in-memory file: compressed (or stored, when that is smaller) and encrypted.
+fn encode_small(
+    data: &[u8],
+    packer: Packer,
+    password: Option<&str>,
+) -> Result<(u16, u32, Vec<u8>)> {
+    let crc = crc32fast::hash(data);
+    let packed = match packer {
+        _ if data.is_empty() => None,
+        Packer::Store => None,
+        Packer::Deflate(level) => Some((8, deflate_chunk(&[], data, level, true)?)),
+        Packer::Zstd(mx) => {
+            let mut w =
+                ZstdWriter::new(Vec::new(), ZstdLevel::for_mx(mx), Some(data.len() as u64))?;
+            w.write_all(data)?;
+            Some((93, w.finish()?))
+        }
+    };
+    let (method, mut body) = match packed {
+        Some((m, c)) if c.len() < data.len() => (m, c),
+        _ => (0u16, data.to_vec()),
     };
     if let Some(pw) = password {
         body = wz_aes_encrypt(&body, pw.as_bytes())?;
@@ -826,6 +863,7 @@ fn write_items(
             acc += items[i].size;
             i += 1;
         }
+        let packer = Packer::new(opts, level);
         let batch: Vec<Option<Result<Encoded>>> = pool.install(|| {
             items[start..i]
                 .par_iter()
@@ -845,7 +883,7 @@ fn write_items(
                         return Some(Err(Error::Cancelled));
                     }
                     Some(
-                        encode_small(&data, level, pw)
+                        encode_small(&data, packer, pw)
                             .map(|(m, c, b)| (m, c, data.len() as u64, b)),
                     )
                 })
@@ -997,7 +1035,11 @@ fn stream_large(
         }
     };
     let mut w = base_written(it, opts);
-    w.method = if level == 0 { 0 } else { 8 };
+    w.method = match Packer::new(opts, level) {
+        Packer::Store => 0,
+        Packer::Deflate(_) => 8,
+        Packer::Zstd(_) => 93,
+    };
     w.offset = *pos;
     w.size = it.size;
     let zip64 = it.size >= 0xFFFF_0000;
@@ -1032,10 +1074,15 @@ fn stream_large(
     let mut buf = vec![0u8; 1 << 20];
     {
         let mut deflater = None;
-        let target: &mut dyn Write = if w.method == 8 {
-            deflater.insert(ParDeflate::new(&mut sink, level, opts.threads))
-        } else {
-            &mut sink
+        let mut zstd = None;
+        let target: &mut dyn Write = match w.method {
+            8 => deflater.insert(ParDeflate::new(&mut sink, level, opts.threads)),
+            93 => zstd.insert(ZstdWriter::new(
+                &mut sink,
+                ZstdLevel::for_mx(opts.level),
+                Some(it.size),
+            )?),
+            _ => &mut sink,
         };
         loop {
             let n = match f.read(&mut buf) {
@@ -1054,6 +1101,9 @@ fn stream_large(
         }
         if let Some(d) = deflater {
             d.finish()?;
+        }
+        if let Some(z) = zstd {
+            z.finish()?;
         }
     }
     sink.flush_buf()?;

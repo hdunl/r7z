@@ -39,7 +39,7 @@ pub struct MethodSpec {
     pub dict: Option<u32>,
     pub fast_bytes: Option<u32>,
     pub block: Option<u64>,
-    /// A method name only zip uses (`deflate`, `copy` given as `-mm=`).
+    /// A method name only zip uses (`deflate`, `zstd`, `store` given as `-mm=`).
     pub other: Option<String>,
 }
 
@@ -147,12 +147,12 @@ fn parse_method(v: &str, spec: &mut MethodSpec) -> Result<()> {
         "lzma2" => spec.main = Some(MainMethod::Lzma2),
         "lzma" => spec.main = Some(MainMethod::Lzma),
         "copy" => spec.main = Some(MainMethod::Copy),
-        "deflate" | "store" => spec.other = Some(name.clone()),
+        "deflate" | "store" | "zstd" => spec.other = Some(name.clone()),
         "bcj" | "x86" => spec.filter = Some(FilterMode::Bcj),
         n if n.starts_with("delta") => spec.filter = Some(parse_filter(v)?),
         other => {
             return Err(Error::usage(format!(
-                "unsupported method '{other}' (r7z writes LZMA2, LZMA, Copy, BCJ, Delta; Deflate in zip)"
+                "unsupported method '{other}' (r7z writes LZMA2, LZMA, Copy, BCJ, Delta; Deflate and zstd in zip)"
             )))
         }
     }

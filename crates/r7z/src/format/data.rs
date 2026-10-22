@@ -242,6 +242,14 @@ pub enum Input {
     },
 }
 
+/// Fails unless `offset..offset + n` lies inside `len`.
+pub fn check_range(offset: u64, n: usize, len: u64) -> Result<()> {
+    match offset.checked_add(n as u64) {
+        Some(end) if end <= len => Ok(()),
+        _ => Err(Error::corrupt("read past the end of the disk image")),
+    }
+}
+
 impl Input {
     /// Random-access bytes, decoding a stream into memory (or a temp file) if needed.
     pub fn into_mem(self) -> Result<Slice> {
@@ -252,6 +260,15 @@ impl Input {
                 materialize(&mut Runs::whole(v), Some(len))
             }
             Input::Stream { open, size_hint } => materialize(&mut *open()?, size_hint),
+        }
+    }
+
+    /// The size of the bytes this input yields, when it is known without reading them.
+    pub fn size_hint(&self) -> Option<u64> {
+        match self {
+            Input::Mem(s) => Some(s.len() as u64),
+            Input::Stream { size_hint, .. } => *size_hint,
+            Input::Volume(src) => Some(src.size()),
         }
     }
 

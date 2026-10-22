@@ -13,6 +13,7 @@ pub mod lzh;
 pub mod lzma2par;
 pub mod lzma2scan;
 pub mod lzms;
+pub mod lznt1;
 pub mod lzw;
 pub mod lzx;
 pub mod lzx_wim;

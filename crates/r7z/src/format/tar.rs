@@ -780,7 +780,9 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
             links = std::mem::take(&mut cur.legacy_links);
             (e, refs, Source::Mem(s), end)
         }
-        Input::Stream { open, size_hint } => {
+        other => {
+            let size_hint = other.size_hint();
+            let open = other.opener();
             let mut r = open()?;
             // Beyond this the archive is decompressed a second time for extraction rather
             // than held in memory.
@@ -805,7 +807,6 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
             };
             (e, refs, src, end)
         }
-        volume @ Input::Volume(_) => return open(Input::Mem(volume.into_mem()?), opts),
     };
     if entries.is_empty() && (end == 0 || opts.recover) {
         return Err(Error::NotArchive);

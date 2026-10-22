@@ -49,6 +49,14 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   and HFS+/HFSX volumes, including decmpfs files whose payload is in the attribute (files
   with blocks in the resource fork are listed but not extracted). Reads are random access,
   so large images do not load into memory.
+- Reads disk images and the file systems in them: VHD (fixed, dynamic, and differencing
+  disks, the parent found beside the child), VHDX, VMDK (monolithic sparse, stream-optimized
+  and descriptor files), QCOW2, MBR with extended partitions, GPT, FAT12/16/32 with long
+  names, exFAT, NTFS (run lists, sparse files, LZNT1 compression) and ext2/3/4 (extents,
+  indirect blocks, inline data, symbolic links). Disks nest as in 7-Zip: a VHDX holding a GPT
+  holding NTFS lists as the NTFS files. The desktop app opens a partition in place. Disks are
+  read by range, so a sparse terabyte costs only its allocation table. This adds 0.23 MiB to
+  r7z.exe (3.47 to 3.70 MiB) and 0.22 MiB to the desktop app (9.71 to 9.93 MiB).
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

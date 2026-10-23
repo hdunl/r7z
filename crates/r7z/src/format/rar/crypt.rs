@@ -73,21 +73,20 @@ pub fn rar3_key(password: &str, salt: &[u8; 8]) -> ([u8; 16], [u8; 16]) {
     }
     raw.extend_from_slice(salt);
     let mut h = Sha1::new();
-    let mut iv = [0u8; 16];
+    // One IV byte every 0x4000 rounds. The key and IV are built from the hash directly
+    // rather than filled into zeroed arrays.
+    let mut iv = Vec::with_capacity(16);
     for i in 0u32..0x4_0000 {
         h.update(&raw);
         h.update([i as u8, (i >> 8) as u8, (i >> 16) as u8]);
         if i % 0x4000 == 0 {
-            iv[(i / 0x4000) as usize] = h.clone().finalize()[19];
+            iv.push(h.clone().finalize()[19]);
         }
     }
     let d = h.finalize();
-    let mut key = [0u8; 16];
-    for w in 0..4 {
-        for j in 0..4 {
-            key[4 * w + j] = d[4 * w + 3 - j];
-        }
-    }
+    // The first 16 digest bytes, each 4-byte word reversed.
+    let key: [u8; 16] = std::array::from_fn(|k| d[4 * (k / 4) + 3 - k % 4]);
+    let iv: [u8; 16] = iv.try_into().expect("16 rounds of 0x4000 give 16 IV bytes");
     (key, iv)
 }
 
@@ -117,8 +116,8 @@ pub fn rar5_keys(password: &str, salt: &[u8; 16], lg2: u8) -> Result<Rar5Keys> {
         .into_bytes()
         .into();
     let mut acc = u;
-    let mut key = [0u8; 32];
-    let mut hash_key = [0u8; 32];
+    // Taken from the chain as it passes them; `rounds` is at least 1, so both are set.
+    let (mut key, mut hash_key) = (None, None);
     for i in 1..=rounds + 32 {
         if i > 1 {
             u = prf.clone().chain_update(u).finalize().into_bytes().into();
@@ -127,15 +126,16 @@ pub fn rar5_keys(password: &str, salt: &[u8; 16], lg2: u8) -> Result<Rar5Keys> {
             }
         }
         if i == rounds {
-            key = acc;
+            key = Some(acc);
         } else if i == rounds + 16 {
-            hash_key = acc;
+            hash_key = Some(acc);
         }
     }
-    let mut check = [0u8; 8];
-    for (i, b) in acc.iter().enumerate() {
-        check[i % 8] ^= b;
-    }
+    let key = key.expect("the chain passes `rounds`");
+    let hash_key = hash_key.expect("the chain passes `rounds + 16`");
+    // The last value folded to 8 bytes: byte k is the XOR of bytes k, k+8, k+16 and k+24.
+    let check: [u8; 8] =
+        std::array::from_fn(|k| acc.iter().skip(k).step_by(8).fold(0, |c, b| c ^ b));
     Ok(Rar5Keys {
         key,
         hash_key,

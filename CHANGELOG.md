@@ -2,8 +2,11 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.2.0 - 2026-10-22
 
+- With the new formats the programs are larger: r7z.exe is 4.8 MiB (3.4 MiB in 0.1.9) and
+  the desktop app 10.9 MiB (9.7 MiB). The Explorer menu extension stays at 0.34 MiB: it
+  recognizes installers by their bytes, without linking the readers.
 - Updating existing archives. `a` into an existing 7z, zip, tar or compressed tar adds
   and replaces entries; `u` replaces only the entries the files on disk are newer than;
   `d` deletes the entries a name, `-i` or `-x` selects; `rn` renames entries and folders
@@ -28,11 +31,12 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 - Recovery resumes inside damaged bzip2 and xz streams: a damaged block costs only itself,
   is reported, and the blocks after it come back. A tar inside them is found again by
   searching for the next valid header, whatever the shift.
-- Faster `-mx5` to `-mx9` when one encoder handles a folder (and xz at those levels): the
-  binary tree match finder runs on its own thread, so the parser and range coder no longer
-  wait for it on one core. `-mx9` on a 87 MB tree: 29 s against 38 s, with peak memory 9%
-  higher. The encoder is a vendored copy of lzma-rust2 0.22's (Apache-2.0), and its output
-  is byte-identical to the single-threaded encoder's for the same writes.
+- Faster `-mx5` to `-mx9` when one encoder handles a folder (and xz at those levels):
+  the binary tree match finder runs on its own thread, so the parser and range coder no
+  longer wait for it on one core. `-mx9` on an 87 MB tree: 25 s against 32 s in
+  back-to-back runs, with peak memory 10% higher. The encoder is a vendored copy of
+  lzma-rust2 0.22's (Apache-2.0), and its output is byte-identical to the
+  single-threaded encoder's for the same writes.
 - BCJ2 encoding: `-mx8` and `-mx9` store x86 executables (exe, dll, sys, and the other
   executable extensions r7z already knows) as 7-Zip does, with four streams. `-mf=BCJ2`
   forces it. Encrypted archives keep the single BCJ filter.
@@ -55,11 +59,10 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   names, exFAT, NTFS (run lists, sparse files, LZNT1 compression) and ext2/3/4 (extents,
   indirect blocks, inline data, symbolic links). Disks nest as in 7-Zip: a VHDX holding a GPT
   holding NTFS lists as the NTFS files. The desktop app opens a partition in place. Disks are
-  read by range, so a sparse terabyte costs only its allocation table. This adds 0.23 MiB to
-  r7z.exe (3.47 to 3.70 MiB) and 0.22 MiB to the desktop app (9.71 to 9.93 MiB).
+  read by range, so a sparse terabyte costs only its allocation table.
 - Reads installers and executable containers: MSI, MSP and other OLE (Compound) files, NSIS
-  2 and 3 installers (ANSI and Unicode, zlib, bzip2 and LZMA), self-extracting 7z, zip and
-  cab archives, PE resources and CHM help files. A plain `.exe` is still not an archive:
+  2 and 3 installers (ANSI and Unicode, zlib, bzip2 and LZMA), self-extracting 7z, zip, RAR
+  and cab archives, PE resources and CHM help files. A plain `.exe` is still not an archive:
   Explorer's "Extract here" and "Open with" show for an executable only when it carries an
   installer or self-extractor payload, and the desktop app offers "Open as archive" for the
   resources of any other program. Inno Setup is not supported yet.

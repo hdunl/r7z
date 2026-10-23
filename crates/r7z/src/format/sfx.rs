@@ -8,7 +8,7 @@
 
 use super::data::{Input, Slice};
 use super::pe::Image;
-use super::{Archive, Format, OpenOptions, FORMATS};
+use super::{Archive, Format, OpenOptions, Signature};
 use crate::error::{Error, Result};
 
 /// A payload format: no signature and no extension. [`carries_payload`] recognizes it in a
@@ -25,8 +25,25 @@ pub const FORMAT: Format = Format {
     open,
 };
 
-/// Formats an SFX stub can carry, by format name.
-const PAYLOADS: &[&str] = &["7z", "zip", "rar", "Cab"];
+/// Formats an SFX stub can carry.
+const PAYLOADS: [&Format; 4] = [
+    &super::sevenz::FORMAT,
+    &super::zip::FORMAT,
+    &super::rar::FORMAT,
+    &super::cab::FORMAT,
+];
+
+/// The payload formats' signatures, worked out at compile time, so code that only looks for
+/// them (the Explorer menu) does not link the parsers through the formats' `open`.
+const PAYLOAD_SIGNATURES: [&[Signature]; 4] = {
+    let mut out: [&[Signature]; 4] = [&[]; 4];
+    let mut i = 0;
+    while i < PAYLOADS.len() {
+        out[i] = PAYLOADS[i].signatures;
+        i += 1;
+    }
+    out
+};
 
 /// Signature hits tried per format. Stubs carry few copies of a signature in their overlay,
 /// and each try opens the archive's headers.
@@ -39,11 +56,7 @@ fn candidates(file: &Slice) -> Vec<(usize, &'static Format)> {
     };
     let tail = &file[image.overlay..];
     let mut out = Vec::new();
-    for f in FORMATS
-        .iter()
-        .copied()
-        .filter(|f| PAYLOADS.contains(&f.name))
-    {
+    for f in PAYLOADS {
         for sig in f.signatures.iter().filter(|s| s.offset == 0) {
             let hits = tail
                 .windows(sig.bytes.len())
@@ -55,6 +68,20 @@ fn candidates(file: &Slice) -> Vec<(usize, &'static Format)> {
     }
     out.sort_by_key(|c| c.0);
     out
+}
+
+/// Whether a payload format's signature appears after the PE image. Opens nothing, so it
+/// can claim a payload that turns out not to open; [`carries_payload`] decides.
+pub(crate) fn overlay_has_signature(file: &[u8]) -> bool {
+    let Ok(image) = Image::parse(file) else {
+        return false;
+    };
+    let tail = &file[image.overlay..];
+    PAYLOAD_SIGNATURES
+        .iter()
+        .flat_map(|sigs| sigs.iter())
+        .filter(|s| s.offset == 0 && !s.bytes.is_empty())
+        .any(|s| tail.windows(s.bytes.len()).any(|w| w == s.bytes))
 }
 
 /// Whether the PE file carries an archive r7z can open, or one that needs a password.

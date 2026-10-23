@@ -111,7 +111,7 @@ fn is_archive(path: &Path) -> bool {
             .any(|e| name.ends_with(&format!(".{}", e.trim_start_matches('.').to_lowercase())))
     });
     // A program is an archive only when it carries an installer or self-extractor payload.
-    by_name || (name.ends_with(".exe") && r7z::format::exe_has_payload(path))
+    by_name || (name.ends_with(".exe") && r7z::format::exe_may_have_payload(path))
 }
 
 fn is_7z(path: &Path) -> bool {

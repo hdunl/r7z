@@ -145,6 +145,7 @@ fn cfg_other(password: Option<&str>) -> WriteOptions {
         store_mtime: true,
         store_ctime: false,
         store_atime: false,
+        zstd: false,
     }
 }
 

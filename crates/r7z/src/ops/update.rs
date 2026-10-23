@@ -374,7 +374,7 @@ fn write_temp(
             let open = Input::Mem(Slice::map_file(archive)?).opener();
             crate::format::tar::update(open, tmp, plan, None, opts, progress)
         }
-        (1, "gzip" | "bzip2" | "xz", Settings::Other(opts)) => {
+        (1, "gzip" | "bzip2" | "xz" | "zstd" | "lz4" | "Z", Settings::Other(opts)) => {
             let comp = compressor_named(inner)?;
             single::write(opened, tmp, plan, comp, opts, progress)
         }
@@ -398,6 +398,9 @@ fn compressor_named(name: &str) -> Result<Compressor> {
         "gzip" => Compressor::Gzip,
         "bzip2" => Compressor::Bzip2,
         "xz" => Compressor::Xz,
+        "zstd" => Compressor::Zstd,
+        "lz4" => Compressor::Lz4,
+        "Z" => Compressor::Lzw,
         other => return Err(Error::unsupported(format!("{other} compression"))),
     })
 }

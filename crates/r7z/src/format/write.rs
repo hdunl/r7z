@@ -38,7 +38,8 @@ pub enum Compressor {
 }
 
 impl Compressor {
-    fn ext(self) -> &'static str {
+    /// The file extension this compressor adds (`gz` for `.tar.gz`).
+    pub(crate) fn ext(self) -> &'static str {
         match self {
             Compressor::Gzip => "gz",
             Compressor::Bzip2 => "bz2",

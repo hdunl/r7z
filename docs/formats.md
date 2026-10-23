@@ -34,6 +34,10 @@
 | Arj | ✓ | – | methods 0-4; names in the detected code page; garbled (encrypted) entries and multi-volume continuation are listed but not extracted |
 | Lzh | ✓ | – | `-lh0-`, `-lh1-`, `-lh4-` to `-lh7-`, `-lzs-`, `-lz5-`, `-lz4-`, header levels 0-3, CRC16 verified; Shift-JIS and other code-page names detected |
 | Xar | ✓ | – | `.pkg`/`.xip`; zlib, bzip2, xz, lzma and stored data; SHA-1/MD5/SHA-2 checksums verified; `[TOC].xml` |
+| Iso | ✓ | – | ISO 9660 with Joliet names when present, Rock Ridge names, modes, times and symlinks (a symlink extracts as its target text), El Torito boot images listed as `[BOOT]/Boot-<media>.img` as 7-Zip does, and files split over several extents; a hybrid image with a UDF volume opens as UDF |
+| Udf | ✓ | – | UDF 1.02 to 2.60, including the metadata partition of Blu-ray images (2.50+); symbolic links; names in 8-bit and UTF-16 |
+| Dmg | ✓ | – | Apple UDIF `.dmg`: raw, zero, ADC, zlib, bzip2 and LZFSE/LZVN chunks, koly trailer and XML property list; each partition is an entry, and the HFS+ partition opens inside it. Encrypted images are refused |
+| HFS | ✓ | – | HFS+ and HFSX volumes: catalog and extents overflow B-trees, data and resource forks, symbolic and hard links; decmpfs files with the payload in the attribute (zlib and LZVN). Decmpfs files that keep their blocks in the resource fork are listed, but not extracted |
 | wim | ✓ | – | `.wim .esd .swm .ppkg`: XPRESS, LZX, LZMS, solid resources (ESD), split `.swm` sets, several images (`1/`, `2/`… like 7-Zip), hard links, alternate streams (`file:stream`), SHA-1 verified |
 | Split | ✓ | – | `.001`, `.002`… joined in order, then the archive inside is opened |
 | Base64 | ✓ | – | plain or PEM-wrapped text |
@@ -116,8 +120,9 @@ and checked byte-for-byte against 7-Zip.
 
 ## Not supported yet
 
-- RAR 1.5 and RAR 2.0 (unpack versions 15 and 20) and RAR SFX archives; disk images (ISO, UDF, VHD, VMDK, DMG, QCOW, file systems) and installers (NSIS,
-  MSI/Compound, PE resources, SFX archives behind a stub).
+- RAR 1.5 and RAR 2.0 (unpack versions 15 and 20) and RAR SFX archives; disk images other
+  than ISO, UDF, DMG and HFS+ (VHD, VMDK, QCOW, APFS and other file systems) and
+  installers (NSIS, MSI/Compound, PE resources, SFX archives behind a stub).
 - Legacy zip methods are read only, and checked unevenly: Implode matches Info-ZIP's
   `unzip` on every test stream; Shrink matches it on 11 of 12 (one 150 KB stream with
   periodic clears is still decoded differently); Reduce has only round-trip tests from

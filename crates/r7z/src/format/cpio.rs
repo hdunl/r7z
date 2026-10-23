@@ -322,6 +322,7 @@ fn open(input: Input, _opts: &OpenOptions) -> Result<Box<dyn Archive>> {
             let parsed = scan(ScanSrc::Stream(&mut *open()?))?;
             (Source::Stream(open), parsed)
         }
+        volume @ Input::Volume(_) => return open(Input::Mem(volume.into_mem()?), _opts),
     };
     let kind = recs.first().map_or(Kind::Newc, |r| r.hdr.kind);
     Ok(Box::new(Cpio::new(source, kind, recs, physical_size)))

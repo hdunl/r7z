@@ -805,6 +805,7 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
             };
             (e, refs, src, end)
         }
+        volume @ Input::Volume(_) => return open(Input::Mem(volume.into_mem()?), opts),
     };
     if entries.is_empty() && (end == 0 || opts.recover) {
         return Err(Error::NotArchive);

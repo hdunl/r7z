@@ -52,6 +52,11 @@
 | exFAT | ✓ | – | contiguous and chained files; bytes past the valid data length read as zeros |
 | NTFS | ✓ | – | master file table with attribute lists; resident and non-resident data, sparse runs, LZNT1 compression; alternate streams and reparse targets are not read |
 | Ext | ✓ | – | ext2, ext3 and ext4: indirect blocks, extent trees, inline data, symbolic links; devices, FIFOs and sockets are not listed |
+| Compound | ✓ | – | `.msi .msp .msm` and other OLE storages (`.doc`, `.xls`) by signature: Windows Installer's packed stream names decoded as 7-Zip shows them, listed in 7-Zip's order; a package whose only cabinet is one `.cab` stream opens that cabinet as a nested archive |
+| Nsis | ✓ | – | NSIS 2 and 3 installers, ANSI and Unicode; zlib, bzip2 and LZMA (with the x86 filter), solid and per-file data; file names and install folders read from the script; uninstallers rebuilt as the installer does. Found in the overlay of a PE file, not by name |
+| Sfx | ✓ | – | 7z, zip and cab archives appended to an executable stub (7-Zip and WinRAR style), found by signature after the PE image; listed as the archive type they are |
+| PE | ✓ | – | `.exe` and `.dll` resources as folders by type, name and language: icon groups as `.ico` files, version information as `key=value` lines, manifests, RCDATA. Opened only with `-tPE` or "Open as archive", so a plain executable is never an archive |
+| Chm | ✓ | – | compiled HTML help (ITSF versions 2 and 3): stored and LZX-compressed sections, listed as 7-Zip does; the `Block` column shows the LZX reset interval |
 
 Disk images nest like 7-Zip's: a `.vhdx` holding a GPT holding NTFS lists as the NTFS files,
 with each level in the listing. A virtual disk holds a partition table or a file system;
@@ -139,8 +144,8 @@ and checked byte-for-byte against 7-Zip.
 
 - RAR 1.5 and RAR 2.0 (unpack versions 15 and 20) and RAR SFX archives; APFS and file
   systems other than FAT, exFAT, NTFS, ext2/3/4 and HFS+; VHDX log replay, differencing
-  VHDX and QCOW2 backing files; installers (NSIS, MSI/Compound, PE resources, SFX
-  archives behind a stub).
+  VHDX and QCOW2 backing files; Inno Setup and NSIS 1.x installers, and the
+  `[NSIS].nsi` script that 7-Zip writes out.
 - Legacy zip methods are read only, and checked unevenly: Implode matches Info-ZIP's
   `unzip` on every test stream; Shrink matches it on 11 of 12 (one 150 KB stream with
   periodic clears is still decoded differently); Reduce has only round-trip tests from

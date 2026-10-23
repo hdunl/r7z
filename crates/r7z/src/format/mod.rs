@@ -14,6 +14,8 @@
 pub mod ar;
 pub mod arj;
 pub mod cab;
+pub mod cfb;
+pub mod chm;
 pub mod cpio;
 pub mod data;
 pub mod disk;
@@ -30,9 +32,12 @@ pub mod misc;
 pub mod ntfs;
 pub mod qcow2;
 pub mod rar;
+pub mod nsis;
+pub mod pe;
 pub mod rpm;
 pub mod salvage;
 pub mod sevenz;
+pub mod sfx;
 pub mod stream;
 pub mod tar;
 pub mod udf;
@@ -277,7 +282,9 @@ pub struct Format {
     pub aliases: &'static [&'static str],
     pub extensions: &'static [&'static str],
     pub signatures: &'static [Signature],
-    /// Extra content check for formats with weak or no signatures.
+    /// Extra content check for formats with weak or no signatures. Formats with a signature
+    /// get the first bytes of the file; payload formats (no signature and no extension, see
+    /// [`payload_format`]) get the whole file, since their payload sits at the end.
     pub detect: Option<fn(&[u8]) -> bool>,
     /// r7z can create this format.
     pub write: bool,
@@ -336,6 +343,8 @@ formats![
     ar::FORMAT,
     cpio::FORMAT,
     cab::FORMAT,
+    cfb::FORMAT,
+    chm::FORMAT,
     wim::FORMAT,
     arj::FORMAT,
     lzh::FORMAT,
@@ -361,10 +370,36 @@ formats![
     ext::FORMAT,
     fat::FORMAT,
     mbr::FORMAT,
+    pe::FORMAT,
+    nsis::FORMAT,
+    sfx::FORMAT,
 ];
 
 pub fn find_format(name: &str) -> Option<&'static Format> {
     FORMATS.iter().copied().find(|f| f.matches_name(name))
+}
+
+/// The format of a payload carried by a PE file (an NSIS installer, a self-extractor),
+/// recognized by its content. Only formats with neither a signature nor an extension
+/// qualify, so a PE file is never an archive by its name, and an ordinary executable has
+/// no payload format.
+pub fn payload_format(file: &Slice) -> Option<&'static Format> {
+    if !file.starts_with(b"MZ") {
+        return None;
+    }
+    FORMATS
+        .iter()
+        .copied()
+        .find(|f| {
+            f.signatures.is_empty() && f.extensions.is_empty() && f.detect.is_some_and(|d| d(file))
+        })
+        .or_else(|| sfx::carries_payload(file).then_some(&sfx::FORMAT))
+}
+
+/// Whether the file at `path` is a PE file that carries a payload r7z can open. The
+/// shell's "Extract here" and "Open with" check this for executables.
+pub fn exe_has_payload(path: &Path) -> bool {
+    Slice::map_file(path).is_ok_and(|file| payload_format(&file).is_some())
 }
 
 /// One level of an opened archive chain (`x.tar.gz` has a gzip level and a tar level).
@@ -623,7 +658,10 @@ fn open_input(
             }
         }
         Some(f) => f,
-        None => detect_input(&input, &head, file_name)
+        None => detect_input(&input, &head, file_name).or_else(|| match &input {
+            Input::Mem(file) => payload_format(file),
+            _ => None,
+        })
             .or_else(|| recover.then(|| by_extension(file_name)).flatten())
             .ok_or(Error::NotArchive)?,
     };

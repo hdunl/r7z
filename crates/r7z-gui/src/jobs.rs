@@ -104,6 +104,23 @@ pub fn open_disk(
     })
 }
 
+/// Opens `path` as `format`, whatever its content suggests ("Open as archive").
+pub fn open_disk_as(
+    ctx: &egui::Context,
+    path: PathBuf,
+    format: &'static r7z::format::Format,
+) -> Task<Opened> {
+    Task::spawn(ctx, move |_| {
+        format::open(
+            &path,
+            &OpenRequest {
+                format: Some(format),
+                ..Default::default()
+            },
+        )
+    })
+}
+
 pub fn open_nested(
     ctx: &egui::Context,
     parent: Arc<dyn Archive>,

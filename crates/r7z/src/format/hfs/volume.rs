@@ -18,7 +18,6 @@ const CATALOG_FILE: u32 = 4;
 const ATTRIBUTES_FILE: u32 = 8;
 /// Fork types in overflow keys.
 pub const DATA_FORK: u8 = 0x00;
-pub const RSRC_FORK: u8 = 0xFF;
 /// Allocation block sizes accepted: multiples of 512 up to 1 MiB.
 const MIN_BLOCK: u64 = 512;
 const MAX_BLOCK: u64 = 1 << 20;
@@ -204,7 +203,9 @@ fn overflow_record(
 fn extent_key(key: &[u8]) -> Result<(u8, u32, u32)> {
     let mut r = Be::at(key, 0);
     if r.u16()? != 10 {
-        return Err(Error::corrupt("HFS+ extents overflow key has the wrong length"));
+        return Err(Error::corrupt(
+            "HFS+ extents overflow key has the wrong length",
+        ));
     }
     let fork = r.u8()?;
     r.skip(1)?;

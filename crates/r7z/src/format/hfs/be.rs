@@ -54,17 +54,16 @@ impl<'a> Be<'a> {
 
 /// Little-endian value of up to eight bytes (decmpfs headers are little-endian).
 pub fn le(bytes: &[u8]) -> u64 {
-    bytes
-        .iter()
-        .rev()
-        .fold(0, |v, &b| (v << 8) | u64::from(b))
+    bytes.iter().rev().fold(0, |v, &b| (v << 8) | u64::from(b))
 }
 
 /// UTF-16BE text; unpaired surrogates become U+FFFD.
 pub fn utf16be(bytes: &[u8]) -> String {
     let units = bytes
-        .chunks_exact(2)
-        .map(|p| u16::from_be_bytes([p[0], p[1]]));
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|p| u16::from_be_bytes(*p));
     char::decode_utf16(units)
         .map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER))
         .collect()

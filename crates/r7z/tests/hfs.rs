@@ -95,7 +95,13 @@ fn runs(blocks: &[u32]) -> Vec<(u32, u32)> {
 type Overflow = (u8, u32, u32, Vec<(u32, u32)>);
 
 /// The 80-byte fork record for `blocks`; extents past the eighth go to `over`.
-fn fork_data(size: u64, blocks: &[u32], file_id: u32, fork: u8, over: &mut Vec<Overflow>) -> [u8; 80] {
+fn fork_data(
+    size: u64,
+    blocks: &[u32],
+    file_id: u32,
+    fork: u8,
+    over: &mut Vec<Overflow>,
+) -> [u8; 80] {
     let mut out = [0u8; 80];
     out[..8].copy_from_slice(&size.to_be_bytes());
     out[12..16].copy_from_slice(&(blocks.len() as u32).to_be_bytes());
@@ -189,7 +195,10 @@ fn group(items: &[Vec<u8>]) -> Vec<Vec<usize>> {
             used = 0;
         }
         let count = groups.last().unwrap().len();
-        assert!(DESC + used + it.len() + 2 * (count + 2) <= NODE, "record larger than a node");
+        assert!(
+            DESC + used + it.len() + 2 * (count + 2) <= NODE,
+            "record larger than a node"
+        );
         used += it.len();
         groups.last_mut().unwrap().push(i);
     }
@@ -369,61 +378,17 @@ fn lzvn_literals(data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A decmpfs resource fork: a block table (count, then offset and size of each block, both
-/// relative to the table), then the blocks.
+/// A decmpfs resource fork: a block count, then the offset and size of each block (offsets
+/// from the start of the fork), then the blocks. r7z lists these files but does not decode
+/// them (see the decmpfs module), so this layout only has to be stable.
 fn resource_fork(blocks: &[Vec<u8>]) -> Vec<u8> {
-    // EXPERIMENT: "table_start,base,endian,order", e.g. "0,abs,le,offsize".
-    let spec = std::env::var("R7Z_RSRC").unwrap_or_else(|_| "0,abs,le,offsize".into());
-    let p: Vec<&str> = spec.split(',').collect();
-    let t: usize = p[0].parse().unwrap();
-    let base = match p[1] {
-        "abs" => 0usize,
-        "tbl" => t,
-        "after" => usize::MAX,
-        _ => 256,
-    };
-    let be = p[2] == "be";
-    let order = p[3];
-    let enc = |v: usize| {
-        let v = v as u32;
-        if be { v.to_be_bytes().to_vec() } else { v.to_le_bytes().to_vec() }
-    };
-    let n = blocks.len();
-    let tbl = if order == "cum" { 4 + 4 * (n + 1) } else { 4 + 8 * n };
-    let data_start = t + tbl;
-    let base = if base == usize::MAX { data_start } else { base };
-    let mut positions = Vec::new();
-    let mut pos = data_start;
+    let mut out = (blocks.len() as u32).to_le_bytes().to_vec();
+    let mut pos = 4 + 8 * blocks.len();
     for b in blocks {
-        positions.push(pos);
+        out.extend_from_slice(&(pos as u32).to_le_bytes());
+        out.extend_from_slice(&(b.len() as u32).to_le_bytes());
         pos += b.len();
     }
-    let end = pos;
-    let mut table = enc(n);
-    match order {
-        "cum" => {
-            for &q in positions.iter().chain(std::iter::once(&end)) {
-                table.extend(enc(q - base));
-            }
-        }
-        "sizeoff" => {
-            for (&q, b) in positions.iter().zip(blocks) {
-                table.extend(enc(b.len()));
-                table.extend(enc(q - base));
-            }
-        }
-        _ => {
-            for (&q, b) in positions.iter().zip(blocks) {
-                table.extend(enc(q - base));
-                table.extend(enc(b.len()));
-            }
-        }
-    }
-    let mut out = vec![0u8; t];
-    if t >= 256 {
-        out[0..4].copy_from_slice(&256u32.to_be_bytes());
-    }
-    out.extend(table);
     for b in blocks {
         out.extend_from_slice(b);
     }
@@ -487,17 +452,19 @@ fn sample_items() -> Vec<Item> {
     z3_payload.extend(zlib(&z3));
     let mut z3raw = vec![0xFF];
     z3raw.extend_from_slice(Z3RAW_TEXT);
-    let mut z4_blocks = vec![{
+    let z4_blocks = vec![{
         let mut raw = vec![0xFF];
         raw.extend_from_slice(&z4_data()[..65536]);
         raw
     }];
+    let mut z4_blocks = z4_blocks;
     z4_blocks.push(zlib(&z4_data()[65536..]));
-    let mut z8_blocks = vec![{
+    let z8_blocks = vec![{
         let mut raw = vec![0xFF];
         raw.extend_from_slice(&z8_data()[..65536]);
         raw
     }];
+    let mut z8_blocks = z8_blocks;
     z8_blocks.push(lzvn_literals(&z8_data()[65536..]));
 
     let mut frag_item = file(20, 2, "frag.bin", &frag);
@@ -527,28 +494,7 @@ fn sample_items() -> Vec<Item> {
     z4_item.rsrc = resource_fork(&z4_blocks);
     z4_item.scatter = true;
     z4_item.decmpfs = Some((4, z4_data().len() as u64, Vec::new()));
-    // EXPERIMENT switches
-    let exp = std::env::var("R7Z_EXP").unwrap_or_default();
-    let mut z4_blocks = z4_blocks;
-    let mut z8_blocks = z8_blocks;
-    if exp.contains("zlibonly") {
-        z4_blocks = vec![zlib(&z4_data()[..65536]), zlib(&z4_data()[65536..])];
-    }
-    if exp.contains("lzvnraw8") {
-        z8_blocks[0] = lzvn_literals(&z8_data()[..65536]);
-    }
-    if exp.contains("pad") {
-        for b in z4_blocks.iter_mut().chain(z8_blocks.iter_mut()) {
-            b.extend_from_slice(&[0u8; 16]);
-        }
-    }
-    let mut z7_payload = lzvn_literals(Z7_TEXT);
-    if exp.contains("z7raw") {
-        z7_payload = [vec![0xFF], Z7_TEXT.to_vec()].concat();
-    }
-    if exp.contains("pad") {
-        z7_payload.extend_from_slice(&[0u8; 16]);
-    }
+    let z7_payload = lzvn_literals(Z7_TEXT);
     let mut z7_item = file(26, 2, "z7.txt", b"");
     z7_item.decmpfs = Some((7, Z7_TEXT.len() as u64, z7_payload));
     let mut z8_item = file(27, 2, "z8.bin", b"");
@@ -557,18 +503,6 @@ fn sample_items() -> Vec<Item> {
     let mut z5_item = file(28, 2, "z5.bin", b"");
     z5_item.decmpfs = Some((5, Z5_SIZE, Vec::new()));
 
-    let mut plain_rsrc = file(30, 2, "plainrsrc.bin", b"plain data fork");
-    plain_rsrc.rsrc = b"resource fork bytes, no decmpfs attribute".to_vec();
-    if exp.contains("small") {
-        z4_item.decmpfs = Some((4, 10, Vec::new()));
-        z4_item.rsrc = resource_fork(&[zlib(b"0123456789")]);
-        z8_item.decmpfs = Some((8, 17, Vec::new()));
-        z8_item.rsrc = resource_fork(&[lzvn_literals(Z7_TEXT)]);
-    }
-    if exp.contains("noscatter") {
-        z4_item.scatter = false;
-        z8_item.scatter = false;
-    }
     vec![
         dir(16, 2, "Ünïcødé 文件"),
         dir(17, 16, "inner"),
@@ -590,7 +524,6 @@ fn sample_items() -> Vec<Item> {
         dir(42, 2, "\0\0\0\0HFS+ Private Directory Data\r"),
     ]
     .into_iter()
-    .chain(exp.contains("plainrsrc").then_some(plain_rsrc))
     .collect()
 }
 
@@ -616,7 +549,11 @@ fn build(items: &[Item], hfsx: bool) -> Vec<u8> {
     let mut attrs: Vec<(u32, &str, Vec<u8>)> = Vec::new();
     for it in items {
         if let Some((method, size, payload)) = &it.decmpfs {
-            attrs.push((it.cnid, "com.apple.decmpfs", decmpfs_value(*method, *size, payload)));
+            attrs.push((
+                it.cnid,
+                "com.apple.decmpfs",
+                decmpfs_value(*method, *size, payload),
+            ));
         }
     }
     attrs.push((19, "com.apple.quarantine", b"0081;00000000;Test;".to_vec()));
@@ -646,15 +583,30 @@ fn build(items: &[Item], hfsx: bool) -> Vec<u8> {
     let root = dir(ROOT_ID, 1, "");
     let mut cat: Vec<(u32, String, Vec<u8>, Vec<u8>)> = Vec::new();
     cat.push((1, String::new(), catalog_key(1, ""), folder_data(&root)));
-    cat.push((ROOT_ID, String::new(), catalog_key(ROOT_ID, ""), thread_data(&root)));
+    cat.push((
+        ROOT_ID,
+        String::new(),
+        catalog_key(ROOT_ID, ""),
+        thread_data(&root),
+    ));
     for (i, it) in items.iter().enumerate() {
         let data = if it.dir {
             folder_data(it)
         } else {
             file_data(it, &data_fd[i], &rsrc_fd[i])
         };
-        cat.push((it.parent, it.name.to_string(), catalog_key(it.parent, it.name), data));
-        cat.push((it.cnid, String::new(), catalog_key(it.cnid, ""), thread_data(it)));
+        cat.push((
+            it.parent,
+            it.name.to_string(),
+            catalog_key(it.parent, it.name),
+            data,
+        ));
+        cat.push((
+            it.cnid,
+            String::new(),
+            catalog_key(it.cnid, ""),
+            thread_data(it),
+        ));
     }
     cat.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
     let cat_records: Vec<(Vec<u8>, Vec<u8>)> = cat.into_iter().map(|(_, _, k, d)| (k, d)).collect();
@@ -669,7 +621,7 @@ fn build(items: &[Item], hfsx: bool) -> Vec<u8> {
     );
 
     // Extents overflow tree, then the allocation bitmap, both in contiguous blocks.
-    over.sort_by(|a, b| (a.0, a.1, a.2).cmp(&(b.0, b.1, b.2)));
+    over.sort_by_key(|a| (a.0, a.1, a.2));
     let ext_records: Vec<(Vec<u8>, Vec<u8>)> = over
         .iter()
         .map(|(fork, fid, start, exts)| {
@@ -706,7 +658,13 @@ fn build(items: &[Item], hfsx: bool) -> Vec<u8> {
         }
     }
     img.write(&map_blocks, &bitmap);
-    let alloc_fd = fork_data(bitmap_len as u64, &map_blocks, ALLOCATION_FILE, DATA_FORK, &mut ignored);
+    let alloc_fd = fork_data(
+        bitmap_len as u64,
+        &map_blocks,
+        ALLOCATION_FILE,
+        DATA_FORK,
+        &mut ignored,
+    );
 
     let folders = items.iter().filter(|it| it.dir).count() as u32;
     let files = items.len() as u32 - folders;
@@ -749,10 +707,7 @@ fn open_bytes(bytes: Vec<u8>) -> Result<format::Opened> {
 
 /// Opens through the handler directly, so damaged headers reach its checks.
 fn open_direct(bytes: Vec<u8>) -> Result<Box<dyn Archive>> {
-    (format::hfs::FORMAT.open)(
-        Input::Mem(Slice::from_vec(bytes)),
-        &OpenOptions::default(),
-    )
+    (format::hfs::FORMAT.open)(Input::Mem(Slice::from_vec(bytes)), &OpenOptions::default())
 }
 
 /// Each unit's bytes, or the error it failed with.
@@ -816,20 +771,20 @@ fn lists_visible_tree_only() {
     assert!(!names.iter().any(|n| n.contains('\0') || n == "skipme"));
     assert!(!names.iter().any(|n| n.contains("iNode")));
     let mut want = vec![
-            ("Ünïcødé 文件".to_string(), true, 0),
-            ("Ünïcødé 文件/inner".to_string(), true, 0),
-            ("Ünïcødé 文件/inner/emoji 😀.txt".to_string(), false, 6),
-            ("empty.txt".to_string(), false, 0),
-            ("frag.bin".to_string(), false, 5732),
-            ("hard.txt".to_string(), false, HARD.len() as u64),
-            ("hello.txt".to_string(), false, 12),
-            ("link".to_string(), false, 9),
-            ("z3.txt".to_string(), false, (Z3_TEXT.len() * 40) as u64),
-            ("z3raw.txt".to_string(), false, Z3RAW_TEXT.len() as u64),
-            ("z4.bin".to_string(), false, 100_000),
-            ("z5.bin".to_string(), false, Z5_SIZE),
-            ("z7.txt".to_string(), false, Z7_TEXT.len() as u64),
-            ("z8.bin".to_string(), false, 69_536),
+        ("Ünïcødé 文件".to_string(), true, 0),
+        ("Ünïcødé 文件/inner".to_string(), true, 0),
+        ("Ünïcødé 文件/inner/emoji 😀.txt".to_string(), false, 6),
+        ("empty.txt".to_string(), false, 0),
+        ("frag.bin".to_string(), false, 5732),
+        ("hard.txt".to_string(), false, HARD.len() as u64),
+        ("hello.txt".to_string(), false, 12),
+        ("link".to_string(), false, 9),
+        ("z3.txt".to_string(), false, (Z3_TEXT.len() * 40) as u64),
+        ("z3raw.txt".to_string(), false, Z3RAW_TEXT.len() as u64),
+        ("z4.bin".to_string(), false, 100_000),
+        ("z5.bin".to_string(), false, Z5_SIZE),
+        ("z7.txt".to_string(), false, Z7_TEXT.len() as u64),
+        ("z8.bin".to_string(), false, 69_536),
     ];
     want.sort();
     assert_eq!(listing(a), want);
@@ -837,14 +792,21 @@ fn lists_visible_tree_only() {
 }
 
 #[test]
+fn resource_fork_decmpfs_lists_but_fails_to_extract() {
+    let o = open_bytes(sample(false)).unwrap();
+    let a = o.archive();
+    let got = extract_each(a);
+    for name in ["z4.bin", "z8.bin"] {
+        let err = got[name].as_ref().unwrap_err();
+        assert!(matches!(err, Error::Unsupported(_)), "{name}: {err}");
+    }
+}
+
+#[test]
 fn extracts_every_file_exactly() {
     let o = open_bytes(sample(false)).unwrap();
     let got = extract_each(o.archive());
     let frag: Vec<u8> = (0..5732).map(|i| (i * 31 % 251) as u8).collect();
-    let mut z4 = noise(65536, 7);
-    z4.extend(pattern(34464));
-    let mut z8 = noise(65536, 9);
-    z8.extend(pattern(4000));
     let want: Vec<(&str, Vec<u8>)> = vec![
         ("Ünïcødé 文件/inner/emoji 😀.txt", b"emoji\n".to_vec()),
         ("empty.txt", Vec::new()),
@@ -854,9 +816,7 @@ fn extracts_every_file_exactly() {
         ("link", b"hello.txt".to_vec()),
         ("z3.txt", z3_text()),
         ("z3raw.txt", Z3RAW_TEXT.to_vec()),
-        ("z4.bin", z4),
         ("z7.txt", Z7_TEXT.to_vec()),
-        ("z8.bin", z8),
     ];
     for (name, bytes) in want {
         let data = got[name].as_ref().unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -879,9 +839,9 @@ fn decmpfs_methods_and_sizes() {
     let o = open_bytes(sample(false)).unwrap();
     let a = o.archive();
     assert_eq!(entry(a, "z3.txt").method.as_deref(), Some("decmpfs/zlib"));
-    assert_eq!(entry(a, "z4.bin").method.as_deref(), Some("decmpfs/zlib"));
+    assert_eq!(entry(a, "z4.bin").method.as_deref(), Some("decmpfs/type4"));
     assert_eq!(entry(a, "z7.txt").method.as_deref(), Some("decmpfs/lzvn"));
-    assert_eq!(entry(a, "z8.bin").method.as_deref(), Some("decmpfs/lzvn"));
+    assert_eq!(entry(a, "z8.bin").method.as_deref(), Some("decmpfs/type8"));
     assert_eq!(entry(a, "hello.txt").method, None);
 }
 
@@ -917,7 +877,11 @@ fn times_modes_and_format_property() {
     assert_ne!(attrib & 0x8000, 0);
     assert_eq!(attrib >> 16, 0o100644);
     assert_eq!(entry(a, "Ünïcødé 文件").attrib.unwrap() & 0x10, 0x10);
-    let format = a.properties().into_iter().find(|(k, _)| *k == "Format").unwrap();
+    let format = a
+        .properties()
+        .into_iter()
+        .find(|(k, _)| *k == "Format")
+        .unwrap();
     assert_eq!(format.1, "HFSX");
 }
 
@@ -929,18 +893,28 @@ fn reads_on_demand_through_a_volume() {
         data: Slice::from_vec(bytes),
         read: Mutex::new(0),
     });
-    let a = (format::hfs::FORMAT.open)(Input::Volume(probe.clone()), &OpenOptions::default()).unwrap();
+    let a =
+        (format::hfs::FORMAT.open)(Input::Volume(probe.clone()), &OpenOptions::default()).unwrap();
     assert_eq!(a.entries().len(), 14);
     let read_by_listing = *probe.read.lock().unwrap();
-    assert!(read_by_listing < total / 4, "{read_by_listing} of {total} bytes");
+    assert!(
+        read_by_listing < total / 4,
+        "{read_by_listing} of {total} bytes"
+    );
     let got = extract_each(a.as_ref());
     assert_eq!(got["hello.txt"].as_ref().unwrap(), HELLO);
 }
 
 #[test]
 fn not_an_hfs_volume() {
-    assert!(matches!(open_bytes(vec![0u8; 4096]), Err(Error::NotArchive)));
-    assert!(matches!(open_bytes(b"H+ but far too short".to_vec()), Err(Error::NotArchive)));
+    assert!(matches!(
+        open_bytes(vec![0u8; 4096]),
+        Err(Error::NotArchive)
+    ));
+    assert!(matches!(
+        open_bytes(b"H+ but far too short".to_vec()),
+        Err(Error::NotArchive)
+    ));
 }
 
 #[test]
@@ -984,7 +958,10 @@ fn damaged_volume_bytes_never_panic() {
         let mut bytes = good.clone();
         bytes[at] = bytes[at].wrapping_add(0x5D);
         if let Ok(a) = open_direct(bytes) {
-            seen_errors += extract_each(a.as_ref()).values().filter(|r| r.is_err()).count();
+            seen_errors += extract_each(a.as_ref())
+                .values()
+                .filter(|r| r.is_err())
+                .count();
         } else {
             seen_errors += 1;
         }

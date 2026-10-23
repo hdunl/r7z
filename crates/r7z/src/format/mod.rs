@@ -16,6 +16,7 @@ pub mod cpio;
 pub mod data;
 pub mod lzh;
 pub mod misc;
+pub mod rar;
 pub mod rpm;
 pub mod salvage;
 pub mod sevenz;
@@ -308,6 +309,7 @@ formats![
     wim::FORMAT,
     arj::FORMAT,
     lzh::FORMAT,
+    rar::FORMAT,
     stream::GZIP,
     stream::BZIP2,
     stream::XZ,

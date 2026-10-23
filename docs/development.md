@@ -35,6 +35,18 @@ code: the containers, the coder graph, 7zAES and zip encryption, the parallel en
 the parallel bzip2 decoder, the LZW, LZX, Quantum, LZH and ARJ decoders, the extraction
 pipeline and the CLI.
 
+## Releasing
+
+1. Bump the version in `crates/*/Cargo.toml` and `crates/r7z-shell/package/AppxManifest.xml`,
+   move `CHANGELOG.md`'s `## Unreleased` under the new version, and write
+   `docs/releases/vX.Y.Z.md`. Its `## What's new` section is what the desktop app shows
+   before updating (`python scripts/release_notes.py vX.Y.Z` prints it), so keep it to
+   Markdown lists, bold, code, links and tables.
+2. Merge, then push the tag `vX.Y.Z`. The release workflow's `notes` job puts the notes on
+   the run's summary page, and the `release` job waits for a maintainer to approve the
+   `release` environment. Read the summary, then approve: only then are the programs
+   built, signed (Authenticode, the update manifest and the notes) and published.
+
 ## Testing
 
 ```bash

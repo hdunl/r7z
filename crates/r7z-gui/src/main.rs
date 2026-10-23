@@ -21,6 +21,7 @@ mod mount;
 #[cfg(not(windows))]
 #[path = "mount_stub.rs"]
 mod mount;
+mod notes;
 mod open_folder;
 mod preview;
 #[cfg(windows)]

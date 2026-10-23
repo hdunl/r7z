@@ -2478,10 +2478,12 @@ fn toasts(app: &mut App, ctx: &egui::Context, p: &Palette) {
             ToastAct::Go(p) => app.go(Loc::Disk(p)),
             ToastAct::Recover(p) => app.start_recover(ctx, p),
             ToastAct::Undo(id) => app.start_undo(ctx, id),
-            ToastAct::Update => app.install_update(ctx),
             ToastAct::Restart => app.restart(ctx),
             ToastAct::Link(url) => shell::open_path(std::path::Path::new(&url)),
             ToastAct::Install => app.start_install(ctx),
+            ToastAct::UpdateNotes { installed } => {
+                app.dialog = Some(crate::dialogs::Dialog::Update { installed })
+            }
         }
     } else if let Some(i) = dismiss {
         app.toasts.remove(i);

@@ -12,9 +12,24 @@ env:
   R7Z_REQUIRE_RESOURCES: "1"
 
 jobs:
+  notes:
+    # Shows the release notes, including the "What's new" text the app displays before it
+    # updates, in this run's summary. The release job below waits for a maintainer to
+    # approve the `release` environment, so the notes are read before anything is signed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Show the notes for review
+        run: python3 scripts/release_notes.py "${{ github.ref_name }}" --summary
+
   release:
+    needs: notes
     runs-on: windows-latest
     # The Azure signing credential trusts only this environment, which only v* tags can use.
+    # The environment requires a maintainer's approval: the notes job's summary shows what
+    # is being approved.
     environment: release
     permissions:
       contents: write

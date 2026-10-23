@@ -112,14 +112,16 @@ pub enum ToastAct {
     Recover(PathBuf),
     /// Reverse the extract with this undo record.
     Undo(String),
-    /// Download and install the update that was found.
-    Update,
     /// Start the updated program and close this one.
     Restart,
     /// Open a web page.
     Link(String),
     /// Install r7z (Start menu, Installed apps, right-click menu).
     Install,
+    /// Show the update's "What's new" text; `installed` once it is already installed.
+    UpdateNotes {
+        installed: bool,
+    },
 }
 
 pub struct Toast {
@@ -161,6 +163,8 @@ pub struct App {
     pub update_install: Option<Task<String>>,
     /// A newer release whose signed manifest checked out.
     pub update_offer: Option<crate::update::Manifest>,
+    /// The signed "What's new" text of the offered update, when its release has one.
+    pub update_notes: Option<String>,
     /// The version installed by an update, waiting for a restart.
     pub update_ready: Option<String>,
     /// One line for the Updates section of Settings.
@@ -313,6 +317,7 @@ impl App {
             update_check: None,
             update_install: None,
             update_offer: None,
+            update_notes: None,
             update_ready: None,
             update_note: None,
             update_manual: false,
@@ -570,21 +575,20 @@ impl App {
             self.update_check = None;
             let manual = self.update_manual;
             match result {
-                Ok(crate::update::Check::Available(m)) => {
+                Ok(crate::update::Check::Available(m, notes)) => {
                     mark_update_checked();
-                    let (version, url) = (m.version.clone(), m.release_url());
+                    let version = m.version.clone();
                     self.update_note = Some(format!("r7z {version} is available"));
                     self.update_offer = Some(m);
+                    self.update_notes = notes;
                     if shell::load_setting("update_install").as_deref() == Some("auto") {
                         self.install_update(ctx);
                     } else {
+                        // "Update…" shows what changed first; nothing installs until then.
                         self.toast_long(
                             format!("r7z {version} is available"),
                             true,
-                            vec![
-                                ("Update".into(), ToastAct::Update),
-                                ("What's new".into(), ToastAct::Link(url)),
-                            ],
+                            vec![("Update…".into(), ToastAct::UpdateNotes { installed: false })],
                         );
                     }
                 }
@@ -615,11 +619,14 @@ impl App {
                     self.update_note =
                         Some(format!("r7z {version} is installed; restart to use it"));
                     self.update_ready = Some(version.clone());
-                    self.toast_long(
-                        format!("Updated to r7z {version}"),
-                        true,
-                        vec![("Restart now".into(), ToastAct::Restart)],
-                    );
+                    let mut actions = vec![("Restart now".into(), ToastAct::Restart)];
+                    if self.update_notes.is_some() {
+                        actions.push((
+                            "What's new".into(),
+                            ToastAct::UpdateNotes { installed: true },
+                        ));
+                    }
+                    self.toast_long(format!("Updated to r7z {version}"), true, actions);
                 }
                 Err(e) => {
                     self.update_note = Some(format!("Update failed: {e}"));

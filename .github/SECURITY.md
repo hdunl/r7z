@@ -52,6 +52,11 @@ HTTPS using Windows' own TLS, checks its size and SHA-256 against the signed man
 replaces `r7z-gui.exe` (and `r7z.exe`, if it sits in the same folder). If anything fails,
 the old files stay in place.
 
+Before installing, the app shows the release's "What's new" text from `r7z-notes.txt`,
+which is signed with the same key (`r7z-notes.sig`) and names the version it describes, so
+notes can't be altered or shown for another release. Releases are published only after a
+maintainer approves the release workflow, after reading the exact text the app will show.
+
 The signing key never leaves the maintainer's control and the release workflow; a
 compromised download server or a modified file is rejected because it cannot produce a
 valid signature. The check sends no data beyond a normal HTTPS request to github.com with

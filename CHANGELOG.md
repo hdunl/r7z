@@ -63,6 +63,9 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   Explorer's "Extract here" and "Open with" show for an executable only when it carries an
   installer or self-extractor payload, and the desktop app offers "Open as archive" for the
   resources of any other program. Inno Setup is not supported yet.
+- "Update…" opens a dialog with the release's "What's new" before anything installs, and
+  the "Updated" notice can show it too. The text is signed with the update key and bound
+  to its version.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

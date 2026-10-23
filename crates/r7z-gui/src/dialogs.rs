@@ -173,6 +173,10 @@ pub enum Dialog {
     Uninstall {
         from_windows: bool,
     },
+    /// The update's "What's new" text: before installing it, or once it is installed.
+    Update {
+        installed: bool,
+    },
 }
 
 impl Dialog {
@@ -512,6 +516,68 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 None
             } else {
                 Some(Dialog::Uninstall { from_windows })
+            }
+        }
+        Dialog::Update { installed } => {
+            let version = app
+                .update_ready
+                .clone()
+                .or_else(|| app.update_offer.as_ref().map(|m| m.version.clone()))
+                .unwrap_or_default();
+            let notes = app.update_notes.clone();
+            let (mut go, mut later, mut page) = (false, false, false);
+            let ((), close) = modal(ctx, "update", 560.0, |ui| {
+                title(
+                    ui,
+                    &if installed {
+                        format!("What's new in r7z {version}")
+                    } else {
+                        format!("Update to r7z {version}?")
+                    },
+                );
+                egui::ScrollArea::vertical()
+                    .max_height(380.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| match &notes {
+                        Some(text) => crate::notes::show(ui, &p, text),
+                        None => {
+                            ui.label(
+                                RichText::new(
+                                    "This release's notes aren't available in the app. The release page lists what changed.",
+                                )
+                                .size(13.0)
+                                .color(p.dim),
+                            );
+                        }
+                    });
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    page = button(ui, None, "Release page", false, true).clicked();
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let primary = if installed {
+                            "Restart now"
+                        } else {
+                            "Update now"
+                        };
+                        go = button(ui, None, primary, true, true).clicked();
+                        later = button(ui, None, "Later", false, true).clicked();
+                    });
+                });
+            });
+            if page {
+                shell::open_path(Path::new(&crate::update::release_page(&version)));
+            }
+            if go {
+                if installed {
+                    app.restart(ctx);
+                } else {
+                    app.install_update(ctx);
+                }
+                None
+            } else if later || close {
+                None
+            } else {
+                Some(Dialog::Update { installed })
             }
         }
         other => show_rest(app, ctx, &p, other),
@@ -1232,10 +1298,10 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         } else if let Some(version) =
                             app.update_offer.as_ref().map(|m| m.version.clone())
                         {
-                            if button(ui, None, &format!("Update to {version}"), true, !busy)
+                            if button(ui, None, &format!("Update to {version}…"), true, !busy)
                                 .clicked()
                             {
-                                app.install_update(ctx);
+                                app.dialog = Some(Dialog::Update { installed: false });
                             }
                         } else if button(ui, None, "Check now", false, !busy).clicked() {
                             app.check_for_updates(ctx, true);
@@ -1409,7 +1475,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 Some(Dialog::Recovered(view))
             }
         }
-        Dialog::Message { .. } | Dialog::Uninstall { .. } => None,
+        Dialog::Message { .. } | Dialog::Uninstall { .. } | Dialog::Update { .. } => None,
     }
 }
 

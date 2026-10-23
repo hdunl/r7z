@@ -8,6 +8,8 @@ Reads target/release/r7z.exe and r7z-gui.exe and writes to the output folder:
     SHA256SUMS                  hashes of everything above
     r7z-update.txt              manifest the desktop app's updater reads
     r7z-update.sig              Ed25519 signature of r7z-update.txt (hex)
+    r7z-notes.txt               the release's "What's new" text, shown before updating
+    r7z-notes.sig               Ed25519 signature of r7z-notes.txt (hex)
 
 The private key comes from the R7Z_UPDATE_KEY environment variable (PKCS#8 PEM). The script
 refuses to sign when the key does not match the public key built into the app
@@ -24,6 +26,8 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from release_notes import whats_new
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -112,8 +116,16 @@ def main() -> None:
     key.public_key().verify(signature, manifest)
     (out / "r7z-update.sig").write_bytes((signature.hex() + "\n").encode())
 
+    # The notes start with their own header line, so they can never be read as a
+    # manifest, and name the version they describe.
+    notes = f"r7z-notes 1\nversion {version}\n\n{whats_new(tag)}\n".encode()
+    (out / "r7z-notes.txt").write_bytes(notes)
+    signature = key.sign(notes)
+    key.public_key().verify(signature, notes)
+    (out / "r7z-notes.sig").write_bytes((signature.hex() + "\n").encode())
+
     sums = [(digest, zip_name)]
-    for name in ("r7z-update.txt", "r7z-update.sig"):
+    for name in ("r7z-update.txt", "r7z-update.sig", "r7z-notes.txt", "r7z-notes.sig"):
         sums.append((hashlib.sha256((out / name).read_bytes()).hexdigest(), name))
     # Unix line endings, so `sha256sum -c SHA256SUMS` works everywhere.
     (out / "SHA256SUMS").write_bytes("".join(f"{h}  {n}\n" for h, n in sums).encode())

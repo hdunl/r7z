@@ -22,6 +22,8 @@ const REPO: &str = "hdunl/r7z";
 const RELEASE_KEY: &str = "281b0c26996e9342c9e1f12e2d3d71c57d57e5325d6e6c7d4259eb2e662ee5c9";
 
 const MANIFEST_LIMIT: u64 = 4 << 10;
+/// The signed "What's new" text of a release (`r7z-notes.txt`).
+const NOTES_LIMIT: u64 = 32 << 10;
 const ZIP_LIMIT: u64 = 256 << 20;
 
 /// When a file from a release zip is installed in the folder r7z-gui.exe runs from.
@@ -73,7 +75,8 @@ pub fn release_page(version: &str) -> String {
 
 pub enum Check {
     UpToDate,
-    Available(Manifest),
+    /// A newer release, with its "What's new" text when the release has signed notes.
+    Available(Manifest, Option<String>),
 }
 
 fn bad(what: &str) -> Error {
@@ -163,6 +166,44 @@ pub fn verify(manifest: &[u8], sig: &str, key: &[u8; 32]) -> Result<Manifest> {
     parse_manifest(text)
 }
 
+/// Checks `sig` (hex) over the exact notes bytes and returns their text, which must name
+/// `version`. The notes start with their own header, so a signed manifest can't pass for
+/// notes, nor notes for a manifest.
+pub fn verify_notes(notes: &[u8], sig: &str, key: &[u8; 32], version: &str) -> Result<String> {
+    let invalid = || Error::Other("the release notes' signature is not valid".into());
+    let sig = hex::<64>(sig.trim()).ok_or_else(invalid)?;
+    let key = VerifyingKey::from_bytes(key).map_err(|_| invalid())?;
+    key.verify_strict(notes, &Signature::from_bytes(&sig))
+        .map_err(|_| invalid())?;
+    let bad = |what: &str| Error::Other(format!("the release notes are invalid ({what})"));
+    let text = std::str::from_utf8(notes).map_err(|_| bad("not text"))?;
+    let mut lines = text.splitn(4, '\n');
+    if lines.next() != Some("r7z-notes 1") {
+        return Err(bad("unknown format"));
+    }
+    if lines.next().and_then(|l| l.strip_prefix("version ")) != Some(version) {
+        return Err(bad("they describe another version"));
+    }
+    if lines.next() != Some("") {
+        return Err(bad("header"));
+    }
+    Ok(lines.next().unwrap_or("").trim().to_string())
+}
+
+/// The signed notes of the latest release, if it has them (releases before 0.1.10 don't).
+fn latest_notes(agent: &ureq::Agent, version: &str, cancel: &AtomicBool) -> Option<String> {
+    let base = format!("https://github.com/{REPO}/releases/latest/download");
+    let notes = get(agent, &format!("{base}/r7z-notes.txt"), NOTES_LIMIT, cancel).ok()?;
+    let sig = get(agent, &format!("{base}/r7z-notes.sig"), 1024, cancel).ok()?;
+    verify_notes(
+        &notes,
+        &String::from_utf8_lossy(&sig),
+        &release_key(),
+        version,
+    )
+    .ok()
+}
+
 fn release_key() -> [u8; 32] {
     hex(RELEASE_KEY).expect("release key")
 }
@@ -232,9 +273,11 @@ fn latest(agent: &ureq::Agent, cancel: &AtomicBool) -> Result<Manifest> {
 }
 
 pub fn check(cancel: &AtomicBool) -> Result<Check> {
-    let m = latest(&agent(), cancel)?;
+    let agent = agent();
+    let m = latest(&agent, cancel)?;
     Ok(if is_newer(&m.version, CURRENT) {
-        Check::Available(m)
+        let notes = latest_notes(&agent, &m.version, cancel);
+        Check::Available(m, notes)
     } else {
         Check::UpToDate
     })
@@ -456,6 +499,28 @@ mod tests {
 
     const GOOD: &str = "r7z-update 1\nversion 0.2.0\nfile r7z-0.2.0-windows-x64.zip\nsize 1234\nsha256 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n";
 
+    const NOTES: &str =
+        "r7z-notes 1\nversion 0.2.0\n\n- **Faster.** Extraction keeps the disk busy.\n";
+
+    #[test]
+    fn release_notes_are_checked_and_bound_to_their_version() {
+        let (n, sig, key) = signed(NOTES);
+        assert_eq!(
+            verify_notes(&n, &sig, &key, "0.2.0").unwrap(),
+            "- **Faster.** Extraction keeps the disk busy."
+        );
+        // Notes for one release can't be shown for another.
+        assert!(verify_notes(&n, &sig, &key, "0.3.0").is_err());
+        // Any change to the text breaks the signature.
+        let mut tampered = n.clone();
+        *tampered.last_mut().unwrap() = b'!';
+        assert!(verify_notes(&tampered, &sig, &key, "0.2.0").is_err());
+        // A signed manifest is not notes, and signed notes are not a manifest.
+        let (m, msig, _) = signed(GOOD);
+        assert!(verify_notes(&m, &msig, &key, "0.2.0").is_err());
+        assert!(verify(&n, &sig, &key).is_err());
+    }
+
     #[test]
     fn accepts_a_signed_manifest() {
         let (m, sig, key) = signed(GOOD);
@@ -589,6 +654,11 @@ mod tests {
         let sig = std::fs::read_to_string(dir.join("r7z-update.sig")).unwrap();
         let m = verify(&manifest, &sig, &release_key()).unwrap();
         assert_eq!(m.version, CURRENT);
+        // The "What's new" text the app shows before updating.
+        let notes = std::fs::read(dir.join("r7z-notes.txt")).unwrap();
+        let notes_sig = std::fs::read_to_string(dir.join("r7z-notes.sig")).unwrap();
+        let text = verify_notes(&notes, &notes_sig, &release_key(), &m.version).unwrap();
+        assert!(!text.is_empty());
         let zip = dir.join(&m.file);
         let data = std::fs::read(&zip).unwrap();
         assert_eq!(data.len() as u64, m.size);

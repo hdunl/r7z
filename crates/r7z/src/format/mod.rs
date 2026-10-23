@@ -29,11 +29,11 @@ pub mod iso;
 pub mod lzh;
 pub mod mbr;
 pub mod misc;
+pub mod nsis;
 pub mod ntfs;
+pub mod pe;
 pub mod qcow2;
 pub mod rar;
-pub mod nsis;
-pub mod pe;
 pub mod rpm;
 pub mod salvage;
 pub mod sevenz;
@@ -658,10 +658,11 @@ fn open_input(
             }
         }
         Some(f) => f,
-        None => detect_input(&input, &head, file_name).or_else(|| match &input {
-            Input::Mem(file) => payload_format(file),
-            _ => None,
-        })
+        None => detect_input(&input, &head, file_name)
+            .or_else(|| match &input {
+                Input::Mem(file) => payload_format(file),
+                _ => None,
+            })
             .or_else(|| recover.then(|| by_extension(file_name)).flatten())
             .ok_or(Error::NotArchive)?,
     };

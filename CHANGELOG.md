@@ -43,6 +43,12 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   RGB, Audio) and RAR 5's E8, E8E9, ARM and Delta, solid units, split `.partNN.rar` and
   `.rNN` volumes, RAR 3 AES-128 and RAR 5 AES-256 with encrypted headers, and CRC32 and
   BLAKE2sp checks. The Itanium filter is unverified; RAR 1.5 and 2.0 are not supported.
+- Reads optical and Apple disk images: ISO 9660 (Joliet, Rock Ridge, El Torito boot images,
+  files over several extents), UDF 1.02 to 2.60 (Blu-ray metadata partitions), Apple disk
+  images (`.dmg` with ADC, zlib, bzip2 and LZFSE chunks, opening the HFS+ partition inside)
+  and HFS+/HFSX volumes, including decmpfs files whose payload is in the attribute (files
+  with blocks in the resource fork are listed but not extracted). Reads are random access,
+  so large images do not load into memory.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

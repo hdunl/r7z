@@ -233,6 +233,19 @@ fn decode_block(data: &[u8], start: u64) -> io::Result<(Vec<u8>, u32, u64)> {
             "randomised blocks are not handled by the parallel decoder",
         ));
     }
+    let (out, end) = decode_body(data, b.bit_pos())?;
+    let crc = !crc_update(!0, &out);
+    if crc != block_crc {
+        return Err(bad("block CRC mismatch"));
+    }
+    Ok((out, block_crc, end))
+}
+
+/// Decodes a block from its origin pointer on: after the magic, the CRC and the randomised
+/// bit, which NSIS's bzip2 leaves out. Returns the bytes and the bit position after the
+/// block; the caller checks any CRC.
+fn decode_body(data: &[u8], at: u64) -> io::Result<(Vec<u8>, u64)> {
+    let mut b = Bits::at(data, at);
     let orig_ptr = b.get(24)? as usize;
     let used = b.get(16)?;
     let mut seq = Vec::with_capacity(256);
@@ -394,11 +407,19 @@ fn decode_block(data: &[u8], start: u64) -> io::Result<(Vec<u8>, u32, u64)> {
         }
         out.push(byte);
     }
-    let crc = !crc_update(!0, &out);
-    if crc != block_crc {
-        return Err(bad("block CRC mismatch"));
+    Ok((out, b.bit_pos()))
+}
+
+/// One block of NSIS's bzip2 at bit `at`: NSIS writes no stream header, magic or CRC, and
+/// each block is a one-byte marker (`0x31`) followed by the block's bits. Blocks are not
+/// byte aligned. Returns the block's bytes and the bit after it, or `None` at the end
+/// marker (`0x17`).
+pub fn decode_nsis_block(data: &[u8], at: u64) -> io::Result<Option<(Vec<u8>, u64)>> {
+    match Bits::at(data, at).get(8)? {
+        0x17 => Ok(None),
+        0x31 => decode_body(data, at + 8).map(Some),
+        _ => Err(bad("bad NSIS block marker")),
     }
-    Ok((out, block_crc, b.bit_pos()))
 }
 
 /// Bit offsets of every block and end-of-stream magic.

@@ -11,12 +11,14 @@
 //! - blocks: the header and then each file as a block, a 32-bit length whose top bit marks
 //!   compressed data, and the bytes.
 //!
-//! The compressor is deflate (NSIS 2 writes a stored block's length without its
-//! complement), NSIS's bzip2 (no stream header, one-byte block and end markers, no CRCs and
-//! no randomization bit), or LZMA (a properties byte and the dictionary size, then raw data
-//! with an end marker), which may be preceded by a byte that turns on the x86 branch
-//! filter. The layout and compressor are found by decoding the header each way, and the
-//! same compressor is used for every block.
+//! The compressor is deflate, NSIS's bzip2, or LZMA (a properties byte and the dictionary
+//! size, then raw data with an end marker), which may be preceded by a byte that turns on the
+//! x86 branch filter. Deflate is RFC 1951 (NSIS 3) read by flate2, except that NSIS 2 writes a
+//! stored block's length without its complement, so NSIS 2 streams keep a small inflater of
+//! their own. NSIS's bzip2 is bzip2's block coding (`codec::bzip2par`) with one-byte block
+//! and end markers, and no stream header, block magic, CRC or randomization bit. The layout
+//! and compressor are found by decoding the header each way, and the same compressor is used
+//! for every block.
 //!
 //! The header holds the compiled script: a table of instructions, a string table (ANSI or
 //! UTF-16LE, with NSIS 2, NSIS 3 or Unicode-fork codes for variables, shell folders and
@@ -44,6 +46,7 @@ use super::data::{self, Input, Slice};
 use super::pe::Image;
 use super::{Archive, CodePage, Columns, Ctx, Entry, EntryFn, Flow, Format, NameCoding};
 use super::{OpenOptions, Unit};
+use crate::codec::bzip2par::decode_nsis_block;
 use crate::error::{Error, Result};
 
 /// A payload format: no signature and no extension, recognized in a PE file's overlay by
@@ -228,8 +231,17 @@ enum Stored {
 /// A decoder over one compressed stream held in memory.
 fn decoder<'a>(codec: Codec, s: &'a [u8], stored: Stored) -> Result<Box<dyn Read + 'a>> {
     Ok(match codec {
+        // NSIS 3 writes standard deflate, which flate2 reads. NSIS 2 leaves the complement out
+        // of its stored blocks, so those streams keep the inflater below.
+        Codec::Deflate if stored == Stored::Full => Box::new(flate2::read::DeflateDecoder::new(s)),
         Codec::Deflate => Box::new(Inflate::new(s, stored)),
-        Codec::Bzip2 => Box::new(Bunzip::new(s)),
+        Codec::Bzip2 => Box::new(Bunzip {
+            data: s,
+            at: 0,
+            out: Vec::new(),
+            pos: 0,
+            done: false,
+        }),
         Codec::Lzma => {
             let (bcj, s) = lzma_parts(s);
             let (props, dict) = match s {
@@ -490,10 +502,6 @@ impl Huff {
         b.n -= len;
         Ok(s)
     }
-
-    fn decode_msb(&self, b: &mut MsbBits) -> io::Result<u16> {
-        self.decode_slow(|_| b.bits(1)).map(|(s, _)| s)
-    }
 }
 
 const LEN_BASE: [u16; 29] = [
@@ -733,262 +741,37 @@ impl Read for Inflate<'_> {
 // ---------------------------------------------------------------- NSIS bzip2
 
 const BZ_BLOCK: u8 = 0x31;
-const BZ_END: u8 = 0x17;
-const BZ_MAX_BLOCK: usize = 900_000;
-const BZ_MAX_SELECTORS: usize = 18_002;
-const BZ_GROUP: usize = 50;
 
-/// MSB-first bits over a byte slice.
-struct MsbBits<'a> {
-    d: &'a [u8],
-    pos: usize,
-    buf: u64,
-    n: u32,
-}
-
-impl MsbBits<'_> {
-    fn bits(&mut self, k: u32) -> io::Result<u32> {
-        while self.n < k {
-            let b = *self.d.get(self.pos).ok_or_else(eof)?;
-            self.pos += 1;
-            self.buf = (self.buf << 8) | b as u64;
-            self.n += 8;
-        }
-        self.n -= k;
-        Ok(((self.buf >> self.n) & ((1u64 << k) - 1)) as u32)
-    }
-
-    fn bit(&mut self) -> io::Result<bool> {
-        Ok(self.bits(1)? == 1)
-    }
-}
-
-/// NSIS's bzip2: blocks start with `0x31` and the stream ends with `0x17` (the first bytes of
-/// bzip2's magics), and there is no stream header, no CRC and no randomization bit.
+/// NSIS's bzip2, one block at a time (see `bzip2par::decode_nsis_block`).
 struct Bunzip<'a> {
-    bits: MsbBits<'a>,
-    /// Block bytes in the low 8 bits, inverse BWT links above them.
-    tt: Vec<u32>,
-    t_pos: u32,
-    /// Block bytes not yet produced.
-    left: usize,
+    data: &'a [u8],
+    /// Bit position of the next block's marker.
+    at: u64,
+    /// The current block's bytes, and how many have been returned.
+    out: Vec<u8>,
+    pos: usize,
     done: bool,
-    /// Run-length state: the last byte, how many times in a row, and repeats owed.
-    last: u8,
-    run: u8,
-    rep: u32,
-}
-
-impl<'a> Bunzip<'a> {
-    fn new(d: &'a [u8]) -> Self {
-        Bunzip {
-            bits: MsbBits {
-                d,
-                pos: 0,
-                buf: 0,
-                n: 0,
-            },
-            tt: Vec::new(),
-            t_pos: 0,
-            left: 0,
-            done: false,
-            last: 0,
-            run: 0,
-            rep: 0,
-        }
-    }
-
-    /// The bytes the block uses, from its two-level bitmap.
-    fn symbol_map(&mut self) -> io::Result<Vec<u8>> {
-        let used = self.bits.bits(16)?;
-        let mut seq = Vec::new();
-        for i in 0..16 {
-            if used & (0x8000 >> i) == 0 {
-                continue;
-            }
-            let w = self.bits.bits(16)?;
-            for j in 0..16 {
-                if w & (0x8000 >> j) != 0 {
-                    seq.push((i * 16 + j) as u8);
-                }
-            }
-        }
-        if seq.is_empty() {
-            return Err(bad("bzip2 block uses no bytes"));
-        }
-        Ok(seq)
-    }
-
-    /// The coding tables and the table selector of each 50-symbol group.
-    fn tables(&mut self, alpha: usize) -> io::Result<(Vec<Huff>, Vec<u8>)> {
-        let groups = self.bits.bits(3)? as usize;
-        let count = self.bits.bits(15)? as usize;
-        if !(2..=6).contains(&groups) || count == 0 {
-            return Err(bad("bad bzip2 table counts"));
-        }
-        let mut order: Vec<u8> = (0..groups as u8).collect();
-        let mut sels = Vec::with_capacity(count.min(BZ_MAX_SELECTORS));
-        for _ in 0..count {
-            let mut j = 0;
-            while self.bits.bit()? {
-                j += 1;
-                if j >= groups {
-                    return Err(bad("bad bzip2 selector"));
-                }
-            }
-            let g = order.remove(j);
-            order.insert(0, g);
-            if sels.len() < BZ_MAX_SELECTORS {
-                sels.push(g);
-            }
-        }
-        let mut tables = Vec::with_capacity(groups);
-        let mut lens = vec![0u8; alpha];
-        for _ in 0..groups {
-            let mut cur = self.bits.bits(5)? as i32;
-            for l in lens.iter_mut() {
-                loop {
-                    if !(1..=20).contains(&cur) {
-                        return Err(bad("bad bzip2 code length"));
-                    }
-                    if !self.bits.bit()? {
-                        break;
-                    }
-                    cur += if self.bits.bit()? { -1 } else { 1 };
-                }
-                *l = cur as u8;
-            }
-            tables.push(Huff::new(&lens, false)?);
-        }
-        Ok((tables, sels))
-    }
-
-    /// Reads the next block; `false` at the end of the stream.
-    fn block(&mut self) -> io::Result<bool> {
-        match self.bits.bits(8)? as u8 {
-            BZ_END => {
-                self.done = true;
-                return Ok(false);
-            }
-            BZ_BLOCK => {}
-            _ => return Err(bad("bad bzip2 block marker")),
-        }
-        let orig = self.bits.bits(24)? as usize;
-        let seq = self.symbol_map()?;
-        let alpha = seq.len() + 2;
-        let (tables, sels) = self.tables(alpha)?;
-        let eob = alpha - 1;
-        let mut mtf: [u8; 256] = std::array::from_fn(|i| i as u8);
-        let mut freq = [0u32; 256];
-        self.tt.clear();
-        let (mut sel, mut group_left) = (0usize, 0usize);
-        let mut table = &tables[0];
-        let (mut run, mut weight) = (0usize, 1usize);
-        loop {
-            if group_left == 0 {
-                let g = *sels
-                    .get(sel)
-                    .ok_or_else(|| bad("bzip2 selectors ran out"))?;
-                table = &tables[g as usize];
-                sel += 1;
-                group_left = BZ_GROUP;
-            }
-            group_left -= 1;
-            let s = table.decode_msb(&mut self.bits)? as usize;
-            if s <= 1 {
-                // RUNA and RUNB: a bijective base-2 count of the front byte.
-                if weight > 1 << 20 {
-                    return Err(bad("bzip2 run is too long"));
-                }
-                run += (s + 1) * weight;
-                weight <<= 1;
-                continue;
-            }
-            if weight > 1 {
-                let b = seq[mtf[0] as usize % seq.len()];
-                if self.tt.len() + run > BZ_MAX_BLOCK {
-                    return Err(bad("bzip2 block is too large"));
-                }
-                freq[b as usize] += run as u32;
-                self.tt.resize(self.tt.len() + run, b as u32);
-                (run, weight) = (0, 1);
-            }
-            if s == eob {
-                break;
-            }
-            let k = s - 1;
-            if k >= seq.len() || self.tt.len() >= BZ_MAX_BLOCK {
-                return Err(bad("bad bzip2 symbol"));
-            }
-            let v = mtf[k];
-            mtf.copy_within(0..k, 1);
-            mtf[0] = v;
-            let b = seq[v as usize % seq.len()];
-            freq[b as usize] += 1;
-            self.tt.push(b as u32);
-        }
-        let n = self.tt.len();
-        if orig >= n {
-            return Err(bad("bad bzip2 origin pointer"));
-        }
-        let mut next = [0u32; 256];
-        let mut sum = 0u32;
-        for (c, f) in next.iter_mut().zip(freq) {
-            *c = sum;
-            sum += f;
-        }
-        for i in 0..n {
-            let b = (self.tt[i] & 0xFF) as usize;
-            let at = next[b] as usize;
-            self.tt[at] |= (i as u32) << 8;
-            next[b] += 1;
-        }
-        self.t_pos = self.tt[orig] >> 8;
-        self.left = n;
-        self.run = 0;
-        Ok(true)
-    }
-
-    fn next_raw(&mut self) -> u8 {
-        let e = self.tt.get(self.t_pos as usize).copied().unwrap_or(0);
-        self.t_pos = e >> 8;
-        self.left -= 1;
-        e as u8
-    }
 }
 
 impl Read for Bunzip<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut k = 0;
-        while k < buf.len() {
-            if self.rep > 0 {
-                buf[k] = self.last;
-                self.rep -= 1;
-                k += 1;
-                continue;
+        while self.pos == self.out.len() {
+            if self.done {
+                return Ok(0);
             }
-            if self.left == 0 {
-                if self.done || k > 0 || !self.block()? {
-                    break;
+            match decode_nsis_block(self.data, self.at)? {
+                Some((out, end)) => {
+                    self.out = out;
+                    self.pos = 0;
+                    self.at = end;
                 }
-                continue;
+                None => self.done = true,
             }
-            let b = self.next_raw();
-            if self.run == 4 {
-                self.rep = b as u32;
-                self.run = 0;
-                continue;
-            }
-            if self.run > 0 && b == self.last {
-                self.run += 1;
-            } else {
-                self.last = b;
-                self.run = 1;
-            }
-            buf[k] = b;
-            k += 1;
         }
-        Ok(k)
+        let n = buf.len().min(self.out.len() - self.pos);
+        buf[..n].copy_from_slice(&self.out[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
     }
 }
 

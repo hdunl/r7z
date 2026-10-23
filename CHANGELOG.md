@@ -57,6 +57,12 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   holding NTFS lists as the NTFS files. The desktop app opens a partition in place. Disks are
   read by range, so a sparse terabyte costs only its allocation table. This adds 0.23 MiB to
   r7z.exe (3.47 to 3.70 MiB) and 0.22 MiB to the desktop app (9.71 to 9.93 MiB).
+- Reads installers and executable containers: MSI, MSP and other OLE (Compound) files, NSIS
+  2 and 3 installers (ANSI and Unicode, zlib, bzip2 and LZMA), self-extracting 7z, zip and
+  cab archives, PE resources and CHM help files. A plain `.exe` is still not an archive:
+  Explorer's "Extract here" and "Open with" show for an executable only when it carries an
+  installer or self-extractor payload, and the desktop app offers "Open as archive" for the
+  resources of any other program. Inno Setup is not supported yet.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

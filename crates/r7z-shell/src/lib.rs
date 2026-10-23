@@ -106,10 +106,12 @@ fn is_archive(path: &Path) -> bool {
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    r7z::format::EXTENSIONS.iter().any(|exts| {
+    let by_name = r7z::format::EXTENSIONS.iter().any(|exts| {
         exts.iter()
             .any(|e| name.ends_with(&format!(".{}", e.trim_start_matches('.').to_lowercase())))
-    })
+    });
+    // A program is an archive only when it carries an installer or self-extractor payload.
+    by_name || (name.ends_with(".exe") && r7z::format::exe_has_payload(path))
 }
 
 fn is_7z(path: &Path) -> bool {

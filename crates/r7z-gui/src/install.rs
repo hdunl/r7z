@@ -28,7 +28,7 @@ const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstal
 const EXTENSIONS: &[&str] = &[
     "7z", "zip", "tar", "gz", "tgz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "lz4",
     "lzma", "z", "taz", "cab", "cpio", "arj", "lzh", "lha", "rpm", "deb", "xar", "wim", "swm",
-    "esd", "001",
+    "esd", "001", "msi", "msp", "chm",
 ];
 
 /// The folder installing copies r7z into.

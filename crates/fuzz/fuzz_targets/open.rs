@@ -6,10 +6,10 @@ use libfuzzer_sys::fuzz_target;
 use r7z::format::{self, Ctx, Flow, OpenRequest};
 
 /// File names that steer detection toward the formats recognised by their extension.
-const NAMES: [&str; 22] = [
+const NAMES: [&str; 25] = [
     "a.7z", "a.zip", "a.tar", "a.gz", "a.bz2", "a.xz", "a.zst", "a.lz4", "a.Z", "a.lzma", "a.cab",
     "a.rpm", "a.deb", "a.wim", "a.001", "a.b64", "a.hex", "a.lzh", "a.vhd", "a.vhdx", "a.vmdk",
-    "a.qcow2",
+    "a.qcow2", "a.msi", "a.chm", "a.exe",
 ];
 
 /// Decoded bytes per input before the rest is skipped, so each run stays short.

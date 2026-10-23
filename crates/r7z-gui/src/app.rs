@@ -96,8 +96,17 @@ pub enum Opening {
     Nested { node: usize, name: String },
 }
 
+/// Whether the file starts with an MZ header (a Windows executable).
+fn is_executable(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 2];
+    std::fs::File::open(path).is_ok_and(|mut f| f.read_exact(&mut head).is_ok()) && &head == b"MZ"
+}
+
 pub enum ToastAct {
     OpenArchive(PathBuf),
+    /// Lists an executable's resource tree as an archive.
+    OpenAsPe(PathBuf),
     Go(PathBuf),
     /// Salvage what is readable from the damaged archive at this path.
     Recover(PathBuf),
@@ -908,6 +917,17 @@ impl App {
         self.opening = Some((task, Opening::Disk(path), password));
     }
 
+    /// Opens a file as `format` ("Open as archive").
+    pub fn open_disk_as(
+        &mut self,
+        ctx: &egui::Context,
+        path: PathBuf,
+        format: &'static r7z::format::Format,
+    ) {
+        let task = jobs::open_disk_as(ctx, path.clone(), format);
+        self.opening = Some((task, Opening::Disk(path), None));
+    }
+
     pub fn open_nested(&mut self, ctx: &egui::Context, node: usize, password: Option<String>) {
         self.open_nested_as(ctx, node, password, None);
     }
@@ -1064,6 +1084,16 @@ impl App {
                     crate::dialogs::PwFor::Open(what),
                     Some("That password is not correct.".into()),
                 ));
+            }
+            (Err(Error::NotArchive), Opening::Disk(path)) if is_executable(&path) => {
+                // Never hand an executable to the system to run: offer its resources instead.
+                self.exit_when_done = false;
+                let name = jobs::file_name(&path);
+                self.toast(
+                    format!("{name} is a program, not an archive"),
+                    false,
+                    Some(("Open as archive".into(), ToastAct::OpenAsPe(path))),
+                );
             }
             (Err(Error::NotArchive), Opening::Disk(path)) => {
                 self.exit_when_done = false;

@@ -2474,6 +2474,7 @@ fn toasts(app: &mut App, ctx: &egui::Context, p: &Palette) {
         let mut t = app.toasts.remove(i);
         match t.actions.swap_remove(k).1 {
             ToastAct::OpenArchive(p) => app.open_disk_archive(ctx, p, None),
+            ToastAct::OpenAsPe(p) => app.open_disk_as(ctx, p, &r7z::format::pe::FORMAT),
             ToastAct::Go(p) => app.go(Loc::Disk(p)),
             ToastAct::Recover(p) => app.start_recover(ctx, p),
             ToastAct::Undo(id) => app.start_undo(ctx, id),

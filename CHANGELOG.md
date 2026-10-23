@@ -39,6 +39,10 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 - Branch converters for ARM, ARMT, ARM64, PPC, SPARC, IA64 and RISC-V. `-mf=ARM64` (and
   the other names) forces one for every file. By default a file with an executable name
   and a PE or ELF header gets the converter for its machine, as 7-Zip picks them.
+- RAR 4 and RAR 5 reading: LZ and PPMd, the standard RAR 3 filters (E8, E8E9, Delta,
+  RGB, Audio) and RAR 5's E8, E8E9, ARM and Delta, solid units, split `.partNN.rar` and
+  `.rNN` volumes, RAR 3 AES-128 and RAR 5 AES-256 with encrypted headers, and CRC32 and
+  BLAKE2sp checks. The Itanium filter is unverified; RAR 1.5 and 2.0 are not supported.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

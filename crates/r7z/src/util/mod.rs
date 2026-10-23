@@ -1,3 +1,4 @@
+pub mod blake2sp;
 pub mod codepage;
 pub mod crc64;
 pub mod fmt;

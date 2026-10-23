@@ -30,6 +30,7 @@
 | Cpio | ✓ | – | odc, newc, crc (checksum verified), old binary in both byte orders |
 | Ar | ✓ | – | System V/GNU and BSD names, symbol tables, `.a`, `.lib`, `.deb` (opens `data.tar.*`; `-tar` lists the members) |
 | Rpm | ✓ | – | the payload opens through its compressor down to the cpio's files |
+| Rar | ✓ | – | RAR 4 (2.9 to 3.x): LZ with Huffman blocks, PPMd variant H, VM standard filters E8, E8E9, Delta, RGB and Audio; the Itanium filter is implemented but unverified (no WinRAR sample). RAR 5: LZ with E8, E8E9, ARM and Delta filters. Encryption: RAR 4 AES-128, RAR 5 AES-256 with password check, and encrypted headers. Split volumes `.partNN.rar` and `.rNN`; solid units; comments and recovery records skipped; CRC32 and BLAKE2sp verified. RAR 1.5 and 2.0 and SFX archives are not supported |
 | Arj | ✓ | – | methods 0-4; names in the detected code page; garbled (encrypted) entries and multi-volume continuation are listed but not extracted |
 | Lzh | ✓ | – | `-lh0-`, `-lh1-`, `-lh4-` to `-lh7-`, `-lzs-`, `-lz5-`, `-lz4-`, header levels 0-3, CRC16 verified; Shift-JIS and other code-page names detected |
 | Xar | ✓ | – | `.pkg`/`.xip`; zlib, bzip2, xz, lzma and stored data; SHA-1/MD5/SHA-2 checksums verified; `[TOC].xml` |
@@ -106,9 +107,16 @@ Compared with 7-Zip's console tool, r7z also:
   extraction folder and no folder on the way is a link; otherwise the file that holds the
   target text is written, as before.
 
+RAR reading follows RARLAB's public RAR 5.0 technote and the layouts used by libarchive's
+BSD-licensed `archive_read_support_format_rar.c` and `archive_read_support_format_rar5.c`,
+which were studied for design only; no code was copied. The RAR 3 filter programs are
+recognised by their bytecode length and CRC-32, as RAR's own encoder writes them, and run
+as fixed transforms rather than a general RAR VM. Test fixtures were written with WinRAR
+and checked byte-for-byte against 7-Zip.
+
 ## Not supported yet
 
-- RAR, disk images (ISO, UDF, VHD, VMDK, DMG, QCOW, file systems) and installers (NSIS,
+- RAR 1.5 and RAR 2.0 (unpack versions 15 and 20) and RAR SFX archives; disk images (ISO, UDF, VHD, VMDK, DMG, QCOW, file systems) and installers (NSIS,
   MSI/Compound, PE resources, SFX archives behind a stub).
 - Legacy zip methods are read only, and checked unevenly: Implode matches Info-ZIP's
   `unzip` on every test stream; Shrink matches it on 11 of 12 (one 150 KB stream with

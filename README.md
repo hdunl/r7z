@@ -132,7 +132,7 @@ r7z h -scrcSHA256 *.iso              # hash files
 | | Formats |
 |---|---|
 | **Read and write** | 7z, zip (zstd members too), tar, gzip, bzip2, xz, zstd, lz4, Z (and `.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz4`, `.tar.Z` in one step) |
-| **Read** | lzma, lzma86, cab, cpio, ar and deb, rpm, arj, lzh, xar and pkg, wim, esd and swm, split `.001` and `.z01` volumes, zip Shrink, Reduce and Implode, Base64, Intel HEX |
+| **Read** | RAR 4 and RAR 5, lzma, lzma86, cab, cpio, ar and deb, rpm, arj, lzh, xar and pkg, wim, esd and swm, split `.001` and `.z01` volumes, zip Shrink, Reduce and Implode, Base64, Intel HEX |
 | **Zip-based** | jar, docx, xlsx, odt, epub, apk, ipa, appx, nupkg, whl |
 | **Encryption** | 7z AES-256 with header encryption; zip WinZip AES (read and write) and ZipCrypto (read) |
 
@@ -172,7 +172,7 @@ with the default icon. Source layout and testing: [docs/development.md](docs/dev
 
 ## Roadmap
 
-- RAR and RAR5 extraction
+- RAR 1.5 and RAR 2.0 extraction (RAR 4 and RAR 5 read today)
 - Disk images and installers: ISO, UDF, VHD, VMDK, DMG, NSIS, MSI
 
 Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supported-yet).

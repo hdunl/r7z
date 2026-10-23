@@ -14,6 +14,9 @@ pub mod arj;
 pub mod cab;
 pub mod cpio;
 pub mod data;
+pub mod dmg;
+pub mod hfs;
+pub mod iso;
 pub mod lzh;
 pub mod misc;
 pub mod rar;
@@ -22,6 +25,7 @@ pub mod salvage;
 pub mod sevenz;
 pub mod stream;
 pub mod tar;
+pub mod udf;
 pub mod wim;
 pub mod write;
 pub mod xar;
@@ -32,7 +36,7 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-pub use data::{BoxRead, Input, Opener, Slice};
+pub use data::{BoxRead, Input, Opener, ReadAt, Runs, Slice};
 
 use crate::error::{Error, Result};
 pub use crate::util::codepage::{CodePage, NameCoding};
@@ -170,6 +174,13 @@ pub trait Archive: Send + Sync {
         None
     }
 
+    /// A random-access view of entry `i`, for entries that hold a disk image (a DMG's
+    /// partition). Preferred over `stream` when present, so the next level reads only the
+    /// ranges it needs instead of a decoded copy of the whole entry.
+    fn volume(&self, _i: usize) -> Option<Arc<dyn ReadAt>> {
+        None
+    }
+
     /// An entry holding the archive's real content (a `.deb`'s `data.tar.*`), opened
     /// automatically like the content of a stream format. Needs `stream(i)`.
     fn main_entry(&self) -> Option<usize> {
@@ -259,7 +270,8 @@ pub struct Format {
     pub write: bool,
     /// The format wraps one compressed stream; archives inside it are opened too.
     pub stream: bool,
-    /// The handler can be opened over a sequential stream (`Input::Stream`).
+    /// The handler accepts any input (`Input::Stream` and `Input::Volume` as well as
+    /// `Input::Mem`); without it the input is read into memory before `open` is called.
     pub sequential: bool,
     pub open: OpenFn,
 }
@@ -302,6 +314,11 @@ formats![
     zip::FORMAT,
     tar::FORMAT,
     xar::FORMAT,
+    // ISO before UDF: an image with both opens as UDF from inside the ISO handler.
+    iso::FORMAT,
+    udf::FORMAT,
+    dmg::FORMAT,
+    hfs::FORMAT,
     rpm::FORMAT,
     ar::FORMAT,
     cpio::FORMAT,
@@ -398,6 +415,20 @@ pub fn extensions_of(name: &str) -> (String, Option<String>) {
 /// Bytes examined for signatures.
 const HEAD: usize = 1 << 16;
 
+/// Like [`detect_format`], plus formats recognized from the end of the input: a UDIF disk
+/// image keeps its header in the last 512 bytes.
+fn detect_input(input: &Input, head: &[u8], file_name: &str) -> Option<&'static Format> {
+    let udif = match input {
+        Input::Mem(s) => dmg::is_udif(s),
+        Input::Volume(v) => dmg::is_udif(v.as_ref()),
+        Input::Stream { .. } => false,
+    };
+    if udif {
+        return Some(&dmg::FORMAT);
+    }
+    detect_format(head, file_name)
+}
+
 /// Picks the format for `head`, preferring one that owns the file's extension.
 pub fn detect_format(head: &[u8], file_name: &str) -> Option<&'static Format> {
     let (ext, _) = extensions_of(file_name);
@@ -481,6 +512,11 @@ pub fn open_bytes_recover(data: Vec<u8>, file_name: &str, req: &OpenRequest) -> 
 fn head_of(input: &Input) -> Result<Vec<u8>> {
     Ok(match input {
         Input::Mem(s) => s[..s.len().min(HEAD)].to_vec(),
+        Input::Volume(v) => {
+            let mut buf = vec![0u8; v.size().min(HEAD as u64) as usize];
+            v.read_at(0, &mut buf)?;
+            buf
+        }
         Input::Stream { open, .. } => {
             let mut r = open()?;
             let mut buf = vec![0u8; HEAD];
@@ -508,6 +544,7 @@ fn open_level(
 ) -> Result<Level> {
     let physical_size = match &input {
         Input::Mem(s) => Some(s.len() as u64),
+        Input::Volume(v) => Some(v.size()),
         Input::Stream { size_hint, .. } => *size_hint,
     };
     let input = if fmt.sequential {
@@ -542,7 +579,7 @@ fn open_input(
     let mut levels = Vec::new();
     let notes: Notes = Arc::default();
     let inner_stream = |lvl: &Level| {
-        let (input, name) = inner_stream(lvl)?;
+        let (input, name) = inner_input(lvl)?;
         Some(if recover {
             (salvage::until_error(input, lvl, &notes), name)
         } else {
@@ -564,7 +601,7 @@ fn open_input(
             }
         }
         Some(f) => f,
-        None => detect_format(&head, file_name)
+        None => detect_input(&input, &head, file_name)
             .or_else(|| recover.then(|| by_extension(file_name)).flatten())
             .ok_or(Error::NotArchive)?,
     };
@@ -603,8 +640,9 @@ fn by_extension(file_name: &str) -> Option<&'static Format> {
     FORMATS.iter().copied().find(|f| f.has_extension(&ext))
 }
 
-/// The stream a level wraps: the only entry of a stream format, or a main entry.
-fn inner_stream(lvl: &Level) -> Option<(Input, String)> {
+/// The input a level wraps: the only entry of a stream format, or a main entry. A random-
+/// access view is preferred over a stream, so the next level reads only what it needs.
+fn inner_input(lvl: &Level) -> Option<(Input, String)> {
     let a = &lvl.archive;
     let i = if a.format().stream {
         if a.entries().len() != 1 || a.entries()[0].is_dir {
@@ -614,8 +652,11 @@ fn inner_stream(lvl: &Level) -> Option<(Input, String)> {
     } else {
         a.main_entry()?
     };
-    let open = a.stream(i)?;
     let e = &a.entries()[i];
+    if let Some(v) = a.volume(i) {
+        return Some((Input::Volume(v), e.name.clone()));
+    }
+    let open = a.stream(i)?;
     Some((
         Input::Stream {
             open,

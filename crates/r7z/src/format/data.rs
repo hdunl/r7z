@@ -137,6 +137,90 @@ impl Read for SliceReader {
     }
 }
 
+/// Random-access bytes. Disk images often compute their sectors on demand (a compressed
+/// DMG, a partition inside one), so readers ask for exact ranges and never assume the whole
+/// image is in memory.
+pub trait ReadAt: Send + Sync {
+    /// The total size in bytes.
+    fn size(&self) -> u64;
+
+    fn is_empty(&self) -> bool {
+        self.size() == 0
+    }
+
+    /// Fills `buf` from byte `offset`. Fails when the range runs past the end.
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> Result<()>;
+}
+
+impl ReadAt for Slice {
+    fn size(&self) -> u64 {
+        let bytes: &[u8] = self;
+        bytes.len() as u64
+    }
+
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> Result<()> {
+        let bytes: &[u8] = self;
+        let start = usize::try_from(offset).ok();
+        let end = start.and_then(|s| s.checked_add(buf.len()));
+        match (start, end) {
+            (Some(s), Some(e)) if e <= bytes.len() => {
+                buf.copy_from_slice(&bytes[s..e]);
+                Ok(())
+            }
+            _ => Err(Error::corrupt("read past the end of the archive")),
+        }
+    }
+}
+
+/// Reads a list of `(offset, length)` ranges of a [`ReadAt`] as one stream, in order. Each
+/// `read` call reads only what the caller asks for, so memory use does not depend on the
+/// size of the ranges.
+pub struct Runs {
+    src: Arc<dyn ReadAt>,
+    runs: std::vec::IntoIter<(u64, u64)>,
+    pos: u64,
+    left: u64,
+}
+
+impl Runs {
+    pub fn new(src: Arc<dyn ReadAt>, runs: Vec<(u64, u64)>) -> Self {
+        Runs {
+            src,
+            runs: runs.into_iter(),
+            pos: 0,
+            left: 0,
+        }
+    }
+
+    /// Every byte of `src`.
+    pub fn whole(src: Arc<dyn ReadAt>) -> Self {
+        let len = src.size();
+        Runs::new(src, vec![(0, len)])
+    }
+}
+
+impl Read for Runs {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        while self.left == 0 {
+            let Some((offset, len)) = self.runs.next() else {
+                return Ok(0);
+            };
+            self.pos = offset;
+            self.left = len;
+        }
+        let n = (buf.len() as u64).min(self.left) as usize;
+        if n == 0 {
+            return Ok(0);
+        }
+        self.src
+            .read_at(self.pos, &mut buf[..n])
+            .map_err(Error::into_io)?;
+        self.pos += n as u64;
+        self.left -= n as u64;
+        Ok(n)
+    }
+}
+
 pub type BoxRead = Box<dyn Read + Send>;
 
 /// Opens a fresh sequential reader over some data each time it is called.
@@ -147,6 +231,9 @@ pub type Opener = Arc<dyn Fn() -> Result<BoxRead> + Send + Sync>;
 pub enum Input {
     /// Random-access bytes.
     Mem(Slice),
+    /// Random-access bytes that may be computed on demand (a partition inside a disk
+    /// image). Only formats with `Format::sequential` receive these, without a copy.
+    Volume(Arc<dyn ReadAt>),
     /// A stream that can only be read front to back (decompressed output of an outer
     /// archive). Only formats with `Format::sequential` receive this.
     Stream {
@@ -160,7 +247,20 @@ impl Input {
     pub fn into_mem(self) -> Result<Slice> {
         match self {
             Input::Mem(s) => Ok(s),
+            Input::Volume(v) => {
+                let len = v.size();
+                materialize(&mut Runs::whole(v), Some(len))
+            }
             Input::Stream { open, size_hint } => materialize(&mut *open()?, size_hint),
+        }
+    }
+
+    /// Random-access bytes, without a copy when the input already is.
+    pub fn volume(self) -> Result<Arc<dyn ReadAt>> {
+        match self {
+            Input::Mem(s) => Ok(Arc::new(s) as Arc<dyn ReadAt>),
+            Input::Volume(v) => Ok(v),
+            other => Ok(Arc::new(other.into_mem()?) as Arc<dyn ReadAt>),
         }
     }
 
@@ -169,6 +269,10 @@ impl Input {
             Input::Mem(s) => {
                 let s = s.clone();
                 Arc::new(move || Ok(Box::new(s.reader()) as BoxRead))
+            }
+            Input::Volume(v) => {
+                let v = v.clone();
+                Arc::new(move || Ok(Box::new(Runs::whole(v.clone())) as BoxRead))
             }
             Input::Stream { open, .. } => open.clone(),
         }

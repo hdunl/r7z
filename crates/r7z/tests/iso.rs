@@ -470,9 +470,11 @@ fn boot_catalog(lay: &Lay) -> Vec<u8> {
     cat[30] = 0x55;
     cat[31] = 0xAA;
     // The validation checksum makes the 16-bit words of the entry sum to zero.
-    let sum = cat[..32].as_chunks::<2>().0.iter().fold(0u16, |s, w| {
-        s.wrapping_add(u16::from_le_bytes(*w))
-    });
+    let sum = cat[..32]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .fold(0u16, |s, w| s.wrapping_add(u16::from_le_bytes(*w)));
     cat[28..30].copy_from_slice(&0u16.wrapping_sub(sum).to_le_bytes());
     let mut at = 32;
     for (i, &(media, sector, count)) in lay.boot.iter().enumerate() {

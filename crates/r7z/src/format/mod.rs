@@ -396,10 +396,15 @@ pub fn payload_format(file: &Slice) -> Option<&'static Format> {
         .or_else(|| sfx::carries_payload(file).then_some(&sfx::FORMAT))
 }
 
-/// Whether the file at `path` is a PE file that carries a payload r7z can open. The
-/// shell's "Extract here" and "Open with" check this for executables.
-pub fn exe_has_payload(path: &Path) -> bool {
-    Slice::map_file(path).is_ok_and(|file| payload_format(&file).is_some())
+/// A cheap look at whether the PE file at `path` carries an installer or self-extractor
+/// payload: an NSIS header, or a payload format's signature after the image. It reads bytes
+/// only and opens nothing, so the Explorer menu can call it without linking the parsers;
+/// opening the file decides, through [`payload_format`].
+pub fn exe_may_have_payload(path: &Path) -> bool {
+    Slice::map_file(path).is_ok_and(|file| {
+        file.starts_with(b"MZ")
+            && (nsis::looks_like_nsis(&file) || sfx::overlay_has_signature(&file))
+    })
 }
 
 /// One level of an opened archive chain (`x.tar.gz` has a gzip level and a tar level).

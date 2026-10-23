@@ -393,6 +393,28 @@ fn an_executable_with_an_unknown_overlay_is_not_an_archive() {
     assert!(matches!(r, Err(Error::NotArchive)));
 }
 
+/// The Explorer menu's quick check: payloads are seen without opening anything, and
+/// programs without one are left alone.
+#[test]
+fn the_menu_check_sees_installers_and_self_extractors_only() {
+    let dir = std::env::temp_dir().join(format!("r7z-payload-check-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let nsis = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/nsis/nsis3-unicode-solid-lzma.bin");
+    let cases: [(&str, Vec<u8>, bool); 4] = [
+        ("setup.exe", sfx_file(), true),
+        ("installer.exe", std::fs::read(nsis).unwrap(), true),
+        ("plain.exe", pe_image(None, &[]), false),
+        ("tool.exe", pe_image(None, b"just appended bytes"), false),
+    ];
+    for (name, data, expect) in cases {
+        let path = dir.join(name);
+        std::fs::write(&path, data).unwrap();
+        assert_eq!(format::exe_may_have_payload(&path), expect, "{name}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn forced_pe_lists_a_self_extractor_as_an_empty_resource_tree() {
     let o = open_pe(sfx_file(), "setup.exe").unwrap();

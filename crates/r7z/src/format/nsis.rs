@@ -161,7 +161,7 @@ fn first_header(file: &[u8]) -> Option<FirstHeader> {
     None
 }
 
-fn looks_like_nsis(file: &[u8]) -> bool {
+pub(crate) fn looks_like_nsis(file: &[u8]) -> bool {
     first_header(file).is_some()
 }
 

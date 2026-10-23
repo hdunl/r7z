@@ -124,7 +124,9 @@ impl BTree {
             ));
         }
         if root >= total_nodes || first_leaf >= total_nodes {
-            return Err(Error::corrupt("HFS+ B-tree root or first leaf is out of range"));
+            return Err(Error::corrupt(
+                "HFS+ B-tree root or first leaf is out of range",
+            ));
         }
 
         // The header's map record covers the first nodes; map nodes continue it.
@@ -142,7 +144,9 @@ impl BTree {
             fork.read_at(src, u64::from(link) * node_size as u64, &mut node)?;
             let m = desc(&node)?;
             if m.kind != MAP {
-                return Err(Error::corrupt("HFS+ B-tree node map chain reaches a non-map node"));
+                return Err(Error::corrupt(
+                    "HFS+ B-tree node map chain reaches a non-map node",
+                ));
             }
             bitmap.extend_from_slice(record(&node, m.count, 0)?.1);
             link = m.f_link;
@@ -241,13 +245,17 @@ impl BTree {
                 Error::corrupt("HFS+ B-tree index has no key at or before the search key")
             })?;
         }
-        Err(Error::corrupt("HFS+ B-tree is deeper than its search allows"))
+        Err(Error::corrupt(
+            "HFS+ B-tree is deeper than its search allows",
+        ))
     }
 
     /// Reads node `n` into `buf` and parses its descriptor. Only nodes marked in use are read.
     fn read_node(&self, src: &dyn ReadAt, n: u32, buf: &mut Vec<u8>) -> Result<Desc> {
         if n >= self.total_nodes || !self.allocated(n) {
-            return Err(Error::corrupt(format!("HFS+ B-tree node {n} is not in use")));
+            return Err(Error::corrupt(format!(
+                "HFS+ B-tree node {n} is not in use"
+            )));
         }
         buf.resize(self.node_size, 0);
         self.fork

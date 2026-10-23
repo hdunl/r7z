@@ -202,7 +202,11 @@ impl Index {
         let mut links: HashMap<u32, usize> = HashMap::new();
         for (i, r) in records.iter().enumerate() {
             if hidden[i] && !r.is_dir {
-                if let Some(n) = r.name.strip_prefix("iNode").and_then(|n| n.parse::<u32>().ok()) {
+                if let Some(n) = r
+                    .name
+                    .strip_prefix("iNode")
+                    .and_then(|n| n.parse::<u32>().ok())
+                {
                     links.entry(n).or_insert(i);
                 }
             }
@@ -265,7 +269,10 @@ fn walk(
                     ));
                     continue;
                 }
-                out.push(entry_of(path.clone(), r, true, None, None, None), Content::None);
+                out.push(
+                    entry_of(path.clone(), r, true, None, None, None),
+                    Content::None,
+                );
                 stack.push((r.cnid, path, depth + 1));
             } else {
                 let (entry, content, note) = file_entry(volume, records, attrs, index, path, r);
@@ -300,7 +307,10 @@ fn file_entry(
         match index.links.get(&r.special) {
             Some(&t) => &records[t],
             None => {
-                let why = format!("hard link {path} has no data (iNode{} is missing)", r.special);
+                let why = format!(
+                    "hard link {path} has no data (iNode{} is missing)",
+                    r.special
+                );
                 return (
                     entry_of(path, r, false, Some(0), None, None),
                     Content::Broken(why),
@@ -349,7 +359,7 @@ fn content_of(attrs: &HashMap<u32, Attr>, src: &Record) -> (Content, Option<u64>
             size,
             inline,
         }) => {
-            let Some((codec, in_attr)) = decmpfs::codec(method) else {
+            let Some(codec) = decmpfs::codec(method) else {
                 return (
                     Content::Unsupported(format!(
                         "decmpfs compression type {method} is not supported"
@@ -358,21 +368,18 @@ fn content_of(attrs: &HashMap<u32, Attr>, src: &Record) -> (Content, Option<u64>
                     Some(format!("decmpfs/type{method}")),
                 );
             };
-            let inline = if in_attr { inline } else { None };
-            if in_attr && inline.is_none() {
+            let Some(inline) = inline else {
                 return (
                     Content::Broken("decmpfs payload is not inline".into()),
                     Some(size),
                     None,
                 );
-            }
+            };
             (
                 Content::Compressed(Compressed {
-                    file_id: src.cnid,
                     codec,
                     size,
                     inline,
-                    rsrc: src.rsrc,
                 }),
                 Some(size),
                 Some(codec_name(codec).into()),

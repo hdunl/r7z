@@ -48,8 +48,9 @@ are 0 (ok), 1 (warning), 2 (error) and 7 (usage), as in 7-Zip.
 
 ### Updating archives
 
-`a`, `u`, `d` and `rn` change an existing 7z, zip, tar, tar.gz, tar.bz2 or tar.xz archive
-(and a single-file `.gz`, `.bz2` or `.xz`):
+`a`, `u`, `d` and `rn` change an existing 7z, zip or tar archive, a tar compressed with
+gzip, bzip2, xz, zstd, lz4 or Z, and a single-file `.gz`, `.bz2`, `.xz`, `.zst`, `.lz4` or
+`.Z`:
 
 - `a` adds the named files and directories, replacing entries of the same name; `u` does
   the same only for entries the file on disk is newer than (compared to the second, since
@@ -62,7 +63,7 @@ are 0 (ok), 1 (warning), 2 (error) and 7 (usage), as in 7-Zip.
   decodes and encodes again only the solid blocks that lost an entry. A rename changes
   only the header. Zip copies the local header and data of each kept entry byte for byte
   and writes a new central directory, so ZIP64, AES and data descriptors are preserved.
-  Tar streams are rewritten, compressed again for tar.gz, tar.bz2 and tar.xz.
+  Tar streams are rewritten, and compressed again with the same compressor.
 - The new archive is written to a temporary file beside the archive, which replaces it
   only when the whole update succeeded. A failed or cancelled update leaves the archive
   as it was.

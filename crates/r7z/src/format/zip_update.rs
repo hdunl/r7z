@@ -32,7 +32,7 @@ pub(super) fn update(
     progress: &dyn Progress,
 ) -> Result<Outcome> {
     let data = Slice::map_file(archive)?;
-    let zip = open_central(&data, None)?;
+    let zip = open_central(&data, None, false)?;
     let d: &[u8] = &data;
     let n = zip.z.len();
     if plan.fates.len() != n {
@@ -332,10 +332,11 @@ mod tests {
             store_mtime: false,
             store_ctime: false,
             store_atime: false,
+            zstd: false,
         };
         crate::format::write::create(&archive, Kind::Zip, &[item], &opts, &NoProgress).unwrap();
         let data = Slice::map_file(&archive).unwrap();
-        let zip = open_central(&data, None).unwrap();
+        let zip = open_central(&data, None, false).unwrap();
         (data.to_vec(), zip)
     }
 

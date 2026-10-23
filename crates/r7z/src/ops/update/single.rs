@@ -90,13 +90,13 @@ pub fn write(
         ([_], _) => {
             return Err(Error::usage(format!(
                 "a {kind} archive holds one file, not a directory; use a .tar.{} archive",
-                comp_ext(comp)
+                comp.ext()
             )))
         }
         _ => {
             return Err(Error::usage(format!(
                 "a {kind} archive holds one file; use a .tar.{} archive for several files",
-                comp_ext(comp)
+                comp.ext()
             )))
         }
     };
@@ -114,12 +114,4 @@ pub fn write(
         repacked: 0,
         changed: true,
     })
-}
-
-fn comp_ext(c: Compressor) -> &'static str {
-    match c {
-        Compressor::Gzip => "gz",
-        Compressor::Bzip2 => "bz2",
-        Compressor::Xz => "xz",
-    }
 }

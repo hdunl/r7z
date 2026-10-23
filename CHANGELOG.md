@@ -28,6 +28,17 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 - Recovery resumes inside damaged bzip2 and xz streams: a damaged block costs only itself,
   is reported, and the blocks after it come back. A tar inside them is found again by
   searching for the next valid header, whatever the shift.
+- Faster `-mx5` to `-mx9` when one encoder handles a folder (and xz at those levels): the
+  binary tree match finder runs on its own thread, so the parser and range coder no longer
+  wait for it on one core. `-mx9` on a 87 MB tree: 29 s against 38 s, with peak memory 9%
+  higher. The encoder is a vendored copy of lzma-rust2 0.22's (Apache-2.0), and its output
+  is byte-identical to the single-threaded encoder's for the same writes.
+- BCJ2 encoding: `-mx8` and `-mx9` store x86 executables (exe, dll, sys, and the other
+  executable extensions r7z already knows) as 7-Zip does, with four streams. `-mf=BCJ2`
+  forces it. Encrypted archives keep the single BCJ filter.
+- Branch converters for ARM, ARMT, ARM64, PPC, SPARC, IA64 and RISC-V. `-mf=ARM64` (and
+  the other names) forces one for every file. By default a file with an executable name
+  and a PE or ELF header gets the converter for its machine, as 7-Zip picks them.
 - A Microsoft Store build: `--features r7z-gui/store,r7z-shell/store` leaves out the
   updater, the installer and the menu settings, and `scripts/make_store_msix.ps1` packs it
   with the right-click menu, "Open with" for archive types and the `r7z` command. Release

@@ -14,12 +14,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 
-use lzma_rust2::{EncodeMode, LzmaOptions, MfType};
 use rayon::prelude::*;
 
 use crate::codec::aes::{derive_key, random_iv, AesProps, DEFAULT_CYCLES_POWER};
 use crate::codec::encode::{EncMethod, FolderEncoder, Hooks};
+use crate::codec::lzenc::{EncodeMode, LzmaOptions, MfType};
 use crate::codec::lzma2par::ParPlan;
+use crate::codec::Branch;
 use crate::codec::{lzma2_dict_from_prop, lzma2_prop_for_dict};
 use crate::error::{Error, Result};
 use crate::sevenz::write::{signature_header, write_encoded_header, write_header};
@@ -35,10 +36,15 @@ pub enum MainMethod {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FilterMode {
-    /// BCJ for executables, nothing for everything else.
+    /// The converter 7-Zip would use for each file, from its type (see `plan_jobs`).
     Auto,
     Off,
+    /// BCJ (x86) for every file.
     Bcj,
+    /// BCJ2 (x86, four streams) for every file.
+    Bcj2,
+    /// One branch converter for every file.
+    Branch(Branch),
     Delta(u32),
 }
 
@@ -157,15 +163,25 @@ fn sort_for_solid(items: &[Item], group: &mut [usize]) {
     group.sort_by(|&a, &b| items[a].name.cmp(&items[b].name));
 }
 
+/// The filter a folder's data goes through before its main coder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Filter {
+    None,
+    Branch(Branch),
+    Bcj2,
+    Delta(u32),
+}
+
 pub(crate) struct Job {
     pub(crate) items: Vec<usize>,
-    pub(crate) filter: Option<EncMethod>,
+    pub(crate) filter: Filter,
     pub(crate) total: u64,
 }
 
 pub(crate) struct FolderResult {
     pub(crate) folder: Folder,
-    pub(crate) pack_size: u64,
+    /// Packed size of each of the folder's pack streams, in archive order.
+    pub(crate) pack_sizes: Vec<u64>,
     /// (item index, bytes, crc) for each stored stream, in order.
     pub(crate) streams: Vec<(usize, u64, u32)>,
 }
@@ -243,6 +259,18 @@ fn lzma2_plan(
     )
 }
 
+/// LZMA options of the call and jump streams of a BCJ2 folder. 7-Zip uses lc0 lp2 pb2 and
+/// a dictionary of about 1 MiB for them: the streams are a few percent of the folder, and a
+/// bigger dictionary costs a hash table and tree each, sized by the whole folder.
+fn side_options(opts: &CreateOptions, total: u64) -> LzmaOptions {
+    let mut lz = lzma_options(opts, total);
+    lz.lc = 0;
+    lz.lp = 2;
+    lz.pb = 2;
+    lz.dict_size = lz.dict_size.min(1 << 20);
+    lz
+}
+
 fn main_method(opts: &CreateOptions, total: u64, threads: usize) -> EncMethod {
     match opts.method {
         MainMethod::Copy => EncMethod::Copy,
@@ -250,10 +278,15 @@ fn main_method(opts: &CreateOptions, total: u64, threads: usize) -> EncMethod {
         MainMethod::Lzma2 => {
             let lz = lzma_options(opts, total);
             let (group, par) = lzma2_plan(opts, &lz, total, threads);
+            // A single encoder thread can hand its match finding to a second thread. With
+            // parallel sub-blocks every core already has an encoder, so they stay inline.
+            let single = par.is_none_or(|p| p.workers <= 1);
+            let mt = threads > 1 && single && lz.mf == MfType::Bt4 && lz.mode == EncodeMode::Normal;
             EncMethod::Lzma2 {
                 opts: lz,
                 group,
                 par,
+                mt,
             }
         }
     }
@@ -384,11 +417,21 @@ pub(crate) fn encode_folder<W: Write>(
     progress: &dyn Progress,
     feed: Feed<'_>,
 ) -> Result<FolderResult> {
+    let main = main_method(opts, job.total, threads);
     let mut methods = Vec::new();
-    if let Some(f) = &job.filter {
-        methods.push(f.clone());
+    match job.filter {
+        Filter::None | Filter::Bcj2 => {}
+        Filter::Branch(b) => methods.push(EncMethod::Branch(b)),
+        Filter::Delta(d) => methods.push(EncMethod::Delta(d)),
     }
-    methods.push(main_method(opts, job.total, threads));
+    if job.filter == Filter::Bcj2 {
+        methods.push(EncMethod::Bcj2 {
+            main: Box::new(main),
+            side: side_options(opts, job.total),
+        });
+    } else {
+        methods.push(main);
+    }
     if let Some(key) = aes_key {
         methods.push(EncMethod::Aes {
             key: *key,
@@ -498,72 +541,131 @@ pub(crate) fn encode_folder<W: Write>(
         }
         Ok(())
     })?;
-    let (folder, pack_size) = enc.finish()?;
+    let done = enc.finish()?;
+    // BCJ2's call, jump and range coder streams follow the main stream.
+    for part in &done.tail {
+        out.write_all(part)?;
+    }
     Ok(FolderResult {
-        folder,
-        pack_size,
+        folder: done.folder,
+        pack_sizes: done.pack_sizes,
         streams,
     })
 }
 
-pub(crate) fn plan_jobs(items: &[Item], stream_items: &[usize], opts: &CreateOptions) -> Vec<Job> {
+/// The branch converter each file's type selects, for `plan_jobs`. Only executables, and
+/// only with `Auto`, are opened to read their headers.
+pub(crate) fn branches_for(items: &[Item], opts: &CreateOptions) -> Vec<Option<Branch>> {
+    items
+        .iter()
+        .map(|it| {
+            if opts.filter == FilterMode::Auto
+                && opts.method != MainMethod::Copy
+                && !it.is_dir
+                && it.size > 0
+                && is_executable_name(&it.name)
+            {
+                file_branch(&it.src)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Appends the folders of one filter group. Solid blocks are capped at `solid_limit`.
+fn push_jobs(
+    items: &[Item],
+    group: &mut [usize],
+    filter: Filter,
+    solid_limit: Option<u64>,
+    jobs: &mut Vec<Job>,
+) {
+    if group.is_empty() {
+        return;
+    }
+    match solid_limit {
+        None => {
+            for &i in group.iter() {
+                jobs.push(Job {
+                    items: vec![i],
+                    filter,
+                    total: items[i].size,
+                });
+            }
+        }
+        Some(limit) => {
+            // Grouping by extension puts similar data next to each other in the block.
+            sort_for_solid(items, group);
+            let mut cur = Job {
+                items: Vec::new(),
+                filter,
+                total: 0,
+            };
+            for &i in group.iter() {
+                if !cur.items.is_empty() && cur.total + items[i].size > limit {
+                    jobs.push(std::mem::replace(
+                        &mut cur,
+                        Job {
+                            items: Vec::new(),
+                            filter,
+                            total: 0,
+                        },
+                    ));
+                }
+                cur.total += items[i].size;
+                cur.items.push(i);
+            }
+            if !cur.items.is_empty() {
+                jobs.push(cur);
+            }
+        }
+    }
+}
+
+/// Groups the files into folders, one filter per folder.
+///
+/// `branches` holds the converter each file's type selects (`Auto` only). BCJ2 is used for
+/// x86 code at levels 8 and up, and only without encryption (its streams are not
+/// encrypted here).
+pub(crate) fn plan_jobs(
+    items: &[Item],
+    stream_items: &[usize],
+    branches: &[Option<Branch>],
+    opts: &CreateOptions,
+) -> Vec<Job> {
     let compressing = opts.method != MainMethod::Copy;
-    let (mut exe, mut other): (Vec<usize>, Vec<usize>) = match opts.filter {
-        FilterMode::Auto if compressing => stream_items
-            .iter()
-            .partition(|&&i| is_executable_name(&items[i].name)),
-        _ => (Vec::new(), stream_items.to_vec()),
+    let bcj2_ok = opts.password.is_none();
+    let filter_of = |i: usize| -> Filter {
+        if !compressing {
+            return Filter::None;
+        }
+        match opts.filter {
+            FilterMode::Off => Filter::None,
+            FilterMode::Auto => match branches[i] {
+                Some(Branch::X86) if bcj2_ok && opts.level >= 8 => Filter::Bcj2,
+                Some(b) => Filter::Branch(b),
+                None => Filter::None,
+            },
+            FilterMode::Bcj => Filter::Branch(Branch::X86),
+            FilterMode::Bcj2 if bcj2_ok => Filter::Bcj2,
+            FilterMode::Bcj2 => Filter::Branch(Branch::X86),
+            FilterMode::Branch(b) => Filter::Branch(b),
+            FilterMode::Delta(d) => Filter::Delta(d),
+        }
     };
-    let base_filter = match opts.filter {
-        FilterMode::Bcj if compressing => Some(EncMethod::BcjX86),
-        FilterMode::Delta(d) if compressing => Some(EncMethod::Delta(d)),
-        _ => None,
-    };
+    let mut groups: Vec<(Filter, Vec<usize>)> = Vec::new();
+    for &i in stream_items {
+        let filter = filter_of(i);
+        match groups.iter_mut().find(|(f, _)| *f == filter) {
+            Some((_, v)) => v.push(i),
+            None => groups.push((filter, vec![i])),
+        }
+    }
     let mut jobs = Vec::new();
-    let mut push_group = |group: &mut Vec<usize>, filter: Option<EncMethod>| {
-        if group.is_empty() {
-            return;
-        }
-        match opts.solid_limit {
-            None => {
-                for &i in group.iter() {
-                    jobs.push(Job {
-                        items: vec![i],
-                        filter: filter.clone(),
-                        total: items[i].size,
-                    });
-                }
-            }
-            Some(limit) => {
-                // Grouping by extension puts similar data next to each other in the block.
-                sort_for_solid(items, group);
-                let mut cur = Job {
-                    items: Vec::new(),
-                    filter: filter.clone(),
-                    total: 0,
-                };
-                for &i in group.iter() {
-                    if !cur.items.is_empty() && cur.total + items[i].size > limit {
-                        jobs.push(std::mem::replace(
-                            &mut cur,
-                            Job {
-                                items: Vec::new(),
-                                filter: filter.clone(),
-                                total: 0,
-                            },
-                        ));
-                    }
-                    cur.total += items[i].size;
-                    cur.items.push(i);
-                }
-                if !cur.items.is_empty() {
-                    jobs.push(cur);
-                }
-            }
-        }
-    };
-    push_group(&mut exe, Some(EncMethod::BcjX86));
-    push_group(&mut other, base_filter);
+    for (filter, mut group) in groups {
+        push_jobs(items, &mut group, filter, opts.solid_limit, &mut jobs);
+    }
     jobs
 }
 
@@ -660,6 +762,17 @@ pub(crate) fn encode_jobs<W: Write>(
     Ok((results, threads_used))
 }
 
+/// The branch converter for an executable image, from its header (reads at most 4 KiB).
+fn file_branch(path: &Path) -> Option<Branch> {
+    let mut head = Vec::with_capacity(4096);
+    File::open(path)
+        .ok()?
+        .take(4096)
+        .read_to_end(&mut head)
+        .ok()?;
+    crate::codec::branch_for_image(&head)
+}
+
 /// Creates `archive` from `items`. Writes to a temporary file and renames it into place.
 pub fn create(
     archive: &Path,
@@ -681,7 +794,8 @@ pub fn create(
             stream_items.push(i);
         }
     }
-    let jobs = plan_jobs(items, &stream_items, opts);
+    let branches = branches_for(items, opts);
+    let jobs = plan_jobs(items, &stream_items, &branches, opts);
 
     let tmp_path = temp_path(archive);
     let file = File::create(&tmp_path)
@@ -721,7 +835,7 @@ pub fn create(
                 summary.input_bytes += n;
             }
             si.num_unpack_streams.push(fr.streams.len());
-            si.pack_sizes.push(fr.pack_size);
+            si.pack_sizes.extend(fr.pack_sizes);
             si.folders.push(fr.folder);
         }
         summary.skipped = (stream_items.len() as u64 + empty_items.len() as u64)
@@ -817,7 +931,8 @@ pub(crate) fn encode_header<W: Write>(
     }
     let mut enc = FolderEncoder::new(&methods, out)?;
     enc.write_all(header).map_err(Error::from_codec)?;
-    let (mut folder, pack_size) = enc.finish()?;
+    let done = enc.finish()?;
+    let (mut folder, pack_size) = (done.folder, done.pack_sizes[0]);
     folder.crc = Some(crc32fast::hash(header));
     let si = StreamsInfo {
         pack_pos: data_end - SIGNATURE_HEADER_SIZE,

@@ -114,7 +114,7 @@ impl<W: Write + 'static> XzLzma2Writer<W> {
         let Some(enc) = self.enc.take() else {
             return Ok(());
         };
-        let (_, packed) = enc.finish().map_err(to_io)?;
+        let packed = enc.finish().map_err(to_io)?.pack_sizes[0];
         let mut tail = vec![0u8; ((4 - packed % 4) % 4) as usize];
         tail.extend_from_slice(&self.crc.finalize().to_le_bytes());
         self.out.lock().unwrap().write_all(&tail)?;

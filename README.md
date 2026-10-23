@@ -174,7 +174,6 @@ with the default icon. Source layout and testing: [docs/development.md](docs/dev
 
 - RAR and RAR5 extraction
 - Disk images and installers: ISO, UDF, VHD, VMDK, DMG, NSIS, MSI
-- BCJ2 encoding and a threaded match finder for faster `-mx9`
 
 Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supported-yet).
 

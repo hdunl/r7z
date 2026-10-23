@@ -1060,7 +1060,7 @@ pub fn help() {
         ),
         ("-md={N|size}", "Dictionary (2^N or 64m)"),
         (
-            "-mf={off|BCJ|Delta:N}",
+            "-mf={on|off|BCJ|BCJ2|ARM|ARMT|ARM64|PPC|SPARC|IA64|RISCV|Delta:N}",
             "Filter (default: BCJ for executables)",
         ),
         ("-ms={on|off|size}", "Solid mode / solid block size"),

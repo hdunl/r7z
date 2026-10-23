@@ -26,7 +26,7 @@ pub const FORMAT: Format = Format {
 };
 
 /// Formats an SFX stub can carry, by format name.
-const PAYLOADS: &[&str] = &["7z", "zip", "Rar", "Cab"];
+const PAYLOADS: &[&str] = &["7z", "zip", "rar", "Cab"];
 
 /// Signature hits tried per format. Stubs carry few copies of a signature in their overlay,
 /// and each try opens the archive's headers.

@@ -1,5 +1,6 @@
 //! Codec registry and coder pipelines.
 
+pub mod adc;
 pub mod aes;
 pub mod bzip2par;
 pub mod bzip2scan;
@@ -7,6 +8,7 @@ pub mod decode;
 pub mod encode;
 pub mod huffman;
 pub mod lzenc;
+pub mod lzfse;
 pub mod lzh;
 pub mod lzma2par;
 pub mod lzma2scan;

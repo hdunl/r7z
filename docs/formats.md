@@ -5,7 +5,7 @@
 | Commands | `a` add (or replace, in an existing archive), `u` update (replace only older entries), `d` delete, `rn` rename, `x` extract, `e` extract flat, `l` list (`-slt`), `t` test, `h` hash, `b` benchmark, `i` formats and codecs |
 | Formats | see the table below; `-t{type}` forces a type, otherwise r7z detects it by signature, then extension |
 | Nested archives | a tar (or cpio) inside gzip, bzip2, xz, zstd, lz4, Z or lzma opens as one archive; so do split volumes, an rpm's payload and a deb's `data.tar.*`. `-tgzip` (or any stream type) stops at the outer level |
-| 7z codecs | write LZMA2, LZMA, Copy, BCJ, Delta, 7zAES; read also PPMd, BZip2, Deflate, Deflate64, BCJ2, ARM, ARMT, ARM64, PPC, SPARC, IA64, RISC-V |
+| 7z codecs | write LZMA2, LZMA, Copy, BCJ, BCJ2, ARM, ARMT, ARM64, PPC, SPARC, IA64, RISC-V, Delta, 7zAES; read also PPMd, BZip2, Deflate, Deflate64 |
 | Encryption | 7z: AES-256 with 7-Zip's KDF, header encryption (`-mhe=on`). zip: WinZip AES-256 (write), AES-128/192/256 and ZipCrypto (read) |
 | Hashes (`h`) | CRC32, CRC64, XXH64, MD5, SHA1, SHA256, SHA384, SHA512, SHA3-256 |
 | Metadata | modification time (creation/access with `-mtc`/`-mta`), Windows attributes, Unix modes, links |
@@ -39,7 +39,7 @@
 | IHex | ✓ | – | Intel HEX, one item per contiguous block |
 
 Switches follow 7-Zip: `-o`, `-p`, `-t`, `-mx0..9`, `-mmt[N]`, `-m0=LZMA2:d=..:c=..`, `-md`,
-`-mf=off|BCJ|Delta:N`, `-ms=on|off|SIZE`, `-mhe`, `-mhc`, `-mm=Deflate|Copy`,
+`-mf=on|off|BCJ|BCJ2|ARM|ARMT|ARM64|PPC|SPARC|IA64|RISCV|Delta:N`, `-ms=on|off|SIZE`, `-mhe`, `-mhc`, `-mm=Deflate|Copy`,
 `-mem=AES256`, `-mcp={code page}` (for reading), `-x!`, `-i!`, `@listfile`, `-r`,
 `-ao{a|s|u|t}`, `-y`, `-so`, `-slt`, `-scrc`, `-bd`, and r7z's own `-recover`. Exit codes
 are 0 (ok), 1 (warning), 2 (error) and 7 (usage), as in 7-Zip.
@@ -122,7 +122,6 @@ Compared with 7-Zip's console tool, r7z also:
   Huffman weights are not FSE-coded yet), so executables come out about 8% larger than
   `zstd -3`; text about 2-3% larger. The encoder runs at 13-45 MB/s, from a third
   (level 1) to a tenth (level 9) of `zstd -3`'s speed.
-- Encoding BCJ2 and the non-x86 branch filters in 7z.
 - NTFS alternate streams, security descriptors.
 - Recovery does not yet resume inside a gzip stream, nor inside an lz4 or zstd stream (their
   frames could resume the same way); a 7z cut off mid-stream loses the partly present last

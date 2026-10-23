@@ -6,8 +6,14 @@ These numbers compare r7z with 7-Zip 25.01 x64 on one machine: Windows 11, 16 lo
 cores, 32 GB RAM, NVMe SSD. Each tool uses its defaults with `-bd`. Creation runs once;
 `t` and `x` take the best of 3 warm runs. Reproduce with `scripts/compare.py`.
 
+The mx9 rows were measured for the threaded match finder change, back to back with the
+previous build and 7-Zip: creates interleaved, best of 3; `t` and `x` best of 3 warm runs.
+The machine was shared with other jobs, so treat differences under about 10% as noise.
+
 `rea` is a Node.js tool install (87 MB, 6,554 files, mostly JavaScript).
-`node` is a Node.js 24 distribution (107 MB, dominated by one 80 MB executable).
+`node` is a Node.js 24 distribution (107 MB, dominated by one 80 MB executable). The mx9
+`node` rows use the Node.js install directory instead (98 MB, 2,445 files, dominated by
+one 80 MB executable), so they do not compare with the other `node` rows.
 
 | Input | Level | Tool | Create | CPU | Peak mem | Size | Test | Extract |
 |---|---|---|---|---|---|---|---|---|
@@ -15,14 +21,14 @@ cores, 32 GB RAM, NVMe SSD. Each tool uses its defaults with `-bd`. Creation run
 | rea | mx1 | 7-Zip | 1.47 s | 5.5 s | 75 MiB | 16.78 MB | 0.10 s | 4.93 s |
 | rea | mx5 | r7z | **7.91 s** | 66.3 s | 1849 MiB | 9.60 MB | 0.41 s | **1.24 s** |
 | rea | mx5 | 7-Zip | 13.98 s | 19.2 s | 390 MiB | 9.08 MB | 0.35 s | 5.11 s |
-| rea | mx9 | r7z | 32.80 s | 34.0 s | 911 MiB | 8.84 MB | 0.42 s | **1.09 s** |
-| rea | mx9 | 7-Zip | 16.71 s | 23.8 s | 930 MiB | 8.84 MB | 0.34 s | 5.15 s |
+| rea | mx9 | r7z | 29.43 s | 42.4 s | 998 MiB | 8.84 MB | 0.44 s | 1.33 s |
+| rea | mx9 | 7-Zip | 17.74 s | 26.5 s | 930 MiB | 8.84 MB | 0.35 s | 6.45 s |
 | node | mx1 | r7z | 1.33 s | 11.6 s | 83 MiB | 30.39 MB | 0.27 s | **0.46 s** |
 | node | mx1 | 7-Zip | 1.25 s | 10.1 s | 77 MiB | 30.16 MB | 0.18 s | 1.74 s |
 | node | mx5 | r7z | **12.53 s** | 85.8 s | 1808 MiB | 24.86 MB | 1.07 s | **1.22 s** |
 | node | mx5 | 7-Zip | 16.16 s | 26.4 s | 388 MiB | 24.66 MB | 0.88 s | 2.46 s |
-| node | mx9 | r7z | 41.98 s | 42.2 s | 940 MiB | 24.47 MB | 1.10 s | **1.24 s** |
-| node | mx9 | 7-Zip | 16.36 s | 28.6 s | 940 MiB | 23.67 MB | 0.89 s | 2.45 s |
+| node | mx9 | r7z | 34.81 s | 54.1 s | 942 MiB | 22.05 MB | 1.06 s | 1.23 s |
+| node | mx9 | 7-Zip | 17.72 s | 31.6 s | 869 MiB | 21.90 MB | 0.80 s | 3.18 s |
 
 How to read this:
 
@@ -31,11 +37,15 @@ How to read this:
   open handle instead of reopening, and only creates directories that are missing.
 - **The default level (mx5) creates archives 1.3-1.8x faster, 0.8-5.7% larger, using
   about 4.7x more memory.** See "How the parallel encoder works" below.
-- **mx9 is 2-2.6x slower.** The input fits in one LZMA2 block (4x the dictionary, 1 GiB
-  at mx9), and 7-Zip runs a separate match-finder thread per block, which r7z's encoder
-  does not have yet. Inputs larger than one block compress in parallel. On text, mx9
-  output is the same size as 7-Zip's. On executables 7-Zip's mx9 uses BCJ2, which r7z
-  can decode but not yet encode, so its output is 3.4% smaller on the `node` corpus.
+- **mx9 is 1.7-2x slower than 7-Zip, down from 2-2.6x.** Both encoders run the match finder
+  on a thread of their own, but r7z's binary tree is slower per byte: about 1.6x 7-Zip's
+  CPU time on `rea` and 1.7x on `node`. Create on `rea` took 29.4 s, against 37.8 s before
+  this change; on `node` 34.8 s against 55.0 s. Output on text is within 0.1% of 7-Zip's
+  size. Executables at mx8 and mx9 use BCJ2 (see below).
+- **BCJ2 at mx8-9.** x86 executables use BCJ2 as 7-Zip does: the main stream is LZMA2, the
+  call and jump streams are LZMA (lc0 lp2 pb2), and the range coder stream is stored. On
+  `node` the archive is 1.3% smaller than with the BCJ filter, and 0.6% larger than
+  7-Zip's (22.05 MB against 21.90 MB).
 - **Raw decoding is 15-20% slower** (the `Test` column). This is the pure-Rust LZMA decoder
   (`lzma-rust2`) against 7-Zip's hand-tuned C and assembly. Archives that r7z writes with
   several blocks decode in parallel.
@@ -44,8 +54,8 @@ How to read this:
   whole dictionary keeps the ratio (within 0.03%), but priming a byte through the bt4
   match finder costs nearly as much as encoding it. On `rea` at mx9: 1 sub-block 32.4 s
   and 911 MiB; 2 sub-blocks 30.4 s and 1311 MiB; 3 sub-blocks 30.6 s and 1514 MiB; 4
-  sub-blocks 38.2 s. Closing this gap needs a match finder on its own thread, as 7-Zip
-  has.
+  sub-blocks 38.2 s. The threaded match finder below replaces this for mx7-9: the same
+  binary tree work, without the priming.
 
 ### Since 0.1.8
 
@@ -123,11 +133,21 @@ the trade-off:
 |---|---|---|
 | mx1-4 | independent (no priming) | fastest; larger output on redundant trees |
 | mx5-6 | at least 8 MiB, primed with 8 MiB | 1.3-1.8x faster, 0.8-5.7% larger |
-| mx7-9 | none within a group | same ratio as single-threaded LZMA2 |
+| mx7-9 | none within a group; the binary tree runs on its own thread | the same bytes as the single-threaded encoder |
 
 `-m0=LZMA2:c=SIZE` sets the group size, and `-mmt1` gives the single-threaded
 encoding. The dictionary per level matches what 7-Zip 25.01 stores: 2^18, 2^20, 2^22 and
 2^24 for mx1-4, then 2^(level+20) up to 256 MiB at mx9.
+
+### The threaded match finder
+
+From mx5 up, when the encoder has a single worker, the binary tree match finder runs on a
+thread of its own. It reads the same stream and publishes each position's match list; the
+parser takes the lists it needs by position. The lists are the ones the single-threaded
+finder computes, so the bytes match the single-threaded encoder for the same writes (checked
+by `tests/encoder.rs`). The price is memory: the finder keeps a window of the dictionary and
+the parser another, so mx9 peaks at 998 MiB on `rea` against 911 MiB (+9%) and at 942 MiB
+on `node` against 862 MiB (+9%).
 
 Other speed levers:
 

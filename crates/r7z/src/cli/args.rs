@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use r7z::codec::Branch;
 use r7z::error::{Error, Result};
 use r7z::format::CodePage;
 use r7z::ops::create::{FilterMode, MainMethod};
@@ -118,6 +119,10 @@ fn parse_filter(v: &str) -> Result<FilterMode> {
         "" | "on" | "+" => FilterMode::Auto,
         "off" | "-" => FilterMode::Off,
         "bcj" | "x86" => FilterMode::Bcj,
+        "bcj2" => FilterMode::Bcj2,
+        _ if Branch::from_name(&lower).is_some() => {
+            FilterMode::Branch(Branch::from_name(&lower).unwrap())
+        }
         _ if lower.starts_with("delta") => {
             let d = lower.trim_start_matches("delta").trim_start_matches(':');
             let d: u32 = if d.is_empty() {
@@ -133,7 +138,7 @@ fn parse_filter(v: &str) -> Result<FilterMode> {
         }
         _ => {
             return Err(Error::usage(format!(
-                "unsupported filter '{v}' (supported: BCJ, Delta:N, off)"
+                "unsupported filter '{v}' (supported: on, off, BCJ, BCJ2, ARM, ARMT, ARM64, PPC, SPARC, IA64, RISCV, Delta:N)"
             )))
         }
     })
@@ -149,12 +154,16 @@ fn parse_method(v: &str, spec: &mut MethodSpec) -> Result<()> {
         "copy" => spec.main = Some(MainMethod::Copy),
         "deflate" | "store" | "zstd" => spec.other = Some(name.clone()),
         "bcj" | "x86" => spec.filter = Some(FilterMode::Bcj),
+        "bcj2" => spec.filter = Some(FilterMode::Bcj2),
         n if n.starts_with("delta") => spec.filter = Some(parse_filter(v)?),
-        other => {
-            return Err(Error::usage(format!(
-                "unsupported method '{other}' (r7z writes LZMA2, LZMA, Copy, BCJ, Delta; Deflate and zstd in zip)"
-            )))
-        }
+        other => match Branch::from_name(other) {
+            Some(b) => spec.filter = Some(FilterMode::Branch(b)),
+            None => {
+                return Err(Error::usage(format!(
+                    "unsupported method '{other}' (r7z writes LZMA2, LZMA, Copy, BCJ, BCJ2, ARM, Delta; Deflate and zstd in zip)"
+                )))
+            }
+        },
     }
     for p in parts {
         let (k, val) = p

@@ -86,7 +86,7 @@ pub fn run(data: &[u8], level: u32, dict: Option<u32>, threads: usize) -> Result
     for chunk in data.chunks(1 << 20) {
         std::io::Write::write_all(&mut enc, chunk).map_err(Error::from_codec)?;
     }
-    let (folder, _) = enc.finish()?;
+    let folder = enc.finish()?.folder;
     let compress = t0.elapsed();
 
     let t1 = Instant::now();

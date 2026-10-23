@@ -6,6 +6,7 @@ pub mod bzip2scan;
 pub mod decode;
 pub mod encode;
 pub mod huffman;
+pub mod lzenc;
 pub mod lzh;
 pub mod lzma2par;
 pub mod lzma2scan;
@@ -77,6 +78,48 @@ pub fn method_name(id: u64) -> &'static str {
     }
 }
 
+/// The branch converter 7-Zip picks for an executable image, from its header: `head` is
+/// the start of the file. PE machines and ELF machines with a converter give one; other
+/// images give `None`.
+pub fn branch_for_image(head: &[u8]) -> Option<Branch> {
+    if head.starts_with(b"MZ") {
+        let e = u32::from_le_bytes(head.get(0x3C..0x40)?.try_into().ok()?) as usize;
+        if head.get(e..e + 4)? != b"PE\0\0" {
+            return None;
+        }
+        let machine = u16::from_le_bytes(head.get(e + 4..e + 6)?.try_into().ok()?);
+        return match machine {
+            0x014C | 0x8664 => Some(Branch::X86),
+            0x01C4 => Some(Branch::ArmThumb),
+            0xAA64 => Some(Branch::Arm64),
+            0x0200 => Some(Branch::Ia64),
+            _ => None,
+        };
+    }
+    if head.starts_with(b"ELF") {
+        let big = match head.get(5)? {
+            1 => false,
+            2 => true,
+            _ => return None,
+        };
+        let m: [u8; 2] = head.get(18..20)?.try_into().ok()?;
+        let machine = if big {
+            u16::from_be_bytes(m)
+        } else {
+            u16::from_le_bytes(m)
+        };
+        return match machine {
+            3 | 62 => Some(Branch::X86),
+            40 => Some(Branch::Arm),
+            183 => Some(Branch::Arm64),
+            20 | 21 => Some(Branch::Ppc),
+            2 | 43 => Some(Branch::Sparc),
+            _ => None,
+        };
+    }
+    None
+}
+
 /// Whether r7z can decode this method.
 pub fn can_decode(id: u64) -> bool {
     use method::*;
@@ -105,7 +148,85 @@ pub fn can_decode(id: u64) -> bool {
 /// Whether r7z can encode this method.
 pub fn can_encode(id: u64) -> bool {
     use method::*;
-    matches!(id, COPY | DELTA | BCJ_X86 | LZMA2 | LZMA | AES)
+    matches!(
+        id,
+        COPY | DELTA
+            | BCJ_X86
+            | BCJ2
+            | PPC
+            | IA64
+            | ARM
+            | ARMT
+            | SPARC
+            | ARM64
+            | RISCV
+            | LZMA2
+            | LZMA
+            | AES
+    )
+}
+
+/// A branch converter: it rewrites the branch targets of one machine family, so that
+/// the code compresses better. Converters are chosen by file type (see `ops::create`) or
+/// forced with `-mf=`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Branch {
+    X86,
+    Arm,
+    ArmThumb,
+    Arm64,
+    Ppc,
+    Sparc,
+    Ia64,
+    RiscV,
+}
+
+impl Branch {
+    pub const ALL: [Branch; 8] = [
+        Branch::X86,
+        Branch::Arm,
+        Branch::ArmThumb,
+        Branch::Arm64,
+        Branch::Ppc,
+        Branch::Sparc,
+        Branch::Ia64,
+        Branch::RiscV,
+    ];
+
+    /// The 7z method id.
+    pub fn method(self) -> u64 {
+        match self {
+            Branch::X86 => method::BCJ_X86,
+            Branch::Arm => method::ARM,
+            Branch::ArmThumb => method::ARMT,
+            Branch::Arm64 => method::ARM64,
+            Branch::Ppc => method::PPC,
+            Branch::Sparc => method::SPARC,
+            Branch::Ia64 => method::IA64,
+            Branch::RiscV => method::RISCV,
+        }
+    }
+
+    /// The name 7-Zip uses for this converter in `-mf=`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Branch::X86 => "BCJ",
+            Branch::Arm => "ARM",
+            Branch::ArmThumb => "ARMT",
+            Branch::Arm64 => "ARM64",
+            Branch::Ppc => "PPC",
+            Branch::Sparc => "SPARC",
+            Branch::Ia64 => "IA64",
+            Branch::RiscV => "RISCV",
+        }
+    }
+
+    /// Parses a `-mf=` name, case-insensitively.
+    pub fn from_name(s: &str) -> Option<Branch> {
+        Branch::ALL
+            .into_iter()
+            .find(|b| b.name().eq_ignore_ascii_case(s))
+    }
 }
 
 /// LZMA2 dictionary size encoded in its one-byte property.

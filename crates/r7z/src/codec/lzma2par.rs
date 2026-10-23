@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use lzma_rust2::{Lzma2Options, Lzma2Writer, LzmaOptions};
+use super::lzenc::{Lzma2Options, Lzma2Writer, LzmaOptions};
 
 use super::encode::{Hooks, Sink};
 use super::{lzma2_dict_from_prop, lzma2_prop_for_dict};

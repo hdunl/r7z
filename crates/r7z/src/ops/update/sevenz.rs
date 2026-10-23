@@ -13,11 +13,11 @@ use std::path::PathBuf;
 use super::{Fate, Outcome, Plan};
 use crate::codec::aes::{derive_key, DEFAULT_CYCLES_POWER};
 use crate::codec::decode::{folder_reader, DecodeOptions};
-use crate::codec::encode::EncMethod;
+use crate::codec::Branch;
 use crate::error::{Error, Result};
 use crate::ops::create::{
-    self, is_executable_name, CreateOptions, Feed, FilterMode, FolderResult, Item, Job, MainMethod,
-    Progress, Summary,
+    self, is_executable_name, CreateOptions, Feed, Filter, FilterMode, FolderResult, Item, Job,
+    MainMethod, Progress, Summary,
 };
 use crate::sevenz::read::ArchiveFile;
 use crate::sevenz::{Entry, StreamsInfo, SIGNATURE_HEADER_SIZE};
@@ -121,7 +121,7 @@ pub fn write(
             repacked += 1;
             num_streams.push(fr.streams.len());
             si.folders.push(fr.folder);
-            si.pack_sizes.push(fr.pack_size);
+            si.pack_sizes.extend(fr.pack_sizes);
             stream_entries.extend(here);
         }
     }
@@ -134,7 +134,8 @@ pub fn write(
     let stream_new: Vec<usize> = (0..plan.add.len())
         .filter(|&i| !(plan.add[i].is_dir || plan.add[i].size == 0))
         .collect();
-    let jobs = create::plan_jobs(&plan.add, &stream_new, &opts);
+    let branches = create::branches_for(&plan.add, &opts);
+    let jobs = create::plan_jobs(&plan.add, &stream_new, &branches, &opts);
     let (results, _) =
         create::encode_jobs(&jobs, &plan.add, &opts, key.as_ref(), progress, &mut out)?;
     for fr in results {
@@ -144,7 +145,7 @@ pub fn write(
             stream_entries.push(create::make_entry(&plan.add[i], &opts, n > 0, n, Some(crc)));
         }
         si.folders.push(fr.folder);
-        si.pack_sizes.push(fr.pack_size);
+        si.pack_sizes.extend(fr.pack_sizes);
     }
 
     si.num_unpack_streams = num_streams;
@@ -357,18 +358,25 @@ impl<R: Read> Read for Kept<R> {
 
 /// The filter a re-encoded folder gets, decided the way `a` decides it for a folder of
 /// these items.
-fn repack_filter(items: &[Item], opts: &CreateOptions) -> Option<EncMethod> {
+/// The filter for re-encoding what is left of a solid block. Its files exist only as
+/// decoded data, so there are no headers to read: executables by name get the x86
+/// converter, and BCJ2's four streams are kept for folders written from files.
+fn repack_filter(items: &[Item], opts: &CreateOptions) -> Filter {
     if opts.method == MainMethod::Copy {
-        return None;
+        return Filter::None;
     }
     match opts.filter {
-        FilterMode::Off => None,
-        FilterMode::Bcj => Some(EncMethod::BcjX86),
-        FilterMode::Delta(d) => Some(EncMethod::Delta(d)),
-        FilterMode::Auto => items
-            .iter()
-            .any(|i| is_executable_name(&i.name))
-            .then_some(EncMethod::BcjX86),
+        FilterMode::Off => Filter::None,
+        FilterMode::Bcj | FilterMode::Bcj2 => Filter::Branch(Branch::X86),
+        FilterMode::Branch(b) => Filter::Branch(b),
+        FilterMode::Delta(d) => Filter::Delta(d),
+        FilterMode::Auto => {
+            if items.iter().any(|i| is_executable_name(&i.name)) {
+                Filter::Branch(Branch::X86)
+            } else {
+                Filter::None
+            }
+        }
     }
 }
 

@@ -157,7 +157,7 @@ r7z h -scrcSHA256 *.iso              # hash files
 | **Read and write** | 7z, zip (zstd members too), tar, gzip, bzip2, xz, zstd, lz4, Z (and `.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`, `.tar.lz4`, `.tar.Z` in one step) |
 | **Read** | RAR 1.5 to RAR 5, lzma, lzma86, cab, cpio, ar and deb, rpm, arj, lzh, xar and pkg, wim, esd and swm, ISO 9660, UDF, DMG and HFS+ disk images, VHD, VHDX, VMDK and QCOW2 virtual disks, MBR and GPT partitions, FAT, exFAT, NTFS and ext2/3/4 file systems, split `.001` and `.z01` volumes, zip Shrink, Reduce and Implode, Base64, Intel HEX |
 | **Zip-based** | jar, docx, xlsx, odt, epub, apk, ipa, appx, nupkg, whl |
-| **Installers and executables** | MSI, MSP and other OLE (Compound) files, NSIS 2 and 3 installers, self-extracting 7z, zip and cab archives, PE resources (`-t PE`), CHM help |
+| **Installers and executables** | MSI, MSP and other OLE (Compound) files, NSIS 2 and 3 and Inno Setup 5.5 to 6.7 installers, self-extracting 7z, zip and cab archives, PE resources (`-t PE`), CHM help |
 | **Encryption** | 7z AES-256 with header encryption; zip WinZip AES (read and write) and ZipCrypto (read) |
 
 Codecs, switches and per-format details: [docs/formats.md](docs/formats.md).
@@ -196,9 +196,8 @@ with the default icon. Source layout and testing: [docs/development.md](docs/dev
 
 ## Roadmap
 
-- Inno Setup installers
-
-Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supported-yet).
+What r7z does not read or write yet is listed at the end of
+[docs/formats.md](docs/formats.md#not-supported-yet).
 
 ## Security
 

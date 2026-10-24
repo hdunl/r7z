@@ -4,6 +4,10 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 
 ## Unreleased
 
+- Inno Setup installers from 5.5 to 6.7, ANSI and Unicode: files are listed under their
+  install folders (`app/…`) and extracted from stored, zlib, bzip2, LZMA and LZMA2 data,
+  with each file's SHA-1 or SHA-256 checked. Encrypted files and installers with their
+  data in separate `setup-N.bin` files are listed but not extracted.
 - RAR 1.5 and 2.0 archives (unpack versions 15, 20 and 26): the adaptive coding of RAR
   1.5, and RAR 2.0's LZ and multimedia (audio) compression, in solid and multi-volume
   archives. Files encrypted by these versions are listed but not decrypted.

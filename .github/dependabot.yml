@@ -1,8 +1,9 @@
 version: 2
 updates:
   # Minor and patch updates arrive together in one PR; each major update gets its own.
+  # The fuzz crate has its own lockfile, so it is listed separately.
   - package-ecosystem: cargo
-    directory: /
+    directories: [/, /crates/fuzz]
     schedule:
       interval: weekly
     groups:

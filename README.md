@@ -88,8 +88,9 @@ executables with no installer and no runtime to set up.
 - Light and dark themes that follow Windows, and Ctrl+Shift+F to search everywhere.
 - **Right-click menu** in Explorer, including Windows 11's main menu: extract, test,
   convert to 7z, or compress to `.7z` or `.zip` in one click without opening the app.
-- Updates itself from GitHub releases. Every update is signed, and the signature is
-  checked before anything is installed.
+- The portable version updates itself from GitHub releases. Every update is signed, and
+  the signature is checked before anything is installed. The Store version updates
+  through the Store.
 
 The full list is in [docs/desktop-app.md](docs/desktop-app.md).
 

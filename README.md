@@ -15,6 +15,7 @@
   <a href="https://github.com/hdunl/r7z/releases/latest"><img src="https://img.shields.io/github/v/release/hdunl/r7z" alt="Latest release"></a>
   <a href="https://github.com/hdunl/r7z/actions/workflows/ci.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/hdunl/r7z"><img src="https://api.scorecard.dev/projects/github.com/hdunl/r7z/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://www.bestpractices.dev/projects/15841"><img src="https://www.bestpractices.dev/projects/15841/badge" alt="OpenSSF Best Practices"></a>
   <a href="https://github.com/hdunl/r7z/actions/workflows/codeql.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/hdunl/r7z/actions/workflows/cflite_batch.yml"><img src="https://github.com/hdunl/r7z/actions/workflows/cflite_batch.yml/badge.svg" alt="Fuzzing"></a>
   <a href="https://slsa.dev/spec/v1.0/levels#build-l2"><img src="https://slsa.dev/images/gh-badge-level2.svg" alt="SLSA Build Level 2"></a>
@@ -183,6 +184,7 @@ Smaller gaps are listed at the end of [docs/formats.md](docs/formats.md#not-supp
 | | |
 |---|---|
 | [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/hdunl/r7z) | Automated review of the repository's security practices, updated on every change |
+| [OpenSSF Best Practices](https://www.bestpractices.dev/projects/15841) | Passing badge: a self-certified checklist of open source development and security practices |
 | [Fuzzing](https://github.com/hdunl/r7z/actions/workflows/cflite_batch.yml) | Archive parsing and damaged-archive recovery are fuzzed on every pull request and daily; every crash found so far is fixed and kept as a regression test |
 | [Code scanning](https://github.com/hdunl/r7z/actions/workflows/codeql.yml) | CodeQL and Clippy on every change |
 | [Dependencies](https://github.com/hdunl/r7z/actions/workflows/ci.yml) | Locked, audited against the RustSec advisory database, and kept current by Dependabot |

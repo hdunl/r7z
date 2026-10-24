@@ -9,7 +9,9 @@
   Opens what 7-Zip opens, writes 7z, zip and tar, and extracts several times faster.
 </p>
 
-<a href="https://apps.microsoft.com/detail/9pk1s8689jln"><b>Windows Store Download</b></a>
+<p align="center">
+  <a href="https://apps.microsoft.com/detail/9pk1s8689jln?referrer=appbadge&mode=direct"><img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft"></a>
+</p>
 
 <p align="center">
   <a href="https://github.com/hdunl/r7z/releases/latest"><img src="https://img.shields.io/github/v/release/hdunl/r7z" alt="Latest release"></a>
@@ -29,7 +31,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hdunl/r7z/releases/latest"><b>Download for Windows</b></a>
+  <a href="https://apps.microsoft.com/detail/9pk1s8689jln?referrer=appbadge&mode=direct"><b>Microsoft Store</b></a>
+  ·
+  <a href="https://github.com/hdunl/r7z/releases/latest"><b>Portable zip</b></a>
   ·
   <a href="docs/desktop-app.md">Desktop app</a>
   ·
@@ -91,12 +95,29 @@ The full list is in [docs/desktop-app.md](docs/desktop-app.md).
 
 ## Install
 
+### Microsoft Store
+
+[Get r7z from the Microsoft Store](https://apps.microsoft.com/detail/9pk1s8689jln?referrer=appbadge&mode=direct),
+or from a terminal:
+
+```bash
+winget install --id 9PK1S8689JLN --source msstore
+```
+
+The Store version updates through the Store and comes with the right-click menu, "Open
+with" for archive types and the `r7z` command, with nothing else to set up. It needs
+Windows 10 version 2004 or later.
+
+### Portable zip
+
 Download the zip from [Releases](https://github.com/hdunl/r7z/releases/latest), unzip it
-and run `r7z-gui.exe`. It works from any folder. To have it in the Start menu, Windows
-search and Installed apps, click **Install r7z** on the welcome tour's last page or in
-Settings. That copies r7z to `%LOCALAPPDATA%\Programs\r7z` and needs no administrator
-rights; uninstall it from Windows Settings → Apps. For the command line, put `r7z.exe`
-on your `PATH` or run `r7z` after installing.
+and run `r7z-gui.exe`. It works from any folder and updates itself. To have it in the
+Start menu, Windows search and Installed apps, click **Install r7z** on the welcome tour's
+last page or in Settings. That copies r7z to `%LOCALAPPDATA%\Programs\r7z` and needs no
+administrator rights; uninstall it from Windows Settings → Apps. For the command line,
+put `r7z.exe` on your `PATH` or run `r7z` after installing.
+
+### From source
 
 With a Rust toolchain:
 

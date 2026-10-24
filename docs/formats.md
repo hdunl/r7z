@@ -54,6 +54,7 @@
 | Ext | ✓ | – | ext2, ext3 and ext4: indirect blocks, extent trees, inline data, symbolic links; devices, FIFOs and sockets are not listed |
 | Compound | ✓ | – | `.msi .msp .msm` and other OLE storages (`.doc`, `.xls`) by signature: Windows Installer's packed stream names decoded as 7-Zip shows them, listed in 7-Zip's order; a package whose only cabinet is one `.cab` stream opens that cabinet as a nested archive |
 | Nsis | ✓ | – | NSIS 2 and 3 installers, ANSI and Unicode; zlib, bzip2 and LZMA (with the x86 filter), solid and per-file data; file names and install folders read from the script; uninstallers rebuilt as the installer does. Found in the overlay of a PE file, not by name |
+| Inno | ✓ | – | Inno Setup installers from 5.5 to 6.7 (setup data formats 5.5.0 to 6.7.0), ANSI and Unicode; stored, zlib, bzip2, LZMA and LZMA2 data, solid or per file, with Inno's x86 call filter undone; SHA-1 and SHA-256 checked. Names are the install destinations with their constant as the first folder (`app/bin/tool.exe`); files installed for one language get it added when names collide. The uninstaller and external files are not listed; encrypted files and data in separate `setup-N.bin` files are listed but not extracted |
 | Sfx | ✓ | – | 7z, zip, RAR and cab archives appended to an executable stub (7-Zip and WinRAR style), found by signature after the PE image; listed as the archive type they are |
 | PE | ✓ | – | `.exe` and `.dll` resources as folders by type, name and language: icon groups as `.ico` files, version information as `key=value` lines, manifests, RCDATA. Opened only with `-tPE` or "Open as archive", so a plain executable is never an archive |
 | Chm | ✓ | – | compiled HTML help (ITSF versions 2 and 3): stored and LZX-compressed sections, listed as 7-Zip does; the `Block` column shows the LZX reset interval |
@@ -145,12 +146,21 @@ RAR's own extractors decode them; the 2.0 decoder was checked against the BSD-li
 rardecode Go package, and both against the CRC32 of every file in archives made by RAR
 1.5x and 2.90, including WinRAR 2.90's own solid installer.
 
+Inno Setup stores its setup data as raw Delphi records whose layout changes between
+releases. `scripts/inno_layouts.py` computes the size of each record and the offsets of
+the fields r7z reads from the record definitions in each release's `Struct.pas`
+(jrsoftware/issrc), and writes them to `crates/r7z/src/format/inno/layouts.rs`. The reader
+was checked against installers made by Inno Setup 5.6.1 and 6.7.3 and the installers of
+Inno Setup 5.6.1 and 6.7.3 themselves, and against two third-party installers made with
+6.1.
+
 ## Not supported yet
 
 - RAR 1.5 and 2.0 encryption; APFS and file
   systems other than FAT, exFAT, NTFS, ext2/3/4 and HFS+; VHDX log replay, differencing
-  VHDX and QCOW2 backing files; Inno Setup and NSIS 1.x installers, and the
-  `[NSIS].nsi` script that 7-Zip writes out.
+  VHDX and QCOW2 backing files; NSIS 1.x installers, and the `[NSIS].nsi` script that
+  7-Zip writes out; Inno Setup installers older than 5.5, encrypted Inno Setup files, and
+  Inno Setup data split into `setup-N.bin` files.
 - Legacy zip methods are read only, and checked unevenly: Implode matches Info-ZIP's
   `unzip` on every test stream; Shrink matches it on 11 of 12 (one 150 KB stream with
   periodic clears is still decoded differently); Reduce has only round-trip tests from

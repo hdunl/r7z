@@ -25,6 +25,7 @@ pub mod ext;
 pub mod fat;
 pub mod gpt;
 pub mod hfs;
+pub mod inno;
 pub mod iso;
 pub mod lzh;
 pub mod mbr;
@@ -372,6 +373,7 @@ formats![
     mbr::FORMAT,
     pe::FORMAT,
     nsis::FORMAT,
+    inno::FORMAT,
     sfx::FORMAT,
 ];
 
@@ -397,13 +399,15 @@ pub fn payload_format(file: &Slice) -> Option<&'static Format> {
 }
 
 /// A cheap look at whether the PE file at `path` carries an installer or self-extractor
-/// payload: an NSIS header, or a payload format's signature after the image. It reads bytes
-/// only and opens nothing, so the Explorer menu can call it without linking the parsers;
-/// opening the file decides, through [`payload_format`].
+/// payload: an NSIS header, an Inno Setup offset table, or a payload format's signature after
+/// the image. It reads bytes only and opens nothing, so the Explorer menu can call it
+/// without linking the parsers; opening the file decides, through [`payload_format`].
 pub fn exe_may_have_payload(path: &Path) -> bool {
     Slice::map_file(path).is_ok_and(|file| {
         file.starts_with(b"MZ")
-            && (nsis::looks_like_nsis(&file) || sfx::overlay_has_signature(&file))
+            && (nsis::looks_like_nsis(&file)
+                || inno::looks_like_inno(&file)
+                || sfx::overlay_has_signature(&file))
     })
 }
 

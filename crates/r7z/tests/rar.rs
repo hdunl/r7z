@@ -13,6 +13,19 @@
 //! - `encdata`, `enchdr`: file-data and header encryption (password `pw123`);
 //! - `part`, `oldvol`: multi-volume sets (`.partNN.rar` and `.rNN`);
 //! - `comment`, `rr`: archive comments and recovery records, which must be skipped.
+//!
+//! The RAR 1.5 and 2.0 fixtures (unpack versions 15 and 20) come from three places:
+//!
+//! - `rar2-lz`, `-solid`, `-m1`, `-mm`, `-mm-solid`, `-far` and the `rar2-vol` set were
+//!   made with RAR 2.90 from synthetic files (text, a WAV tone, a 300 KiB gap before a
+//!   repeated block, an empty file) and the `pe/resources.exe` fixture. `mm` forces
+//!   multimedia (audio) compression, `mm-solid` mixes audio and text blocks in one solid
+//!   stream, and `far` needs a match distance over 256 KiB.
+//! - `rar15-lz` is `Rar15.rar` from SharpCompress's tests (MIT licence), the only one made
+//!   by RAR 1.5x, which ran only on DOS.
+//! - `rar15-comment`, `rar2-comment`, `rar2-crypt` and `rar2-owner` are from the rarfile
+//!   project's tests (ISC licence): comments kept inside the headers, files encrypted with
+//!   the RAR 2.0 cipher (which r7z lists but does not decrypt), and a Unix owner block.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -177,7 +190,7 @@ fn a_split_file_without_its_next_volume_fails_to_extract() {
 /// the original entries.
 #[test]
 fn truncated_archives_fail_or_list_a_prefix() {
-    for name in CORPUS.iter().chain(SINGLE).chain(ENCRYPTED) {
+    for name in CORPUS.iter().chain(SINGLE).chain(ENCRYPTED).chain(OLD) {
         let full = fs::read(fixture(name)).unwrap();
         let pw = ENCRYPTED.contains(name).then_some("pw123");
         let want: Vec<String> = open_fixture(name, pw)
@@ -218,7 +231,7 @@ fn truncated_archives_fail_or_list_a_prefix() {
 /// change what the archive lists.
 #[test]
 fn bit_flips_are_reported_or_harmless() {
-    for name in CORPUS.iter().chain(SINGLE).chain(ENCRYPTED) {
+    for name in CORPUS.iter().chain(SINGLE).chain(ENCRYPTED).chain(OLD) {
         let full = fs::read(fixture(name)).unwrap();
         let pw = ENCRYPTED.contains(name).then_some("pw123");
         let req = OpenRequest {
@@ -258,4 +271,59 @@ fn not_archives_are_refused_without_panicking() {
     if let Ok(o) = open_bytes(junk, "x.rar", &OpenRequest::default()) {
         let _ = test_all(o.archive(), None);
     }
+}
+
+/// RAR 1.5 and 2.0 archives.
+const OLD: &[&str] = &[
+    "rar15-lz.rar",
+    "rar15-comment.rar",
+    "rar2-lz.rar",
+    "rar2-solid.rar",
+    "rar2-m1.rar",
+    "rar2-mm.rar",
+    "rar2-mm-solid.rar",
+    "rar2-far.rar",
+    "rar2-comment.rar",
+    "rar2-owner.rar",
+];
+
+#[test]
+fn rar15_and_rar20_archives_extract_and_verify() {
+    for name in OLD {
+        let o = open_fixture(name, None).unwrap_or_else(|e| panic!("{name}: {e}"));
+        test_all(o.archive(), None).unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
+}
+
+#[test]
+fn rar20_archives_list_their_members() {
+    for name in ["rar2-lz.rar", "rar2-solid.rar"] {
+        let o = open_fixture(name, None).unwrap();
+        let entries = o.archive().entries();
+        let size = |n: &str| entries.iter().find(|e| e.name == n).and_then(|e| e.size);
+        assert_eq!(size("docs/part0.txt"), Some(6000), "{name}");
+        assert_eq!(size("docs/part3.txt"), Some(10500), "{name}");
+        assert_eq!(size("tool.exe"), Some(2560), "{name}");
+        assert_eq!(size("empty.txt"), Some(0), "{name}");
+    }
+    let o = open_fixture("rar2-far.rar", None).unwrap();
+    assert_eq!(o.archive().entries()[0].size, Some(2 * 4096 + 300 * 1024));
+}
+
+#[test]
+fn rar20_volume_sets_without_end_blocks_open_from_the_rar_file() {
+    let o = open_fixture("rar2-vol.rar", None).unwrap();
+    test_all(o.archive(), None).unwrap();
+    assert_eq!(
+        o.archive().entries().iter().filter(|e| !e.is_dir).count(),
+        5
+    );
+}
+
+#[test]
+fn rar20_encryption_is_listed_but_not_decrypted() {
+    let o = open_fixture("rar2-crypt.rar", None).unwrap();
+    assert!(o.archive().entries().iter().all(|e| e.encrypted));
+    let err = test_all(o.archive(), Some("password")).unwrap_err();
+    assert!(err.contains("RAR 1.5 and 2.0 encryption"), "{err}");
 }

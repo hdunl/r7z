@@ -2,6 +2,15 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- RAR 1.5 and 2.0 archives (unpack versions 15, 20 and 26): the adaptive coding of RAR
+  1.5, and RAR 2.0's LZ and multimedia (audio) compression, in solid and multi-volume
+  archives. Files encrypted by these versions are listed but not decrypted.
+- RAR 2.x archives with comments inside their headers, Unix owner blocks or an
+  authenticity signature open instead of failing a header CRC check, and RAR 2.x volume
+  sets, which have no end blocks, open from the `.rar` file.
+
 ## 0.2.0 - 2026-10-22
 
 - With the new formats the programs are larger: r7z.exe is 4.8 MiB (3.4 MiB in 0.1.9) and

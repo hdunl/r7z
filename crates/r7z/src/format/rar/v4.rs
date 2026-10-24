@@ -22,11 +22,16 @@ pub fn peek_volume(d: &[u8]) -> bool {
 }
 
 const MAIN: u8 = 0x73;
+const OLD_AV: u8 = 0x76;
+const OLD_SERVICE: u8 = 0x77;
+const OLD_SIGN: u8 = 0x79;
 const FILE: u8 = 0x74;
 const END: u8 = 0x7B;
 const NEW_SUB: u8 = 0x7A;
 
 const MHD_VOLUME: u16 = 0x01;
+const MHD_COMMENT: u16 = 0x02;
+const MHD_ENCRYPT_VER: u16 = 0x200;
 const MHD_PASSWORD: u16 = 0x80;
 const MHD_SOLID: u16 = 0x08;
 const MHD_FIRST_VOLUME: u16 = 0x100;
@@ -34,6 +39,7 @@ const LONG_BLOCK: u16 = 0x8000;
 const LHD_SPLIT_BEFORE: u16 = 0x01;
 const LHD_SPLIT_AFTER: u16 = 0x02;
 const LHD_PASSWORD: u16 = 0x04;
+const LHD_COMMENT: u16 = 0x08;
 const LHD_LARGE: u16 = 0x100;
 const LHD_UNICODE: u16 = 0x200;
 const LHD_SALT: u16 = 0x400;
@@ -123,7 +129,34 @@ fn read_block(
         return Err(Error::corrupt("RAR header size"));
     }
     let stored = u16::from_le_bytes([head[0], head[1]]);
-    if stored != header_crc(&head) {
+    let flags = u16::from_le_bytes([head[3], head[4]]);
+    let covered: &[u8] = match head[2] {
+        // RAR 1.5 and 2.0 keep comments inside main and file headers; the CRC stops
+        // before them: after the fixed main fields, or after the file name.
+        MAIN if flags & MHD_COMMENT != 0 => {
+            let fixed = if flags & MHD_ENCRYPT_VER != 0 { 14 } else { 13 };
+            &head[..fixed.min(head.len())]
+        }
+        FILE if flags & LHD_COMMENT != 0 && !encrypted => {
+            let name_at = if flags & LHD_LARGE != 0 { 40 } else { 32 };
+            let name_len = usize::from(u16_at(&head, 26)?);
+            &head[..(name_at + name_len).min(head.len())]
+        }
+        // An old service block's CRC also covers the data after its header.
+        OLD_SERVICE if !encrypted => {
+            let data = if flags & LONG_BLOCK != 0 {
+                u32_at(&head, 7)? as usize
+            } else {
+                0
+            };
+            d.get(pos..pos + head.len() + data).ok_or_else(truncated)?
+        }
+        _ => &head[..],
+    };
+    // Old authenticity-verification and signature blocks never had a valid CRC. They carry
+    // no data, unlike file headers, so a damaged file header cannot pass for one.
+    let unchecked = matches!(head[2], OLD_AV | OLD_SIGN) && flags & LONG_BLOCK == 0;
+    if !unchecked && stored != header_crc(covered) {
         return Err(if encrypted {
             Error::WrongPassword
         } else {
@@ -195,9 +228,6 @@ fn file_member(b: &Block) -> Result<FileRec> {
         None
     };
     let encrypted = flags & LHD_PASSWORD != 0;
-    if encrypted && salt.is_none() {
-        return Err(Error::unsupported("RAR file encrypted without a salt"));
-    }
     let is_dir = flags & 0xE0 == 0xE0;
     let attrib = if host == 3 {
         Some((attr << 16) | 0x8000)
@@ -223,7 +253,8 @@ fn file_member(b: &Block) -> Result<FileRec> {
             dict: 0x1_0000u64 << ((flags >> 5) & 7),
             crypt: match (encrypted, salt) {
                 (true, Some(s)) => Some(Crypt::Rar3 { salt: s }),
-                _ => None,
+                (true, None) => Some(Crypt::Legacy),
+                (false, _) => None,
             },
             incomplete: false,
         },
@@ -324,6 +355,7 @@ pub fn scan(volumes: &[Slice], password: Option<&str>) -> Result<Scan> {
         let mut pos = MARK.len();
         let mut encrypted_headers = false;
         let mut more = false;
+        let mut saw_end = false;
         loop {
             if pos >= d.len() {
                 break;
@@ -359,6 +391,7 @@ pub fn scan(volumes: &[Slice], password: Option<&str>) -> Result<Scan> {
                     continuing = rec.split_after;
                 }
                 END => {
+                    saw_end = true;
                     more = b.flags & END_NEXT_VOLUME != 0;
                     pos = next;
                     break;
@@ -366,6 +399,11 @@ pub fn scan(volumes: &[Slice], password: Option<&str>) -> Result<Scan> {
                 _ => {}
             }
             pos = next;
+        }
+        if !saw_end {
+            // RAR 2.x volumes have no end block: a file split into the next volume is
+            // what says there is one.
+            more = info.volume && continuing;
         }
         if !more && vi + 1 < volumes.len() {
             return Err(Error::corrupt("RAR volume chain ended early"));

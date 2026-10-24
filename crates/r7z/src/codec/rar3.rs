@@ -22,15 +22,15 @@ const REP: usize = 28;
 const PRE: usize = 20;
 const TABLES: usize = MAIN + DIST + LOW + REP;
 
-const LEN_BASE: [u32; 28] = [
+pub(super) const LEN_BASE: [u32; 28] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128,
     160, 192, 224,
 ];
-const LEN_BITS: [u32; 28] = [
+pub(super) const LEN_BITS: [u32; 28] = [
     0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5,
 ];
-const SHORT_BASE: [u32; 8] = [0, 4, 8, 16, 32, 64, 128, 192];
-const SHORT_BITS: [u32; 8] = [2, 2, 3, 4, 5, 6, 6, 6];
+pub(super) const SHORT_BASE: [u32; 8] = [0, 4, 8, 16, 32, 64, 128, 192];
+pub(super) const SHORT_BITS: [u32; 8] = [2, 2, 3, 4, 5, 6, 6, 6];
 
 /// Extra bits of each distance slot: 0 for the first four, then one more every two slots,
 /// with 16 and 18 bits at the top. The base of a slot is the sum of the slots before it.
@@ -56,8 +56,8 @@ const fn distance_tables() -> ([u32; DIST], [u32; DIST]) {
     (base, bits)
 }
 const DIST_TABLES: ([u32; DIST], [u32; DIST]) = distance_tables();
-const DIST_BASE: [u32; DIST] = DIST_TABLES.0;
-const DIST_BITS: [u32; DIST] = DIST_TABLES.1;
+pub(super) const DIST_BASE: [u32; DIST] = DIST_TABLES.0;
+pub(super) const DIST_BITS: [u32; DIST] = DIST_TABLES.1;
 
 /// Filters with a standard program in RAR 3.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

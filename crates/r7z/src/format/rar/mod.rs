@@ -20,6 +20,7 @@ use crc32fast::Hasher as Crc32;
 
 use super::data::{Input, Slice};
 use super::{Archive, Columns, Ctx, Entry, EntryFn, Flow, Format, OpenOptions, Signature, Unit};
+use crate::codec::rar2::Lz2;
 use crate::codec::rar3::Lz3;
 use crate::error::{Error, Result};
 use crate::util::blake2sp::Blake2sp;
@@ -45,6 +46,8 @@ pub const FORMAT: Format = Format {
 pub enum Crypt {
     /// RAR 3: AES-128 with the key derived from the password and this per-file salt.
     Rar3 { salt: [u8; 8] },
+    /// RAR 1.5 and 2.0: the original ciphers, which use no salt. Listed, not decrypted.
+    Legacy,
     /// RAR 5: AES-256 with per-file salt, IV and round count, and an optional check value.
     /// With `mac` the stored CRC32 and BLAKE2sp are keyed by the password's hash key.
     Rar5 {
@@ -416,6 +419,9 @@ impl Archive for Rar {
         if self.version == 5 {
             return v5::extract_unit(&u.entries, &members, ctx, f);
         }
+        if members[0].method != 0 && members[0].version < 29 {
+            return extract_old(&u.entries, &members, f);
+        }
         if members[0].method == 0 && members.len() > 1 {
             return Err(Error::corrupt("stored RAR members in a solid unit"));
         }
@@ -448,14 +454,6 @@ impl Archive for Rar {
             f(u.entries[0], &mut r)?;
             drain(&mut r)?;
             return Ok(());
-        }
-        if members[0].version < 29 {
-            return Err(Error::unsupported(format!(
-                "RAR {}.{} compression (unpack version {})",
-                members[0].version / 10,
-                members[0].version % 10,
-                members[0].version
-            )));
         }
         // A window holds the whole unit when it fits within the dictionary, so filter blocks
         // never wrap; otherwise it is the dictionary itself.
@@ -511,8 +509,12 @@ impl Archive for Rar {
 impl Rar {
     /// The decryption state of one member for password `ctx`.
     fn cipher(&self, c: &Crypt, ctx: &Ctx) -> Result<Cbc> {
+        if matches!(c, Crypt::Legacy) {
+            return Err(Error::unsupported("RAR 1.5 and 2.0 encryption"));
+        }
         let pw = ctx.password.as_deref().ok_or(Error::PasswordRequired)?;
         match c {
+            Crypt::Legacy => unreachable!(),
             Crypt::Rar3 { salt } => {
                 let (key, iv) = rar3_key(pw, salt);
                 Ok(Cbc::aes128(&key, iv))
@@ -531,6 +533,64 @@ impl Rar {
                 Ok(Cbc::aes256(&keys.key, *iv))
             }
         }
+    }
+}
+
+/// Extracts a unit of RAR 1.5 or 2.0 members. Each member's packed data is a stream of
+/// its own, decoded with the model the members before it in a solid unit left behind.
+fn extract_old(entries: &[usize], members: &[&Member], f: &mut EntryFn<'_>) -> Result<()> {
+    if members.iter().any(|m| m.crypt.is_some()) {
+        return Err(Error::unsupported("RAR 1.5 and 2.0 encryption"));
+    }
+    let version = members[0].version;
+    if version != 15 && version != 20 && version != 26 {
+        return Err(Error::unsupported(format!(
+            "RAR {}.{} compression (unpack version {version})",
+            version / 10,
+            version % 10
+        )));
+    }
+    let dict = members.iter().map(|m| m.dict).max().unwrap_or(1 << 16);
+    let win = usize::try_from(dict.max(1 << 16).next_power_of_two())
+        .map_err(|_| Error::unsupported("RAR dictionary larger than the address space"))?;
+    let mut lz = Lz2::new(version, win);
+    for (k, (&i, m)) in entries.iter().zip(members).enumerate() {
+        if m.version != version || m.method == 0 {
+            return Err(Error::corrupt("mixed RAR versions in a solid unit"));
+        }
+        let packed: u64 = m.packed.iter().map(|p| p.len() as u64).sum();
+        let segs = m
+            .packed
+            .iter()
+            .map(|p| Seg {
+                data: p.clone(),
+                pos: 0,
+                cbc: None,
+                same_chain: false,
+            })
+            .collect();
+        lz.begin(
+            Box::new(Segments { segs }),
+            packed,
+            m.size,
+            k > 0 && m.solid,
+        )?;
+        let mut inner = Lz2Read(&mut lz);
+        let mut r = Checked::new(&mut inner, m);
+        let flow = f(i, &mut r)?;
+        drain(&mut r)?;
+        if flow == Flow::Stop {
+            break;
+        }
+    }
+    Ok(())
+}
+
+struct Lz2Read<'a>(&'a mut Lz2);
+
+impl Read for Lz2Read<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buf).map_err(Error::into_io)
     }
 }
 

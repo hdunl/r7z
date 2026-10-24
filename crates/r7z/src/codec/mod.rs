@@ -22,6 +22,7 @@ pub mod pcompress;
 pub mod pkware;
 pub mod quantum;
 pub mod rar;
+pub mod rar2;
 pub mod rar3;
 pub mod rar5;
 pub mod xpress;

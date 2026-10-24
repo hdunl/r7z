@@ -30,7 +30,7 @@
 | Cpio | ✓ | – | odc, newc, crc (checksum verified), old binary in both byte orders |
 | Ar | ✓ | – | System V/GNU and BSD names, symbol tables, `.a`, `.lib`, `.deb` (opens `data.tar.*`; `-tar` lists the members) |
 | Rpm | ✓ | – | the payload opens through its compressor down to the cpio's files |
-| Rar | ✓ | – | RAR 4 (2.9 to 3.x): LZ with Huffman blocks, PPMd variant H, VM standard filters E8, E8E9, Delta, RGB and Audio; the Itanium filter is implemented but unverified (no WinRAR sample). RAR 5: LZ with E8, E8E9, ARM and Delta filters. Encryption: RAR 4 AES-128, RAR 5 AES-256 with password check, and encrypted headers. Split volumes `.partNN.rar` and `.rNN`; solid units; comments and recovery records skipped; CRC32 and BLAKE2sp verified. RAR 1.5 and 2.0 and SFX archives are not supported |
+| Rar | ✓ | – | RAR 4 (2.9 to 3.x): LZ with Huffman blocks, PPMd variant H, VM standard filters E8, E8E9, Delta, RGB and Audio; the Itanium filter is implemented but unverified (no WinRAR sample). RAR 5: LZ with E8, E8E9, ARM and Delta filters. RAR 1.5 and 2.0 (unpack versions 15, 20 and 26): the adaptive LZ coding of 1.5, and the LZ with Huffman blocks and multimedia (audio) mode of 2.0, including comments kept inside headers and volume sets without end blocks. Encryption: RAR 4 AES-128, RAR 5 AES-256 with password check, and encrypted headers; files encrypted by RAR 1.5 or 2.0 are listed but not decrypted. Split volumes `.partNN.rar` and `.rNN`; solid units; comments and recovery records skipped; CRC32 and BLAKE2sp verified |
 | Arj | ✓ | – | methods 0-4; names in the detected code page; garbled (encrypted) entries and multi-volume continuation are listed but not extracted |
 | Lzh | ✓ | – | `-lh0-`, `-lh1-`, `-lh4-` to `-lh7-`, `-lzs-`, `-lz5-`, `-lz4-`, header levels 0-3, CRC16 verified; Shift-JIS and other code-page names detected |
 | Xar | ✓ | – | `.pkg`/`.xip`; zlib, bzip2, xz, lzma and stored data; SHA-1/MD5/SHA-2 checksums verified; `[TOC].xml` |
@@ -140,9 +140,14 @@ recognised by their bytecode length and CRC-32, as RAR's own encoder writes them
 as fixed transforms rather than a general RAR VM. Test fixtures were written with WinRAR
 and checked byte-for-byte against 7-Zip.
 
+RAR 1.5 and 2.0 have no published specification. Their decoders follow the formats as
+RAR's own extractors decode them; the 2.0 decoder was checked against the BSD-licensed
+rardecode Go package, and both against the CRC32 of every file in archives made by RAR
+1.5x and 2.90, including WinRAR 2.90's own solid installer.
+
 ## Not supported yet
 
-- RAR 1.5 and RAR 2.0 (unpack versions 15 and 20); APFS and file
+- RAR 1.5 and 2.0 encryption; APFS and file
   systems other than FAT, exFAT, NTFS, ext2/3/4 and HFS+; VHDX log replay, differencing
   VHDX and QCOW2 backing files; Inno Setup and NSIS 1.x installers, and the
   `[NSIS].nsi` script that 7-Zip writes out.

@@ -614,8 +614,8 @@ pub(super) fn extract_unit(
                 }
                 (Some(Cbc::aes256(&k.key, *iv)), mac.then_some(k.hash_key))
             }
-            Some(Crypt::Rar3 { .. }) => {
-                return Err(Error::corrupt("RAR 3 encryption in a RAR 5 archive"))
+            Some(Crypt::Rar3 { .. } | Crypt::Legacy) => {
+                return Err(Error::corrupt("RAR 4 encryption in a RAR 5 archive"))
             }
         };
         let mut src = Packed::new(m, cbc)?;

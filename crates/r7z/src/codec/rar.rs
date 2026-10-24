@@ -27,6 +27,8 @@ pub struct Bits {
     eof: bool,
     /// Set once a consumed bit came from `pad`.
     overran: bool,
+    /// Bytes taken from the source so far.
+    pulled: u64,
 }
 
 impl Bits {
@@ -41,6 +43,7 @@ impl Bits {
             pad: 0,
             eof: false,
             overran: false,
+            pulled: 0,
         }
     }
 
@@ -70,6 +73,7 @@ impl Bits {
         }
         let b = self.buf[self.pos];
         self.pos += 1;
+        self.pulled += 1;
         Ok(b)
     }
 
@@ -83,6 +87,7 @@ impl Bits {
         while self.n <= 48 && self.pos < self.len {
             self.acc = (self.acc << 8) | u64::from(self.buf[self.pos]);
             self.pos += 1;
+            self.pulled += 1;
             self.n += 8;
         }
         while self.n < k {
@@ -130,6 +135,11 @@ impl Bits {
     /// Reads one whole byte; the reader must be byte aligned.
     pub fn byte(&mut self) -> io::Result<u8> {
         Ok(self.read_bits(8)? as u8)
+    }
+
+    /// Whole source bytes consumed so far, counting a partly consumed byte as unread.
+    pub fn byte_pos(&self) -> u64 {
+        (self.pulled * 8 + u64::from(self.pad) - u64::from(self.n)) / 8
     }
 
     /// True once decoding has consumed bits past the end of the source.

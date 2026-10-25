@@ -178,5 +178,3 @@ Inno Setup 5.6.1 and 6.7.3 themselves, and against two third-party installers ma
   frames could resume the same way); a 7z cut off mid-stream loses the partly present last
   LZMA2 chunk (up to 64 KiB packed).
 - Split volumes larger than the memory budget are joined in a temporary file first.
-- Stopping r7z with Ctrl-C while creating can leave a `*.r7z-tmp-<pid>` file next to the
-  target archive.

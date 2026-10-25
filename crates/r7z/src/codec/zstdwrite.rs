@@ -149,6 +149,11 @@ impl BitWriter {
 
     fn finish(mut self) -> Vec<u8> {
         self.add(1, 1);
+        self.bytes()
+    }
+
+    /// The bits written so far, the last byte padded with zeros, without an end mark.
+    fn bytes(mut self) -> Vec<u8> {
         if self.n > 0 {
             self.out.push(self.acc as u8);
         }
@@ -328,27 +333,37 @@ fn huffman_section(lits: &[u8]) -> Option<Vec<u8>> {
         freq[b as usize] += 1;
     }
     let maxsym = (0..256).rev().find(|&s| freq[s] > 0)?;
-    // Direct weights hold at most 128 symbols; wider alphabets stay raw.
-    if maxsym > 128 {
-        return None;
-    }
     let len = code_lengths(&freq, HUF_MAX_LOG);
     let table_log = len.iter().copied().max()? as u32;
     let codes = canonical_codes(&len);
     // Weights for symbols 0..maxsym; the last used symbol's weight is implied.
-    let mut tree = vec![127 + maxsym as u8];
-    for pair in (0..maxsym).step_by(2) {
-        let w = |s: usize| -> u8 {
+    let weights: Vec<u8> = (0..maxsym)
+        .map(|s| {
             if len[s] > 0 {
                 (table_log + 1 - len[s] as u32) as u8
             } else {
                 0
             }
-        };
-        let hi = w(pair);
-        let lo = if pair + 1 < maxsym { w(pair + 1) } else { 0 };
-        tree.push((hi << 4) | lo);
-    }
+        })
+        .collect();
+    // Direct weights (four bits each) hold at most 128 symbols; FSE-coded ones up to 255.
+    let direct = (maxsym <= 128).then(|| {
+        let mut tree = vec![127 + maxsym as u8];
+        for pair in weights.chunks(2) {
+            tree.push((pair[0] << 4) | pair.get(1).copied().unwrap_or(0));
+        }
+        tree
+    });
+    let tree = match (direct, fse_weights(&weights)) {
+        (Some(d), Some(f)) => {
+            if f.len() < d.len() {
+                f
+            } else {
+                d
+            }
+        }
+        (d, f) => d.or(f)?,
+    };
     let encode_stream = |part: &[u8]| -> Vec<u8> {
         let mut bw = BitWriter::default();
         for &b in part.iter().rev() {
@@ -395,6 +410,128 @@ fn huffman_section(lits: &[u8]) -> Option<Vec<u8>> {
         out.extend_from_slice(p);
     }
     Some(out)
+}
+
+/// Huffman weights in their FSE-coded form (RFC 8878, 4.2.1.2): a byte with the coded size,
+/// a table description, and a bit stream with two interleaved states, the first coding the
+/// weights at even positions and the second those at odd ones. `None` when it would not fit
+/// in 127 bytes. Both table sizes the format allows are tried.
+fn fse_weights(weights: &[u8]) -> Option<Vec<u8>> {
+    let n = weights.len();
+    if n < 2 {
+        return None;
+    }
+    let mut count = [0u32; 16];
+    for &w in weights {
+        count[w as usize] += 1;
+    }
+    let max_w = (0..16).rev().find(|&w| count[w] > 0)?;
+    let mut best: Option<Vec<u8>> = None;
+    for log in 5..=6 {
+        let Some(norm) = normalize(&count[..=max_w], n as u32, log) else {
+            continue;
+        };
+        let t = FseTable::new(&norm, log);
+        let mut out = vec![0u8];
+        out.extend(table_description(&norm, log));
+        // The decoder ends with one symbol from each state without updating it, so each
+        // state starts on its last weight; the bits read after each earlier weight are
+        // written in reverse order, and the second state's start goes out first.
+        let mut bw = BitWriter::default();
+        let (mut even, mut odd) = if (n - 1).is_multiple_of(2) {
+            (
+                t.init(weights[n - 1] as usize),
+                t.init(weights[n - 2] as usize),
+            )
+        } else {
+            (
+                t.init(weights[n - 2] as usize),
+                t.init(weights[n - 1] as usize),
+            )
+        };
+        for i in (0..n - 2).rev() {
+            let state = if i.is_multiple_of(2) {
+                &mut even
+            } else {
+                &mut odd
+            };
+            t.encode(state, weights[i] as usize, &mut bw);
+        }
+        t.flush(odd, &mut bw);
+        t.flush(even, &mut bw);
+        out.extend(bw.finish());
+        let size = out.len() - 1;
+        if size < 128 && best.as_ref().is_none_or(|b| out.len() < b.len()) {
+            out[0] = size as u8;
+            best = Some(out);
+        }
+    }
+    best
+}
+
+/// Counts scaled to `1 << log`, each used symbol keeping at least 1, the rounding taken up
+/// by the most frequent symbol. `None` when that leaves it below 1.
+fn normalize(count: &[u32], total: u32, log: u32) -> Option<Vec<i32>> {
+    let size = 1i64 << log;
+    let mut norm: Vec<i32> = count
+        .iter()
+        .map(|&c| {
+            if c == 0 {
+                0
+            } else {
+                ((i64::from(c) * size + i64::from(total) / 2) / i64::from(total)).max(1) as i32
+            }
+        })
+        .collect();
+    let big = (0..norm.len()).max_by_key(|&s| (count[s], std::cmp::Reverse(s)))?;
+    let sum: i64 = norm.iter().map(|&p| i64::from(p)).sum();
+    norm[big] += (size - sum) as i32;
+    (norm[big] >= 1).then_some(norm)
+}
+
+/// An FSE table description (RFC 8878, 4.1.1): the accuracy log, then each count plus
+/// one in as few bits as the counts still to come allow, with runs of zero counts after a
+/// zero given as repeat flags.
+fn table_description(norm: &[i32], log: u32) -> Vec<u8> {
+    let mut bw = BitWriter::default();
+    bw.add(u64::from(log - 5), 4);
+    let mut remaining = (1i32 << log) + 1;
+    let mut threshold = 1i32 << log;
+    let mut nb = log + 1;
+    let mut sym = 0;
+    let mut prev_zero = false;
+    while sym < norm.len() && remaining > 1 {
+        if prev_zero {
+            let mut start = sym;
+            while sym < norm.len() && norm[sym] == 0 {
+                sym += 1;
+            }
+            while sym >= start + 24 {
+                start += 24;
+                bw.add(0xFFFF, 16);
+            }
+            while sym >= start + 3 {
+                start += 3;
+                bw.add(3, 2);
+            }
+            bw.add((sym - start) as u64, 2);
+        }
+        let c = norm[sym];
+        sym += 1;
+        let max = (2 * threshold - 1) - remaining;
+        remaining -= c.abs();
+        let mut v = c + 1;
+        if v >= threshold {
+            v += max;
+        }
+        bw.add(v as u64, nb - u32::from(v < max));
+        prev_zero = v == 1;
+        while remaining < threshold {
+            nb -= 1;
+            threshold >>= 1;
+        }
+    }
+    bw.bytes()
 }
 
 /// A literals section: RLE, Huffman or raw, whichever is smallest.
@@ -979,6 +1116,53 @@ mod tests {
         let z = encode(&data, 5);
         assert!(z.len() <= data.len() + data.len() / 100 + 64);
         assert_eq!(decode(&z), data);
+    }
+
+    /// Literals over all 256 byte values need FSE-coded Huffman weights; before those, such
+    /// blocks were stored raw.
+    #[test]
+    fn wide_alphabets_are_huffman_coded() {
+        let mut x = 0x9E37_79B9_7F4A_7C15u64;
+        let data: Vec<u8> = (0..400_000)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                // Skewed towards small values, but every byte value occurs.
+                let r = (x >> 40) & 0xFFFF;
+                ((r * r * r) >> 40) as u8 ^ ((x >> 8) as u8 & 1)
+            })
+            .collect();
+        assert!((0..=255u8).all(|b| data.contains(&b)));
+        let z = encode(&data, 5);
+        // Their entropy is 6.97 bits a byte; stored raw, they would not shrink at all.
+        let lits = huffman_section(&data[..BLOCK_MAX]).expect("Huffman-coded literals");
+        assert!(
+            lits.len() < BLOCK_MAX * 9 / 10,
+            "{} literal bytes",
+            lits.len()
+        );
+        assert!(
+            z.len() < data.len() * 23 / 25,
+            "{} of {}",
+            z.len(),
+            data.len()
+        );
+        assert_eq!(decode(&z), data);
+        // Small blocks of a few hundred distinct-ish bytes, and weights at both table sizes.
+        for n in [200usize, 700, 3000, 20_000] {
+            let part = &data[..n];
+            assert_eq!(decode(&encode(part, 3)), part, "n={n}");
+        }
+    }
+
+    #[test]
+    fn table_descriptions_match_libzstd() {
+        // Counts 8,4,2,1,1 (total 16) at log 5 doubled: written as libzstd's FSE_writeNCount
+        // writes them.
+        let norm = normalize(&[8, 4, 2, 1, 1], 16, 5).unwrap();
+        assert_eq!(norm, [16, 8, 4, 2, 2]);
+        assert_eq!(norm.iter().sum::<i32>(), 32);
     }
 
     #[test]

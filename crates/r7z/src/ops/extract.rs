@@ -1,7 +1,7 @@
 //! Extraction and testing for any format. Independent units (7z folders, zip entries)
 //! decode in parallel; a single large LZMA2 folder decodes its blocks in parallel instead.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, File, FileTimes};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -167,7 +167,18 @@ pub fn safe_relative_path(name: &str) -> Option<PathBuf> {
     }
 }
 
-fn unique_name(p: &Path) -> PathBuf {
+/// How a path is compared with the others of one extraction: Windows file names ignore
+/// case.
+fn path_key(p: &Path) -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(p.to_string_lossy().to_lowercase())
+    } else {
+        p.to_path_buf()
+    }
+}
+
+/// `name_1.ext`, `name_2.ext`, ...: the first that neither exists nor is planned.
+fn unique_name(p: &Path, planned: &HashMap<PathBuf, usize>) -> PathBuf {
     let stem = p
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -178,7 +189,7 @@ fn unique_name(p: &Path) -> PathBuf {
         .unwrap_or_default();
     for i in 1.. {
         let cand = p.with_file_name(format!("{stem}_{i}{ext}"));
-        if !cand.exists() {
+        if !cand.exists() && !planned.contains_key(&path_key(&cand)) {
             return cand;
         }
     }
@@ -187,6 +198,28 @@ fn unique_name(p: &Path) -> PathBuf {
 
 fn is_data_error(e: &Error) -> bool {
     matches!(e, Error::Corrupt(_) | Error::Checksum(_))
+}
+
+/// The decision for writing over an existing file at `path`: the mode, or the user's answer
+/// in `Ask` mode, where an answer "to all" becomes the mode.
+fn decide(mode: &mut Overwrite, path: &Path, cb: &dyn Callbacks) -> Result<Overwrite> {
+    if *mode != Overwrite::Ask {
+        return Ok(*mode);
+    }
+    Ok(match cb.confirm_overwrite(path) {
+        OverwriteAnswer::Yes => Overwrite::All,
+        OverwriteAnswer::No => Overwrite::Skip,
+        OverwriteAnswer::YesAll => {
+            *mode = Overwrite::All;
+            Overwrite::All
+        }
+        OverwriteAnswer::NoAll => {
+            *mode = Overwrite::Skip;
+            Overwrite::Skip
+        }
+        OverwriteAnswer::Rename => Overwrite::RenameNew,
+        OverwriteAnswer::Quit => return Err(Error::Other("aborted by user".into())),
+    })
 }
 
 /// Resolves every entry's action up front (including overwrite prompts) so decoding never
@@ -213,6 +246,9 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
     let mut to_create: Vec<(PathBuf, usize)> = Vec::new();
     // Directories this run created: files inside them cannot already exist.
     let mut fresh: HashSet<PathBuf> = HashSet::new();
+    // Files this run writes, by `path_key`, and the entry writing each: entries with the
+    // same name are decoded in parallel, so which one wins is decided here.
+    let mut planned: HashMap<PathBuf, usize> = HashMap::new();
     if let Target::Disk { dir, .. } = &opts.target {
         if !dir.exists() {
             fresh.insert(dir.clone());
@@ -295,41 +331,48 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
                     continue;
                 }
                 let mut path = path;
+                // An earlier entry with the same name: the mode decides between the two as
+                // it would between that file on disk and this one, so the result is what
+                // extracting in archive order gives.
+                if let Some(&prev) = planned.get(&path_key(&path)) {
+                    match decide(&mut mode, &path, cb)? {
+                        Overwrite::Skip => {
+                            skipped += 1;
+                            actions.push(Action::Skip);
+                            continue;
+                        }
+                        Overwrite::RenameNew => path = unique_name(&path, &planned),
+                        Overwrite::RenameExisting => {
+                            let moved = unique_name(&path, &planned);
+                            if let Action::Write { path: p, .. } = &mut actions[prev] {
+                                planned.remove(&path_key(p));
+                                planned.insert(path_key(&moved), prev);
+                                *p = moved;
+                            }
+                        }
+                        _ => {
+                            actions[prev] = Action::Skip;
+                            planned.remove(&path_key(&path));
+                            skipped += 1;
+                        }
+                    }
+                }
                 let parent_fresh = path.parent().is_some_and(|p| fresh.contains(p));
                 let mut existed = false;
                 if !parent_fresh && path.symlink_metadata().is_ok() {
                     existed = true;
-                    let mut decision = mode;
-                    if mode == Overwrite::Ask {
-                        decision = match cb.confirm_overwrite(&path) {
-                            OverwriteAnswer::Yes => Overwrite::All,
-                            OverwriteAnswer::No => Overwrite::Skip,
-                            OverwriteAnswer::YesAll => {
-                                mode = Overwrite::All;
-                                Overwrite::All
-                            }
-                            OverwriteAnswer::NoAll => {
-                                mode = Overwrite::Skip;
-                                Overwrite::Skip
-                            }
-                            OverwriteAnswer::Rename => Overwrite::RenameNew,
-                            OverwriteAnswer::Quit => {
-                                return Err(Error::Other("aborted by user".into()))
-                            }
-                        };
-                    }
-                    match decision {
+                    match decide(&mut mode, &path, cb)? {
                         Overwrite::Skip => {
                             skipped += 1;
                             actions.push(Action::Skip);
                             continue;
                         }
                         Overwrite::RenameNew => {
-                            path = unique_name(&path);
+                            path = unique_name(&path, &planned);
                             existed = false;
                         }
                         Overwrite::RenameExisting => {
-                            let moved = unique_name(&path);
+                            let moved = unique_name(&path, &planned);
                             if let Err(err) = fs::rename(&path, &moved) {
                                 plan_errors.push((i, err.into()));
                                 actions.push(Action::Skip);
@@ -345,6 +388,7 @@ pub(crate) fn plan(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -
                     actions.push(Action::Skip);
                     continue;
                 }
+                planned.insert(path_key(&path), i);
                 Action::Write { path, existed }
             }
         };

@@ -851,3 +851,71 @@ fn bit_flips_never_panic() {
         }
     }
 }
+
+/// Extracts `bytes` (a tar) into a fresh folder with `mode`; returns the folder.
+fn extract_tar_to(bytes: Vec<u8>, mode: Overwrite, label: &str) -> PathBuf {
+    let o = format::open_bytes(bytes, "dup.tar", &OpenRequest::default()).unwrap();
+    let dir = std::env::temp_dir().join(format!("r7z-dup-{}-{label}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let opts = ExtractOptions {
+        password: None,
+        threads: 8,
+        target: Target::Disk {
+            dir: dir.clone(),
+            full_paths: true,
+            overwrite: mode,
+        },
+        selected: None,
+        base: None,
+    };
+    let rep = extract(o.archive(), &opts, &Quiet).unwrap();
+    assert!(rep.errors.is_empty(), "{label}: {:?}", rep.errors);
+    dir
+}
+
+/// Entries with the same name end up as extracting them in archive order would, however
+/// the parallel writers are scheduled: the last one wins with overwriting, the first one
+/// with skipping, and both are kept with the rename modes.
+#[test]
+fn duplicate_names_extract_deterministically() {
+    // A large first copy makes its write slow, so a race between the two would show.
+    let first = vec![b'1'; 400_000];
+    let second: &[u8] = b"second";
+    let tar = ustar(&[
+        ("d/a.txt", Some(&first)),
+        ("d/b.txt", Some(b"b")),
+        ("d/a.txt", Some(second)),
+    ]);
+    let read = |dir: &Path, n: &str| fs::read(dir.join("d").join(n)).ok();
+    for round in 0..4 {
+        let dir = extract_tar_to(tar.clone(), Overwrite::All, &format!("all{round}"));
+        assert_eq!(
+            read(&dir, "a.txt").as_deref(),
+            Some(second),
+            "round {round}"
+        );
+        assert_eq!(read(&dir, "a_1.txt"), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+    let dir = extract_tar_to(tar.clone(), Overwrite::Skip, "skip");
+    assert_eq!(read(&dir, "a.txt").as_deref(), Some(&first[..]));
+    let _ = fs::remove_dir_all(&dir);
+    let dir = extract_tar_to(tar.clone(), Overwrite::RenameNew, "new");
+    assert_eq!(read(&dir, "a.txt").as_deref(), Some(&first[..]));
+    assert_eq!(read(&dir, "a_1.txt").as_deref(), Some(second));
+    let _ = fs::remove_dir_all(&dir);
+    let dir = extract_tar_to(tar, Overwrite::RenameExisting, "existing");
+    assert_eq!(read(&dir, "a.txt").as_deref(), Some(second));
+    assert_eq!(read(&dir, "a_1.txt").as_deref(), Some(&first[..]));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// On Windows, names that differ only in case are the same file.
+#[cfg(windows)]
+#[test]
+fn names_differing_in_case_are_duplicates_on_windows() {
+    let tar = ustar(&[("A.txt", Some(&[b'1'; 300_000][..])), ("a.TXT", Some(b"2"))]);
+    let dir = extract_tar_to(tar, Overwrite::All, "case");
+    assert_eq!(fs::read(dir.join("a.txt")).unwrap(), b"2");
+    let _ = fs::remove_dir_all(&dir);
+}

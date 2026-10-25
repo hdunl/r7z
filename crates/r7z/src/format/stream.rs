@@ -652,7 +652,7 @@ fn open_lz4(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
             n: consumed.clone(),
         };
         Ok(Box::new(Lz4Frames {
-            dec: lz4_flex::frame::FrameDecoder::new(counted),
+            dec: Some(lz4_flex::frame::FrameDecoder::new(counted)),
             consumed,
         }) as BoxRead)
     });
@@ -751,9 +751,12 @@ impl Read for Counted {
     }
 }
 
-/// lz4_flex returns end-of-data at each frame end; continue while input remains.
+/// lz4_flex returns end-of-data at each frame end; continue while input remains. Each
+/// frame gets a decoder of its own: one sized for a frame of linked blocks does not fit a
+/// frame of independent ones. The decoder reads exactly what a frame holds, so its input
+/// carries over.
 struct Lz4Frames {
-    dec: lz4_flex::frame::FrameDecoder<Counted>,
+    dec: Option<lz4_flex::frame::FrameDecoder<Counted>>,
     consumed: Arc<std::sync::atomic::AtomicU64>,
 }
 
@@ -761,13 +764,18 @@ impl Read for Lz4Frames {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
             let before = self.consumed.load(std::sync::atomic::Ordering::Relaxed);
-            let n = self.dec.read(buf)?;
+            let Some(dec) = self.dec.as_mut() else {
+                return Ok(0);
+            };
+            let n = dec.read(buf)?;
             if n > 0 || buf.is_empty() {
                 return Ok(n);
             }
             if self.consumed.load(std::sync::atomic::Ordering::Relaxed) == before {
                 return Ok(0);
             }
+            let inner = self.dec.take().map(|d| d.into_inner());
+            self.dec = inner.map(lz4_flex::frame::FrameDecoder::new);
         }
     }
 }

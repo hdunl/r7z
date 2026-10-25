@@ -3,6 +3,7 @@ pub mod codepage;
 pub mod crc64;
 pub mod fmt;
 pub mod mem;
+pub mod tempfile;
 pub mod text;
 pub mod time;
 pub mod wildcard;

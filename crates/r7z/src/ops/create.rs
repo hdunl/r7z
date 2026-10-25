@@ -26,6 +26,7 @@ use crate::error::{Error, Result};
 use crate::sevenz::write::{signature_header, write_encoded_header, write_header};
 use crate::sevenz::{Entry, Folder, StreamsInfo, SIGNATURE_HEADER_SIZE};
 use crate::util::mem::encoder_budget;
+use crate::util::tempfile::TempFile;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MainMethod {
@@ -969,11 +970,13 @@ pub(crate) fn make_entry(
     }
 }
 
-pub fn temp_path(archive: &Path) -> PathBuf {
+/// The temporary file `archive` is written to before it is renamed into place. It is
+/// removed if the console ends r7z first.
+pub fn temp_path(archive: &Path) -> TempFile {
     let mut name = archive
         .file_name()
         .map(|n| n.to_os_string())
         .unwrap_or_default();
     name.push(format!(".r7z-tmp-{}", std::process::id()));
-    archive.with_file_name(name)
+    TempFile::new(archive.with_file_name(name))
 }

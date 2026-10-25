@@ -169,10 +169,11 @@ Inno Setup 5.6.1 and 6.7.3 themselves, and against two third-party installers ma
   AES-256); writing zip Shrink, Reduce and Implode; PKWARE strong encryption; garbled or
   multi-volume ARJ; zip split archives whose offsets count from each part (r7z reads
   parts joined in order, as `cat` joins them).
-- zstd output: literals with more than 128 distinct byte values are stored raw (the
-  Huffman weights are not FSE-coded yet), so executables come out about 8% larger than
-  `zstd -3`; text about 2-3% larger. The encoder runs at 13-45 MB/s, from a third
-  (level 1) to a tenth (level 9) of `zstd -3`'s speed.
+- zstd output is a few percent larger than `zstd -3`'s (text about 2-3%; executables
+  shrank 2.7% more once literals with more than 128 distinct byte values were Huffman
+  coded with FSE-coded weights, and have not been compared with `zstd -3` since). The
+  encoder runs at 13-45 MB/s, from a third (level 1) to a tenth (level 9) of `zstd -3`'s
+  speed.
 - NTFS alternate streams, security descriptors.
 - Recovery does not yet resume inside a gzip stream, nor inside an lz4 or zstd stream (their
   frames could resume the same way); a 7z cut off mid-stream loses the partly present last

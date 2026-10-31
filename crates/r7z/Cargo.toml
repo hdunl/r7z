@@ -20,7 +20,7 @@ name = "r7z"
 path = "src/main.rs"
 
 [dependencies]
-lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+lzma-rust2 = { version = "0.24", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 aes = "0.9"
 sha2 = "0.11"
 sha1 = "0.11"

@@ -305,11 +305,9 @@ fn download_zip_and_install(
             "the downloaded update does not match its signed checksum".into(),
         ));
     }
-    let tmp = std::env::temp_dir().join(format!("r7z-update-{}.zip", std::process::id()));
-    std::fs::write(&tmp, &zip)?;
-    let result = install_parts(&tmp, &install_dir()?, only_missing);
-    let _ = std::fs::remove_file(&tmp);
-    result
+    // Installed from the checked bytes themselves: a copy in the temporary folder could be
+    // swapped by another program between the check and the install.
+    install_parts(zip, &install_dir()?, only_missing)
 }
 
 /// Installs a newer release. Returns the version installed.
@@ -338,12 +336,13 @@ pub fn sibling(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// Installs the files in `zip` into `dir` (with `only_missing`, just the ones `dir` lacks).
+/// Installs the files in the release zip `zip` into `dir` (with `only_missing`, just the ones
+/// `dir` lacks).
 /// A running program can be renamed on Windows but not overwritten, so each existing file
 /// moves to `name.old` first (removed on the next start) and the new file takes its name.
 /// Any failure puts the old files back.
-fn install_parts(zip: &Path, dir: &Path, only_missing: bool) -> Result<Vec<String>> {
-    let opened = r7z::format::open(zip, &Default::default())?;
+fn install_parts(zip: Vec<u8>, dir: &Path, only_missing: bool) -> Result<Vec<String>> {
+    let opened = r7z::format::open_bytes(zip, "update.zip", &Default::default())?;
     let a = opened.archive();
     let stage = || -> Result<Vec<(PathBuf, PathBuf)>> {
         let mut out = Vec::new();
@@ -579,7 +578,7 @@ mod tests {
         write_zip(&src, &zip);
 
         // A repair adds what is missing and leaves the running program alone.
-        let done = install_parts(&zip, &dir, true).unwrap();
+        let done = install_parts(std::fs::read(&zip).unwrap(), &dir, true).unwrap();
         assert_eq!(done, ["r7z_shell.dll", "r7z-shell.msix"]);
         assert_eq!(
             std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
@@ -594,7 +593,7 @@ mod tests {
         std::fs::remove_file(dir.join("r7z-shell.msix")).unwrap();
         std::fs::write(src.join("r7z-shell.msix"), b"MZ not a package").unwrap();
         write_zip(&src, &zip);
-        assert!(install_parts(&zip, &dir, true).is_err());
+        assert!(install_parts(std::fs::read(&zip).unwrap(), &dir, true).is_err());
         assert!(!dir.join("r7z-shell.msix").exists());
         assert!(!dir.join("r7z-shell.msix.new").exists());
         let _ = std::fs::remove_dir_all(&root);
@@ -614,7 +613,7 @@ mod tests {
         let zip = root.join("u.zip");
         write_zip(&src, &zip);
 
-        let done = install_parts(&zip, &dir, false).unwrap();
+        let done = install_parts(std::fs::read(&zip).unwrap(), &dir, false).unwrap();
         assert_eq!(done, ["r7z-gui.exe"]);
         assert_eq!(
             std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
@@ -631,7 +630,7 @@ mod tests {
 
         std::fs::write(src.join("r7z-gui.exe"), b"not a program").unwrap();
         write_zip(&src, &zip);
-        assert!(install_parts(&zip, &dir, false).is_err());
+        assert!(install_parts(std::fs::read(&zip).unwrap(), &dir, false).is_err());
         assert_eq!(
             std::fs::read(dir.join("r7z-gui.exe")).unwrap(),
             b"MZ new gui"
@@ -668,7 +667,7 @@ mod tests {
         std::fs::create_dir_all(&scratch).unwrap();
         std::fs::write(scratch.join("r7z-gui.exe"), b"MZ").unwrap();
         std::fs::write(scratch.join("r7z.exe"), b"MZ").unwrap();
-        let done = install_parts(&zip, &scratch, false).unwrap();
+        let done = install_parts(data, &scratch, false).unwrap();
         assert!(done.iter().any(|n| n == "r7z-gui.exe") && done.iter().any(|n| n == "r7z.exe"));
         // The Windows 11 menu parts come along even though the folder had none.
         assert!(done.iter().any(|n| n == "r7z_shell.dll"), "{done:?}");

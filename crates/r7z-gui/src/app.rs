@@ -1206,6 +1206,7 @@ impl App {
             level.password.clone(),
             entry,
             dir,
+            level.disk.clone(),
         ));
         self.toast(
             format!("Opening {}", level.tree.nodes[node].name),

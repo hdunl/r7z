@@ -656,7 +656,11 @@ pub fn extract(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -> Re
             Err(err) => report.errors.push((entries[i].name.clone(), err)),
         }
     }
-    for (i, r) in link_symbolic(a, &plan) {
+    let root = match &opts.target {
+        Target::Disk { dir, .. } => dir.as_path(),
+        _ => Path::new(""),
+    };
+    for (i, r) in link_symbolic(a, &plan, root) {
         if let Err(err) = r {
             report.errors.push((entries[i].name.clone(), err));
         }
@@ -667,9 +671,10 @@ pub fn extract(a: &dyn Archive, opts: &ExtractOptions, cb: &dyn Callbacks) -> Re
 
 /// Symbolic links become real links after everything else is written, so that no write
 /// goes through one. A link is made only when its target stays inside the extraction
-/// (judged from the archive names, and only when no folder on the way is a link) and the
-/// platform allows it. Otherwise the file that holds the target text stays, as before.
-pub(crate) fn link_symbolic(a: &dyn Archive, plan: &Plan) -> Vec<(usize, Result<()>)> {
+/// (judged from where the link lands in `root`, and only when no folder on the way is a
+/// link) and the platform allows it. Otherwise the file that holds the target text stays,
+/// as before.
+pub(crate) fn link_symbolic(a: &dyn Archive, plan: &Plan, root: &Path) -> Vec<(usize, Result<()>)> {
     let mut out = Vec::new();
     for (i, e) in a.entries().iter().enumerate() {
         let (Some(Link::Symbolic(target)), Action::Write { path, .. }) =
@@ -677,7 +682,13 @@ pub(crate) fn link_symbolic(a: &dyn Archive, plan: &Plan) -> Vec<(usize, Result<
         else {
             continue;
         };
-        if !link_stays_inside(&e.name, target) || has_linked_parent(path, &e.name) {
+        // The link's own place inside the extraction, which can be shallower than its
+        // archive name: `..` parts are dropped, a base folder is stripped, and flat
+        // extraction keeps only the file name.
+        let Ok(rel) = path.strip_prefix(root) else {
+            continue;
+        };
+        if !link_stays_inside(rel, target) || has_linked_parent(path, rel) {
             continue;
         }
         let Some(dir) = path.parent() else { continue };
@@ -695,21 +706,27 @@ pub(crate) fn link_symbolic(a: &dyn Archive, plan: &Plan) -> Vec<(usize, Result<
     out
 }
 
-/// Whether `target`, a link stored in the entry `name`, resolves to a place inside the
-/// extraction: it must not be absolute, and no `..` may climb above the extraction root.
-fn link_stays_inside(name: &str, target: &str) -> bool {
+/// Whether `target`, a link placed at `rel` inside the extraction, resolves to a place
+/// inside it: it must not be absolute, and no `..` may climb above the extraction root.
+/// The target is split the way the platform will resolve it: on Windows both slashes
+/// separate, elsewhere a backslash is part of a name.
+fn link_stays_inside(rel: &Path, target: &str) -> bool {
     let has_drive = target.as_bytes().get(1) == Some(&b':');
     if target.is_empty() || target.starts_with(['/', '\x5c']) || has_drive || target.contains('\0')
     {
         return false;
     }
-    // Directories above the link: the entry's own name is the last component.
-    let mut depth = name
-        .split(['/', '\x5c'])
-        .filter(|c| !c.is_empty() && *c != ".")
-        .count() as isize
-        - 1;
-    for c in target.split(['/', '\x5c']) {
+    if cfg!(windows) && target.contains(':') {
+        return false;
+    }
+    // Directories above the link: its own name is the last component.
+    let mut depth = rel.components().count() as isize - 1;
+    let parts: Vec<&str> = if cfg!(windows) {
+        target.split(['/', '\x5c']).collect()
+    } else {
+        target.split('/').collect()
+    };
+    for c in parts {
         match c {
             "" | "." => {}
             ".." => {
@@ -718,18 +735,19 @@ fn link_stays_inside(name: &str, target: &str) -> bool {
                     return false;
                 }
             }
+            // Windows drops trailing dots and spaces from names, so `... ` or `.. ` could
+            // resolve as `..`; such names are refused rather than guessed at.
+            _ if c.chars().all(|ch| ch == '.' || ch == ' ') => return false,
             _ => depth += 1,
         }
     }
     true
 }
 
-/// Whether a folder above `path` (within the entry's own folders) is a symbolic link.
-fn has_linked_parent(path: &Path, name: &str) -> bool {
-    let depth = name
-        .split(['/', '\x5c'])
-        .filter(|c| !c.is_empty() && *c != ".")
-        .count();
+/// Whether a folder between the extraction root and `path` (whose place inside the
+/// extraction is `rel`) is a symbolic link.
+fn has_linked_parent(path: &Path, rel: &Path) -> bool {
+    let depth = rel.components().count();
     path.ancestors()
         .skip(1)
         .take(depth.saturating_sub(1))
@@ -1275,19 +1293,30 @@ mod tests {
 #[cfg(test)]
 mod link_tests {
     use super::link_stays_inside;
+    use std::path::Path;
 
     #[test]
     fn link_targets_must_stay_inside() {
-        assert!(link_stays_inside("a/link", "target"));
-        assert!(link_stays_inside("a/link", "../x"));
-        assert!(link_stays_inside("a/b/link", "../../x"));
-        assert!(link_stays_inside("a/link", "./b/../c"));
-        assert!(!link_stays_inside("link", "../x"));
-        assert!(!link_stays_inside("a/b/link", "../../../x"));
-        assert!(!link_stays_inside("a/link", "/etc/passwd"));
-        assert!(!link_stays_inside("a/link", "\x5cserver\x5cshare"));
-        assert!(!link_stays_inside("a/link", "C:/x"));
-        assert!(!link_stays_inside("a/link", "..\x5c..\x5cx"));
-        assert!(!link_stays_inside("a/link", ""));
+        let inside = |rel: &str, target: &str| link_stays_inside(Path::new(rel), target);
+        assert!(inside("a/link", "target"));
+        assert!(inside("a/link", "../x"));
+        assert!(inside("a/b/link", "../../x"));
+        assert!(inside("a/link", "./b/../c"));
+        assert!(!inside("link", "../x"));
+        assert!(!inside("a/b/link", "../../../x"));
+        assert!(!inside("a/link", "/etc/passwd"));
+        assert!(!inside("a/link", "\x5cserver\x5cshare"));
+        assert!(!inside("a/link", "C:/x"));
+        assert!(!inside("a/link", ""));
+        assert!(!inside("a/link", "... /x"));
+        assert!(!inside("a/b/link", ".. /.. /x"));
+        if cfg!(windows) {
+            assert!(!inside("a/link", "..\x5c..\x5cx"));
+            assert!(!inside("a/link", "b/C:/x"));
+        } else {
+            // One name with backslashes in it, one level down.
+            assert!(inside("a/link", "..\x5c..\x5cx"));
+            assert!(!inside("x/link", "a\x5cb/../../../escape"));
+        }
     }
 }

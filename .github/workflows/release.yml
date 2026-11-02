@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+# The tag name reaches scripts only through the GITHUB_REF_NAME variable, never pasted
+# into them with ${{ }}, so a tag's text cannot become part of a command.
+
 env:
   # Fail the build rather than ship programs without their icon and version information.
   R7Z_REQUIRE_RESOURCES: "1"
@@ -22,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Show the notes for review
-        run: python3 scripts/release_notes.py "${{ github.ref_name }}" --summary
+        run: python3 scripts/release_notes.py "$GITHUB_REF_NAME" --summary
 
   release:
     needs: notes
@@ -93,7 +96,7 @@ jobs:
         shell: pwsh
         env:
           PUBLISHER: ${{ secrets.R7Z_CERT_SUBJECT }}
-        run: scripts/make_msix.ps1 -Version ("${{ github.ref_name }}".TrimStart("v")) -Publisher $env:PUBLISHER -Out target/release/r7z-shell.msix
+        run: scripts/make_msix.ps1 -Version ($env:GITHUB_REF_NAME.TrimStart("v")) -Publisher $env:PUBLISHER -Out target/release/r7z-shell.msix
 
       - name: Sign the Windows 11 menu package
         uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
@@ -138,7 +141,7 @@ jobs:
           R7Z_UPDATE_KEY: ${{ secrets.R7Z_UPDATE_KEY }}
         run: |
           pip install "cryptography==46.0.3"
-          python scripts/package_release.py "${{ github.ref_name }}" dist
+          python scripts/package_release.py "$env:GITHUB_REF_NAME" dist
 
       - name: Check the release the way installed copies will
         run: cargo test --release -p r7z-gui --locked -- --ignored packaged_release
@@ -173,7 +176,7 @@ jobs:
         # installed directly.
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
           cargo build --release --locked --target-dir target/store -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
           scripts/make_store_msix.ps1 -Version $version -BinDir target/store/release -Out "target/store/r7z-$version-store.msix"
 
@@ -189,7 +192,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="${{ github.ref_name }}"
+          tag="$GITHUB_REF_NAME"
           gh release create "$tag" dist/* \
             --repo "${{ github.repository }}" \
             --title "r7z ${tag#v}" \

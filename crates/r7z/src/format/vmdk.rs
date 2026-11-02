@@ -36,6 +36,9 @@ const COMPRESSED: u32 = 0x1_0000;
 const MAX_DESCRIPTOR: usize = 1 << 20;
 /// Extents that nest (a sparse file named by a descriptor) are followed this deep.
 const MAX_NEST: u32 = 2;
+/// The largest grain, in sectors (32 MiB), the limit QEMU also keeps: a stream-optimized
+/// grain is decoded whole into memory.
+const MAX_GRAIN: u64 = 1 << 16;
 
 /// A sparse extent: a grain directory of grain tables of grain addresses.
 struct Sparse {
@@ -77,7 +80,7 @@ impl Sparse {
         }
         if capacity == 0
             || !grain.is_power_of_two()
-            || grain < 8
+            || !(8..=MAX_GRAIN).contains(&grain)
             || !gtes.is_power_of_two()
             || gtes > 4096
             || gd == GD_AT_END
@@ -87,6 +90,22 @@ impl Sparse {
         let size = capacity
             .checked_mul(SECTOR)
             .ok_or_else(|| Error::corrupt("VMDK capacity is not valid"))?;
+        // The directory, from its start to the end of the file, must be able to address
+        // every grain: otherwise a few bytes of header could promise an endless disk.
+        let gd_at = gd
+            .checked_mul(SECTOR)
+            .filter(|&at| at < file.size())
+            .ok_or_else(|| Error::corrupt("VMDK directory is past the end of the file"))?;
+        let tables = (file.size() - gd_at) / 4;
+        let covered = tables
+            .saturating_mul(gtes)
+            .saturating_mul(grain)
+            .saturating_mul(SECTOR);
+        if size > covered {
+            return Err(Error::corrupt(
+                "VMDK capacity is larger than its directory covers",
+            ));
+        }
         let kind = if flags & COMPRESSED != 0 {
             "streamOptimized"
         } else {
@@ -98,9 +117,7 @@ impl Sparse {
             Sparse {
                 file,
                 table,
-                gd_at: gd
-                    .checked_mul(SECTOR)
-                    .ok_or_else(|| Error::corrupt("VMDK directory is past the end of the file"))?,
+                gd_at,
                 grain,
                 gtes,
                 compressed,
@@ -250,7 +267,7 @@ fn descriptor_disk(text: &str, dir: Option<&Path>, depth: u32) -> Result<Arc<dyn
     if parts.is_empty() {
         return Err(Error::corrupt("VMDK descriptor has no extents"));
     }
-    Ok(Arc::new(Concat::new(parts)))
+    Ok(Arc::new(Concat::new(parts)?))
 }
 
 fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {

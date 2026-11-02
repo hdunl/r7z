@@ -100,20 +100,23 @@ pub struct Concat {
 }
 
 impl Concat {
-    pub fn new(parts: Vec<Arc<dyn ReadAt>>) -> Self {
+    /// Fails when the parts together are longer than a disk can be addressed.
+    pub fn new(parts: Vec<Arc<dyn ReadAt>>) -> Result<Self> {
         let mut start = 0u64;
         let mut out = Vec::new();
         for p in parts {
             let n = p.size();
             if n > 0 {
                 out.push((start, p));
-                start += n;
+                start = start
+                    .checked_add(n)
+                    .ok_or_else(|| Error::corrupt("disk extents are too large"))?;
             }
         }
-        Concat {
+        Ok(Concat {
             parts: out,
             len: start,
-        }
+        })
     }
 }
 
@@ -539,7 +542,7 @@ mod tests {
     fn concat_and_window_bound_reads() {
         let a = ram(vec![1, 2, 3]);
         let b = ram(vec![4, 5]);
-        let c = Concat::new(vec![a, Arc::new(Zeros(2)), b]);
+        let c = Concat::new(vec![a, Arc::new(Zeros(2)), b]).unwrap();
         assert_eq!(c.size(), 7);
         let mut out = [0u8; 7];
         c.read_at(0, &mut out).unwrap();

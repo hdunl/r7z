@@ -107,7 +107,8 @@ fn open(input: Input, _opts: &OpenOptions) -> Result<Box<dyn Archive>> {
         }
         let first = le64(e, 32)?;
         let last = le64(e, 40)?;
-        if last < first {
+        // An entry whose range is reversed, or spans the whole address space, is damage.
+        if last < first || last == u64::MAX {
             continue;
         }
         let units: Vec<u16> = e[56..MIN_ENTRY]

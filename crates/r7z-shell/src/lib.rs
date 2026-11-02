@@ -5,6 +5,7 @@
 #![cfg(windows)]
 
 use std::ffi::c_void;
+use std::os::windows::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
@@ -90,9 +91,10 @@ fn selected(items: Ref<IShellItemArray>) -> Vec<PathBuf> {
                 .ok()?
                 .GetDisplayName(SIGDN_FILESYSPATH)
                 .ok()?;
-            let path = name.to_string().ok();
+            // From the UTF-16 itself: a name that isn't valid Unicode is still a path.
+            let path = std::ffi::OsString::from_wide(name.as_wide());
             CoTaskMemFree(Some(name.0 as *const c_void));
-            path.map(PathBuf::from)
+            Some(PathBuf::from(path))
         })
         .collect()
 }

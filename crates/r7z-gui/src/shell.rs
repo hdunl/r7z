@@ -106,6 +106,28 @@ pub fn save_setting(key: &str, value: &str) {
 }
 
 /// Per-process scratch folder for files opened from an archive.
+/// Gives `to`, a file taken out of the archive `from`, the archive's Mark of the Web (its
+/// `Zone.Identifier` stream), so Windows treats the file as coming from where the archive
+/// came from: SmartScreen checks programs and Office opens documents in Protected View.
+/// Fails when the archive has a mark that cannot be copied, so the file is not opened
+/// without it.
+pub fn copy_zone(from: &Path, to: &Path) -> std::io::Result<()> {
+    if cfg!(windows) {
+        let zone = |p: &Path| {
+            let mut s = p.as_os_str().to_owned();
+            s.push(":Zone.Identifier");
+            PathBuf::from(s)
+        };
+        // The stream is a few lines of text; anything larger is not one.
+        if let Ok(mark) = std::fs::read(zone(from)) {
+            if mark.len() <= 64 << 10 {
+                std::fs::write(zone(to), mark)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn temp_dir() -> PathBuf {
     std::env::temp_dir().join(format!("r7z-gui-{}", std::process::id()))
 }

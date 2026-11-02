@@ -42,9 +42,11 @@ use std::sync::Arc;
 use eframe::egui;
 
 fn parse_args() -> app::Startup {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // OS strings, so a file name that isn't valid Unicode still opens instead of
+    // ending the app.
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     let path = |i: usize| args.get(i).map(PathBuf::from);
-    match args.first().map(String::as_str) {
+    match args.first().map(|a| a.to_str().unwrap_or("")) {
         None => app::Startup::None,
         Some("--extract-here") => match &args[1..] {
             [] => app::Startup::None,
@@ -77,7 +79,7 @@ fn parse_args() -> app::Startup {
             Some(p) => app::Startup::Convert(p),
             None => app::Startup::None,
         },
-        Some(p) => app::Startup::Open(PathBuf::from(p)),
+        Some(_) => app::Startup::Open(path(0).unwrap_or_default()),
     }
 }
 

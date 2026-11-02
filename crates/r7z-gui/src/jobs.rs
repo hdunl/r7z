@@ -157,12 +157,14 @@ pub fn open_nested(
 }
 
 /// Extracts one entry to `dir` and returns the file's path (the UI thread launches it).
+/// The file carries the Mark of the Web of `source`, the archive file on disk.
 pub fn stage_entry(
     ctx: &egui::Context,
     archive: Arc<dyn Archive>,
     password: Option<String>,
     entry: usize,
     dir: PathBuf,
+    source: PathBuf,
 ) -> Task<PathBuf> {
     Task::spawn(ctx, move |cancel| {
         let name = archive.entries()[entry].name.clone();
@@ -180,6 +182,8 @@ pub fn stage_entry(
             &mut |b| std::io::Write::write_all(&mut out, b).map_err(Error::from),
         )?;
         std::io::Write::flush(&mut out)?;
+        drop(out);
+        crate::shell::copy_zone(&source, &path)?;
         Ok(path)
     })
 }

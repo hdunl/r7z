@@ -135,8 +135,19 @@ fn check_len(kind: u8) -> Option<usize> {
 /// Decodes the block whose data is `lz` (an LZMA2 stream) and checks its value
 /// `check` against the output.
 fn decode(h: &BlockHeader, lz: &[u8], kind: u8, check: &[u8]) -> io::Result<Vec<u8>> {
+    // A damaged block can expand far beyond its packed size; past the memory budget it is
+    // treated as lost rather than decoded into memory.
+    let limit = crate::format::data::memory_budget();
     let mut out = Vec::new();
-    lzma_rust2::Lzma2Reader::new(lz, h.dict, None).read_to_end(&mut out)?;
+    lzma_rust2::Lzma2Reader::new(lz, h.dict, None)
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut out)?;
+    if out.len() as u64 > limit {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "xz block decodes to more than the memory budget",
+        ));
+    }
     if h.bcj {
         let mut filtered = Vec::with_capacity(out.len());
         lzma_rust2::filter::bcj::BcjReader::new_x86(&out[..], 0).read_to_end(&mut filtered)?;

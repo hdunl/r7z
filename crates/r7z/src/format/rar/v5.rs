@@ -28,6 +28,9 @@ const HEAD_FILE: u64 = 2;
 const HEAD_CRYPT: u64 = 4;
 const HEAD_END: u64 = 5;
 
+/// The largest dictionary of the RAR 5.0 compression format.
+const MAX_DICT: u64 = 1 << 32;
+
 const HFL_EXTRA: u64 = 0x01;
 const HFL_DATA: u64 = 0x02;
 const HFL_SPLIT_BEFORE: u64 = 0x08;
@@ -586,8 +589,16 @@ pub(super) fn extract_unit(
 ) -> Result<()> {
     // The window holds the whole unit when it fits within the dictionary; otherwise it is
     // the dictionary, but at least large enough for a held-back filter block.
-    let total: u64 = members.iter().map(|m| m.size).sum();
+    let total: u64 = members
+        .iter()
+        .try_fold(0u64, |t, m| t.checked_add(m.size))
+        .ok_or_else(|| Error::corrupt("RAR 5 unit is larger than a file can be"))?;
     let dict = members.iter().map(|m| m.dict).max().unwrap_or(0x2_0000);
+    // RAR 5.0's dictionary is at most 4 GiB; larger sizes are later versions' or damage,
+    // and either way would ask for a window larger than any machine has.
+    if dict > MAX_DICT {
+        return Err(Error::unsupported("RAR 5 dictionary larger than 4 GiB"));
+    }
     let win = if total <= dict {
         (total + 1024).max(1 << 16).next_power_of_two()
     } else {
@@ -631,7 +642,10 @@ pub(super) fn extract_unit(
                     m.version
                 )));
             }
-            let lz = lz.get_or_insert_with(|| Lz5::new(win));
+            let lz = match &mut lz {
+                Some(lz) => lz,
+                None => lz.insert(Lz5::new(win)?),
+            };
             lz.begin(Box::new(src), m.size)?;
             let mut inner = Lz5Read(lz);
             let mut r = Checked::new(&mut inner, m).with_mac(mac);
@@ -644,4 +658,46 @@ pub(super) fn extract_unit(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod window_tests {
+    use super::*;
+
+    fn member(size: u64, dict: u64) -> Member {
+        Member {
+            name: "x".into(),
+            is_dir: false,
+            size,
+            packed: vec![Slice::from_vec(vec![0; 16])],
+            mtime: None,
+            attrib: None,
+            crc: None,
+            blake2: None,
+            method: 3,
+            version: 0,
+            solid: false,
+            dict,
+            crypt: None,
+            incomplete: false,
+        }
+    }
+
+    fn run(members: &[Member]) -> Result<()> {
+        let refs: Vec<&Member> = members.iter().collect();
+        let entries: Vec<usize> = (0..members.len()).collect();
+        extract_unit(&entries, &refs, &Ctx::default(), &mut |_, _| {
+            Ok(Flow::Continue)
+        })
+    }
+
+    #[test]
+    fn dictionaries_past_rar_5_are_refused_before_any_window_is_made() {
+        // A header can name a 256 TiB dictionary and a 1 TiB file in a few bytes.
+        let err = run(&[member(1 << 40, 0x2_0000 << 31)]).unwrap_err();
+        assert!(matches!(err, Error::Unsupported(_)), "{err}");
+        // Declared sizes that overflow when added are damage, not a huge window.
+        let err = run(&[member(u64::MAX, 1 << 20), member(u64::MAX, 1 << 20)]).unwrap_err();
+        assert!(matches!(err, Error::Corrupt(_)), "{err}");
+    }
 }

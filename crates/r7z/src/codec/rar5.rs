@@ -134,15 +134,21 @@ pub struct Lz5 {
 }
 
 impl Lz5 {
-    /// A decoder with a window of `win` bytes (a power of two).
-    pub fn new(win: usize) -> Lz5 {
+    /// A decoder with a window of `win` bytes (a power of two). Fails, rather than
+    /// aborting the process, when that much memory cannot be had.
+    pub fn new(win: usize) -> Result<Lz5> {
         debug_assert!(win.is_power_of_two());
-        Lz5 {
+        let mut buf = Vec::new();
+        buf.try_reserve_exact(win).map_err(|_| {
+            Error::Other(format!("not enough memory for a {win}-byte RAR 5 window"))
+        })?;
+        buf.resize(win, 0);
+        Ok(Lz5 {
             input: None,
             block_end: 0,
             in_block: false,
             last_block: false,
-            win: vec![0; win],
+            win: buf,
             mask: win - 1,
             total: 0,
             delivered: 0,
@@ -153,7 +159,7 @@ impl Lz5 {
             last_len: 0,
             filters: VecDeque::new(),
             filtered: VecDeque::new(),
-        }
+        })
     }
 
     /// Starts the next file: `size` bytes unpacked from the packed stream `src`.

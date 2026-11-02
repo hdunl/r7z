@@ -198,6 +198,18 @@ fn open(input: Input, opts: &OpenOptions) -> Result<Box<dyn Archive>> {
     {
         return Err(Error::corrupt("QCOW2 L1 table is past the end of the file"));
     }
+    // The L1 table must cover the whole disk (QEMU refuses images whose table is too
+    // short): otherwise the clusters past it read as zeros up to any size the header names.
+    let per = 1u64 << (h.cluster_bits - 3);
+    let covered = h
+        .l1_size
+        .saturating_mul(per)
+        .saturating_mul(1u64 << h.cluster_bits);
+    if h.size > covered {
+        return Err(Error::corrupt(
+            "QCOW2 disk is larger than its L1 table covers",
+        ));
+    }
     let backing = if h.backing_offset != 0 && h.backing_size > 0 {
         let n = h.backing_size.min(MAX_BACKING);
         let raw = read_vec(&*file, h.backing_offset, n as usize)?;

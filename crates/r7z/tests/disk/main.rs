@@ -553,3 +553,41 @@ fn regenerate_fixtures() {
         &b::vmdk_descriptor("vmdk-flat-extent-flat.vmdk", disk.len() / 512),
     );
 }
+
+/// The largest entry any level of `data` claims, or `None` when it does not open.
+fn largest_entry(data: Vec<u8>, name: &str) -> Option<u64> {
+    let o = open(data, name).ok()?;
+    o.levels
+        .iter()
+        .flat_map(|l| l.archive.entries().iter().filter_map(|e| e.size))
+        .max()
+}
+
+#[test]
+fn disk_sizes_the_tables_cannot_cover_are_refused() {
+    let vol = b::fat_volume(12, 128, 1);
+    let disk = b::mbr_disk(&vol);
+    let small = 1u64 << 30;
+
+    // QCOW2: a disk size far past what the L1 table addresses.
+    let mut q = b::qcow2(&disk, &[], &[], None);
+    q[24..32].copy_from_slice(&(1u64 << 50).to_be_bytes());
+    assert!(largest_entry(q, "big.qcow2").is_none_or(|n| n < small));
+
+    for stream in [false, true] {
+        // VMDK: a capacity far past what the grain directory addresses.
+        let mut v = b::vmdk_sparse(&disk, stream);
+        v[12..20].copy_from_slice(&(1u64 << 50).to_le_bytes());
+        if stream {
+            let footer = v.len() - 1024;
+            v[footer + 12..footer + 20].copy_from_slice(&(1u64 << 50).to_le_bytes());
+        }
+        assert!(largest_entry(v, "big.vmdk").is_none_or(|n| n < small));
+
+        // VMDK: a grain of 8 GiB, which a stream-optimized file decodes whole.
+        let mut v = b::vmdk_sparse(&disk, stream);
+        v[20..28].copy_from_slice(&(1u64 << 24).to_le_bytes());
+        damaged_open(v.clone(), "grain.vmdk");
+        assert!(!open(v, "grain.vmdk").is_ok_and(|o| types(&o).contains(&"VMDK")));
+    }
+}

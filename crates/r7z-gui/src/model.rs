@@ -1,6 +1,7 @@
 //! What the main list shows. Disk folders and archive folders produce the same `Row`, so
 //! sorting, filtering, selection and preview work the same in both.
 
+use crate::i18n::tr;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -61,7 +62,7 @@ impl Tree {
                 if e.is_dir {
                     continue;
                 }
-                parts.push("(unnamed)");
+                parts.push(tr("(unnamed)"));
             }
             let mut parent = ROOT;
             let mut path = String::new();

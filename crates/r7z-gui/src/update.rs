@@ -6,6 +6,7 @@
 //! out against the public key compiled in below and the version is newer than this build,
 //! so an altered download, a hijacked release or an older build is refused.
 
+use crate::i18n::{tf, tr};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -80,7 +81,7 @@ pub enum Check {
 }
 
 fn bad(what: &str) -> Error {
-    Error::Other(format!("the update manifest is invalid ({what})"))
+    Error::Other(tf!("the update manifest is invalid ({what})", what = what))
 }
 
 fn hex<const N: usize>(s: &str) -> Option<[u8; N]> {
@@ -119,7 +120,7 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 pub fn parse_manifest(text: &str) -> Result<Manifest> {
     let mut lines = text.lines();
     if lines.next() != Some("r7z-update 1") {
-        return Err(bad("unknown format"));
+        return Err(bad(tr("unknown format")));
     }
     let (mut version, mut file, mut size, mut sha256) = (None, None, None, None);
     for line in lines {
@@ -134,14 +135,14 @@ pub fn parse_manifest(text: &str) -> Result<Manifest> {
             _ => {}
         }
     }
-    let version = version.ok_or_else(|| bad("no version"))?;
+    let version = version.ok_or_else(|| bad(tr("no version")))?;
     parse_version(&version).ok_or_else(|| bad("version"))?;
-    let file = file.ok_or_else(|| bad("no file"))?;
+    let file = file.ok_or_else(|| bad(tr("no file")))?;
     let plain_name = file
         .bytes()
         .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b));
     if !plain_name || file.starts_with('.') || !file.ends_with(".zip") {
-        return Err(bad("file name"));
+        return Err(bad(tr("file name")));
     }
     let size = size
         .filter(|&s| s > 0 && s <= ZIP_LIMIT)
@@ -157,12 +158,12 @@ pub fn parse_manifest(text: &str) -> Result<Manifest> {
 
 /// Checks `sig` (hex) over the exact manifest bytes, then parses the manifest.
 pub fn verify(manifest: &[u8], sig: &str, key: &[u8; 32]) -> Result<Manifest> {
-    let invalid = || Error::Other("the update's signature is not valid".into());
+    let invalid = || Error::Other(tr("the update's signature is not valid").into());
     let sig = hex::<64>(sig.trim()).ok_or_else(invalid)?;
     let key = VerifyingKey::from_bytes(key).map_err(|_| invalid())?;
     key.verify_strict(manifest, &Signature::from_bytes(&sig))
         .map_err(|_| invalid())?;
-    let text = std::str::from_utf8(manifest).map_err(|_| bad("not text"))?;
+    let text = std::str::from_utf8(manifest).map_err(|_| bad(tr("not text")))?;
     parse_manifest(text)
 }
 
@@ -170,19 +171,19 @@ pub fn verify(manifest: &[u8], sig: &str, key: &[u8; 32]) -> Result<Manifest> {
 /// `version`. The notes start with their own header, so a signed manifest can't pass for
 /// notes, nor notes for a manifest.
 pub fn verify_notes(notes: &[u8], sig: &str, key: &[u8; 32], version: &str) -> Result<String> {
-    let invalid = || Error::Other("the release notes' signature is not valid".into());
+    let invalid = || Error::Other(tr("the release notes' signature is not valid").into());
     let sig = hex::<64>(sig.trim()).ok_or_else(invalid)?;
     let key = VerifyingKey::from_bytes(key).map_err(|_| invalid())?;
     key.verify_strict(notes, &Signature::from_bytes(&sig))
         .map_err(|_| invalid())?;
-    let bad = |what: &str| Error::Other(format!("the release notes are invalid ({what})"));
-    let text = std::str::from_utf8(notes).map_err(|_| bad("not text"))?;
+    let bad = |what: &str| Error::Other(tf!("the release notes are invalid ({what})", what = what));
+    let text = std::str::from_utf8(notes).map_err(|_| bad(tr("not text")))?;
     let mut lines = text.splitn(4, '\n');
     if lines.next() != Some("r7z-notes 1") {
-        return Err(bad("unknown format"));
+        return Err(bad(tr("unknown format")));
     }
     if lines.next().and_then(|l| l.strip_prefix("version ")) != Some(version) {
-        return Err(bad("they describe another version"));
+        return Err(bad(tr("they describe another version")));
     }
     if lines.next() != Some("") {
         return Err(bad("header"));
@@ -230,9 +231,13 @@ fn agent() -> ureq::Agent {
 
 fn net(e: ureq::Error) -> Error {
     match e {
-        ureq::Error::StatusCode(404) => Error::Other("no release has been published yet".into()),
-        ureq::Error::StatusCode(code) => Error::Other(format!("GitHub answered with HTTP {code}")),
-        other => Error::Other(format!("could not reach GitHub ({other})")),
+        ureq::Error::StatusCode(404) => {
+            Error::Other(tr("no release has been published yet").into())
+        }
+        ureq::Error::StatusCode(code) => {
+            Error::Other(tf!("GitHub answered with HTTP {code}", code = code))
+        }
+        other => Error::Other(tf!("could not reach GitHub ({other})", other = other)),
     }
 }
 
@@ -253,7 +258,10 @@ fn get(agent: &ureq::Agent, url: &str, limit: u64, cancel: &AtomicBool) -> Resul
         out.extend_from_slice(&buf[..n]);
     }
     if out.len() as u64 > limit {
-        return Err(Error::Other(format!("{url} is larger than expected")));
+        return Err(Error::Other(tf!(
+            "{url} is larger than expected",
+            url = url
+        )));
     }
     Ok(out)
 }
@@ -287,7 +295,7 @@ fn install_dir() -> Result<PathBuf> {
     let exe = std::env::current_exe()?;
     exe.parent()
         .map(Path::to_path_buf)
-        .ok_or_else(|| Error::Other("cannot tell where r7z is installed".into()))
+        .ok_or_else(|| Error::Other(tr("cannot tell where r7z is installed").into()))
 }
 
 /// Downloads the release zip named by a verified manifest, checks its size and hash, and
@@ -302,7 +310,7 @@ fn download_zip_and_install(
     let zip = get(agent, &m.download_url(), m.size, cancel)?;
     if zip.len() as u64 != m.size || Sha256::digest(&zip).as_slice() != m.sha256 {
         return Err(Error::Other(
-            "the downloaded update does not match its signed checksum".into(),
+            tr("the downloaded update does not match its signed checksum").into(),
         ));
     }
     // Installed from the checked bytes themselves: a copy in the temporary folder could be
@@ -322,7 +330,7 @@ pub fn install_missing(cancel: &AtomicBool) -> Result<Vec<String>> {
     let agent = agent();
     let m = latest(&agent, cancel)?;
     if m.version != CURRENT {
-        return Err(Error::Other(format!(
+        return Err(Error::Other(tf!(
             "r7z {} is available; updating to it brings these files too",
             m.version
         )));
@@ -360,19 +368,25 @@ fn install_parts(zip: Vec<u8>, dir: &Path, only_missing: bool) -> Result<Vec<Str
             });
             let Some(index) = index else {
                 if when == When::Required {
-                    return Err(Error::Other(format!("the update has no {name}")));
+                    return Err(Error::Other(tf!("the update has no {name}", name = name)));
                 }
                 continue;
             };
             let data = r7z::ops::peek::read_entry(a, index, None, ZIP_LIMIT as usize, &|| false)?;
             if data.truncated || !data.data.starts_with(magic) {
-                return Err(Error::Other(format!(
-                    "{name} in the update is not what it should be"
+                return Err(Error::Other(tf!(
+                    "{name} in the update is not what it should be",
+                    name = name
                 )));
             }
             let new = sibling(&target, ".new");
-            std::fs::write(&new, &data.data)
-                .map_err(|e| Error::Other(format!("cannot write to {} ({e})", dir.display())))?;
+            std::fs::write(&new, &data.data).map_err(|e| {
+                Error::Other(tf!(
+                    "cannot write to {path} ({e})",
+                    path = dir.display(),
+                    e = e
+                ))
+            })?;
             out.push((target, new));
         }
         Ok(out)
@@ -407,7 +421,7 @@ fn install_parts(zip: Vec<u8>, dir: &Path, only_missing: bool) -> Result<Vec<Str
         for (_, n) in &staged {
             let _ = std::fs::remove_file(n);
         }
-        return Err(Error::Other(format!(
+        return Err(Error::Other(tf!(
             "could not replace {}; nothing was changed",
             target.display()
         )));

@@ -2,6 +2,7 @@
 //! archives inside archives). Loading runs as a cancellable task; changing the selection
 //! drops the old task.
 
+use crate::i18n::{tf, tr};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -127,14 +128,20 @@ impl Algo {
             "CRC32" | "CRC" => Algo::Crc32,
             "SHA224" | "SHA384" | "SHA512" | "SHA512224" | "SHA512256" | "SHA3256" | "SHA3512"
             | "BLAKE2B" | "BLAKE2S" | "BLAKE3" | "XXH64" | "XXH3" | "CRC64" => {
-                return Err(format!("{label} isn't supported here. {SUPPORTED}"))
+                return Err(tf!(
+                    "{label} isn't supported here. {SUPPORTED}",
+                    label = label,
+                    SUPPORTED = supported()
+                ))
             }
             _ => return Ok(None),
         }))
     }
 }
 
-const SUPPORTED: &str = "Paste a SHA-256, SHA-1, MD5 or CRC32 hash.";
+fn supported() -> &'static str {
+    tr("Paste a SHA-256, SHA-1, MD5 or CRC32 hash.")
+}
 
 /// A pasted checksum, read by `parse_expected`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -171,13 +178,22 @@ fn hash_from(
 ) -> std::result::Result<Expected, String> {
     let Some(algo) = Algo::from_len(hex.len()) else {
         return Err(match hex.len() {
-            96 => format!("That looks like SHA-384, which isn't supported here. {SUPPORTED}"),
-            128 => format!("That looks like SHA-512, which isn't supported here. {SUPPORTED}"),
-            n => format!("That has {n} hex digits; SHA-256 has 64, SHA-1 40, MD5 32 and CRC32 8."),
+            96 => tf!(
+                "That looks like SHA-384, which isn't supported here. {SUPPORTED}",
+                SUPPORTED = supported()
+            ),
+            128 => tf!(
+                "That looks like SHA-512, which isn't supported here. {SUPPORTED}",
+                SUPPORTED = supported()
+            ),
+            n => tf!(
+                "That has {n} hex digits; SHA-256 has 64, SHA-1 40, MD5 32 and CRC32 8.",
+                n = n
+            ),
         });
     };
     if let Some(l) = label.filter(|&l| l != algo) {
-        return Err(format!(
+        return Err(tf!(
             "It says {} but has {} hex digits, the length of {}.",
             l.name(),
             hex.len(),
@@ -241,7 +257,7 @@ fn parse_line(line: &str) -> Option<std::result::Result<Expected, String>> {
         .max_by_key(|t| t.len());
     Some(match best {
         Some(t) => hash_from(t, None, None),
-        None => Err(SUPPORTED.to_string()),
+        None => Err(supported().to_string()),
     })
 }
 
@@ -268,9 +284,10 @@ pub fn parse_expected(
         }
     }
     match (first_ok, first_err) {
-        (Some(e), _) if lines > 1 && e.name.is_some() => {
-            Some(Err(format!("None of the pasted lines is for {file_name}.")))
-        }
+        (Some(e), _) if lines > 1 && e.name.is_some() => Some(Err(tf!(
+            "None of the pasted lines is for {file_name}.",
+            file_name = file_name
+        ))),
         (Some(e), _) => Some(Ok(e)),
         (None, Some(e)) => Some(Err(e)),
         (None, None) => None,

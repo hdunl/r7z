@@ -24,6 +24,15 @@ cargo clippy --workspace       # should print no warnings
 an installed 7-Zip. The source layout is described in
 [docs/development.md](../docs/development.md).
 
+
+## Translations
+
+The desktop app's text lives in `crates/r7z-gui/res/lang/`, one plain text file per
+language: an English line, then its translation. To fix a phrase, edit that file; no Rust
+is needed, and the notes at the top explain the format. New interface text goes through
+`tr("…")`, or `tf!("…", value)` when it has placeholders, and `cargo test` fails until it
+has a translation. The right-click menus on Windows 11 are in `crates/r7z-shell/src/lib.rs`.
+
 ## Pull requests
 
 - Keep each pull request to one change, and include a test when you fix a bug or add a

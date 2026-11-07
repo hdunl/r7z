@@ -13,6 +13,7 @@
 //! record before its file is moved, even if the app dies halfway. When the job ends it is
 //! rewritten whole, with the size and time of everything written.
 
+use crate::i18n::{tf, tr};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
@@ -335,9 +336,9 @@ fn beside(p: &Path) -> PathBuf {
     let mut n = 1;
     loop {
         let tag = if n == 1 {
-            "before extract".to_string()
+            tr("before extract").to_string()
         } else {
-            format!("before extract {n}")
+            tf!("before extract {n}", n = n)
         };
         let cand = p.with_file_name(format!("{stem} ({tag}){ext}"));
         if fs::symlink_metadata(&cand).is_err() {
@@ -502,8 +503,9 @@ impl Recorder {
                 st.m.replaced.push(r);
                 Ok(())
             }
-            Err(e) => Err(Error::Other(format!(
-                "couldn't set the existing file aside, so it was left as is: {e}"
+            Err(e) => Err(Error::Other(tf!(
+                "couldn't set the existing file aside, so it was left as is: {e}",
+                e = e
             ))),
         }
     }
@@ -570,9 +572,9 @@ pub struct UndoReport {
 /// undo can be tried again.
 pub fn undo(store: &Store, id: &str) -> Result<UndoReport> {
     let m = load(store, id, false)
-        .ok_or_else(|| Error::Other("there is no record of that extract any more".into()))?;
+        .ok_or_else(|| Error::Other(tr("there is no record of that extract any more").into()))?;
     if !m.undoable() {
-        return Err(Error::Other("that extract is still running".into()));
+        return Err(Error::Other(tr("that extract is still running").into()));
     }
     let backups = store.backup_dir(id);
     let mut rep = UndoReport::default();
@@ -587,7 +589,7 @@ pub fn undo(store: &Store, id: &str) -> Result<UndoReport> {
         let saved = backups.join(&r.backup);
         if fs::symlink_metadata(&saved).is_err() {
             rep.errors
-                .push((r.path.clone(), "the saved copy is gone".into()));
+                .push((r.path.clone(), tr("the saved copy is gone").into()));
             continue;
         }
         let result = match probe(&r.path) {
@@ -706,38 +708,42 @@ pub fn prune(store: &Store) {
 pub fn headline(r: &UndoReport) -> String {
     let mut parts = Vec::new();
     if r.removed > 0 {
-        parts.push(format!(
+        parts.push(tf!(
             "removed {}",
-            crate::ui::count(r.removed as usize, "file", "files")
+            crate::ui::count(r.removed as usize, tr("file"), tr("files"))
         ));
     }
     if r.restored > 0 {
-        parts.push(format!(
+        parts.push(tf!(
             "put back {}",
-            crate::ui::count(r.restored as usize, "replaced file", "replaced files")
+            crate::ui::count(
+                r.restored as usize,
+                tr("replaced file"),
+                tr("replaced files")
+            )
         ));
     }
     if parts.is_empty() && r.dirs > 0 {
         parts.push(format!(
             "removed {}",
-            crate::ui::count(r.dirs as usize, "folder", "folders")
+            crate::ui::count(r.dirs as usize, tr("folder"), tr("folders"))
         ));
     }
     let mut s = if parts.is_empty() {
-        "Nothing left to undo".to_string()
+        tr("Nothing left to undo").to_string()
     } else {
-        format!("Undone: {}", parts.join(", "))
+        tf!("Undone: {}", parts.join(", "))
     };
     if !r.kept.is_empty() {
-        s.push_str(&format!(
+        s.push_str(&tf!(
             " · left {} you changed",
-            crate::ui::count(r.kept.len(), "file", "files")
+            crate::ui::count(r.kept.len(), tr("file"), tr("files"))
         ));
     }
     if !r.beside.is_empty() {
-        s.push_str(&format!(
+        s.push_str(&tf!(
             " · {} put back under a new name",
-            crate::ui::count(r.beside.len(), "original", "originals")
+            crate::ui::count(r.beside.len(), tr("original"), tr("originals"))
         ));
     }
     s

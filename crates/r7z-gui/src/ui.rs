@@ -1,6 +1,7 @@
 //! Drawing the main window: sidebar, header, list or map, preview pane, status bar, the
 //! activity card and toasts. Interaction results are applied to `App` after drawing.
 
+use crate::i18n::{tf, tr};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -321,13 +322,13 @@ fn place_icon(k: Known) -> Icon {
     }
 }
 
-fn place_label(k: Known) -> &'static str {
+pub fn place_label(k: Known) -> &'static str {
     match k {
-        Known::Home => "Home",
-        Known::Desktop => "Desktop",
-        Known::Downloads => "Downloads",
-        Known::Documents => "Documents",
-        Known::Pictures => "Pictures",
+        Known::Home => tr("Home"),
+        Known::Desktop => tr("Desktop"),
+        Known::Downloads => tr("Downloads"),
+        Known::Documents => tr("Documents"),
+        Known::Pictures => tr("Pictures"),
     }
 }
 
@@ -372,7 +373,7 @@ fn sidebar(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 ui,
                 p,
                 |pt, r, c| icons::draw(pt, r, Icon::Settings, c),
-                "Settings",
+                tr("Settings"),
                 "",
                 false,
             );
@@ -388,7 +389,7 @@ fn sidebar_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
         Loc::Disk(d) => Some(d.clone()),
         _ => None,
     };
-    section(ui, p, "Places");
+    section(ui, p, tr("Places"));
     let mut go: Option<PathBuf> = None;
     for (k, path) in app.places.clone() {
         let active = current_disk.as_deref() == Some(path.as_path());
@@ -405,7 +406,7 @@ fn sidebar_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             go = Some(path);
         }
     }
-    section(ui, p, "Drives");
+    section(ui, p, tr("Drives"));
     for d in &app.drives {
         let letter = d
             .root
@@ -414,7 +415,7 @@ fn sidebar_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             .trim_end_matches('\\')
             .to_string();
         let label = if d.label.is_empty() {
-            format!("Drive ({letter})")
+            tf!("Drive ({letter})", letter = letter)
         } else {
             format!("{} ({letter})", d.label)
         };
@@ -461,7 +462,7 @@ fn sidebar_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             painter.text(
                 pos2(bar.right() + 8.0, bar.center().y),
                 Align2::LEFT_CENTER,
-                format!("{} free", human_size(d.free)),
+                tf!("{} free", human_size(d.free)),
                 FontId::proportional(11.0),
                 p.faint,
             );
@@ -475,7 +476,7 @@ fn sidebar_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
     }
     mounts_section(app, ui, p);
     if app.level().is_some() {
-        section(ui, p, "Archive");
+        section(ui, p, tr("Archive"));
         archive_card(app, ui, ctx, p);
     }
     let recent: Vec<PathBuf> = app
@@ -486,7 +487,7 @@ fn sidebar_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
         .cloned()
         .collect();
     if !recent.is_empty() {
-        section(ui, p, "Recent");
+        section(ui, p, tr("Recent"));
         for path in recent {
             let name = path
                 .file_name()
@@ -517,7 +518,7 @@ fn mounts_section(app: &mut App, ui: &mut Ui, p: &Palette) {
     if app.mounts.active.is_empty() && app.mounts.pending.is_none() {
         return;
     }
-    section(ui, p, "Open as folders");
+    section(ui, p, tr("Open as folders"));
     let mut eject = None;
     for (i, m) in app.mounts.active.iter().enumerate() {
         ui.horizontal(|ui| {
@@ -538,16 +539,16 @@ fn mounts_section(app: &mut App, ui: &mut Ui, p: &Palette) {
             let mut tip = format!(
                 "{}\n{}",
                 m.root.display(),
-                count(m.files as usize, "file", "files")
+                count(m.files as usize, tr("file"), tr("files"))
             );
             let served = m.served();
             if served > 0 {
-                tip.push_str(&format!(", {} read so far", human_size(served)));
+                tip.push_str(&tf!(", {} read so far", human_size(served)));
             }
             if resp.on_hover_text(tip).clicked() {
                 shell::open_path(&m.root);
             }
-            if icon_button(ui, Icon::Eject, "Eject", false, true).clicked() {
+            if icon_button(ui, Icon::Eject, tr("Eject"), false, true).clicked() {
                 eject = Some(i);
             }
         });
@@ -556,7 +557,7 @@ fn mounts_section(app: &mut App, ui: &mut Ui, p: &Palette) {
         ui.horizontal(|ui| {
             ui.add_space(34.0);
             ui.label(
-                RichText::new(format!("Opening {name}…"))
+                RichText::new(tf!("Opening {name}…", name = name))
                     .size(12.0)
                     .color(p.faint),
             );
@@ -631,19 +632,21 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             ui.add_space(8.0);
             let worst = findings.iter().map(|f| f.level).max();
             let (icon, color, text) = match worst {
-                None => (Icon::Check, p.ok, "No safety concerns".to_string()),
-                Some(Severity::Note) => {
-                    (Icon::Shield, p.dim, count(findings.len(), "note", "notes"))
-                }
+                None => (Icon::Check, p.ok, tr("No safety concerns").to_string()),
+                Some(Severity::Note) => (
+                    Icon::Shield,
+                    p.dim,
+                    count(findings.len(), tr("note"), tr("notes")),
+                ),
                 Some(Severity::Caution) => (
                     Icon::Alert,
                     p.caution,
-                    count(findings.len(), "thing to check", "things to check"),
+                    count(findings.len(), tr("thing to check"), tr("things to check")),
                 ),
                 Some(Severity::Danger) => (
                     Icon::Alert,
                     p.danger,
-                    count(findings.len(), "warning", "warnings"),
+                    count(findings.len(), tr("warning"), tr("warnings")),
                 ),
             };
             let (rect, resp) =
@@ -674,8 +677,8 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             }
             if damaged.is_some() {
                 ui.add_space(6.0);
-                recover = button(ui, Some(Icon::Alert), "Recover files…", false, true)
-                    .on_hover_text("Extract everything that is still readable")
+                recover = button(ui, Some(Icon::Alert), tr("Recover files…"), false, true)
+                    .on_hover_text(tr("Extract everything that is still readable"))
                     .clicked();
             }
             ui.add_space(6.0);
@@ -683,18 +686,20 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 ui,
                 Some(Icon::External),
                 if mounted {
-                    "Show folder"
+                    tr("Show folder")
                 } else {
-                    "Open as folder"
+                    tr("Open as folder")
                 },
                 false,
                 true,
             )
-            .on_hover_text("Browse it in Explorer like a normal folder, without extracting")
+            .on_hover_text(tr(
+                "Browse it in Explorer like a normal folder, without extracting",
+            ))
             .clicked();
             ui.add_space(8.0);
             ui.label(
-                RichText::new(format!(
+                RichText::new(tf!(
                     "{} files · {} folders",
                     group(files),
                     group(dirs as u64)
@@ -724,9 +729,9 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     let how = if c.detected {
-                        "Names (detected)"
+                        tr("Names (detected)")
                     } else {
-                        "Names"
+                        tr("Names")
                     };
                     ui.label(RichText::new(how).size(11.5).color(p.dim));
                     egui::ComboBox::from_id_salt("name_code_page")
@@ -734,7 +739,7 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
                             if ui
-                                .selectable_label(c.detected, "Detect automatically")
+                                .selectable_label(c.detected, tr("Detect automatically"))
                                 .clicked()
                                 && !c.detected
                             {
@@ -748,7 +753,7 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                             }
                         })
                         .response
-                        .on_hover_text("Code page of the file names");
+                        .on_hover_text(tr("Code page of the file names"));
                 });
             }
             if !parts.is_empty() {
@@ -789,7 +794,7 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                     if resp.clicked() {
                         set_filter = Some(if active { None } else { Some(*c) });
                     }
-                    resp.on_hover_text("Show only these");
+                    resp.on_hover_text(tr("Show only these"));
                 }
             }
         });
@@ -892,7 +897,7 @@ fn header(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 if icon_button(
                     ui,
                     Icon::Back,
-                    "Back (Alt+Left)",
+                    tr("Back (Alt+Left)"),
                     false,
                     !app.back.is_empty(),
                 )
@@ -903,7 +908,7 @@ fn header(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 if icon_button(
                     ui,
                     Icon::Forward,
-                    "Forward (Alt+Right)",
+                    tr("Forward (Alt+Right)"),
                     false,
                     !app.forward.is_empty(),
                 )
@@ -914,7 +919,7 @@ fn header(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 if icon_button(
                     ui,
                     Icon::Up,
-                    "Up one level (Backspace)",
+                    tr("Up one level (Backspace)"),
                     false,
                     app.parent_loc().is_some(),
                 )
@@ -939,7 +944,7 @@ fn header(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
                     if icon_button(
                         ui,
                         Icon::Preview,
-                        "Preview pane (Space)",
+                        tr("Preview pane (Space)"),
                         app.show_preview,
                         true,
                     )
@@ -948,12 +953,12 @@ fn header(app: &mut App, root: &mut Ui, ctx: &egui::Context, p: &Palette) {
                         app.toggle_preview();
                     }
                     if app.in_archive() {
-                        if icon_button(ui, Icon::Map, "Space map", app.view == View::Map, true)
+                        if icon_button(ui, Icon::Map, tr("Space map"), app.view == View::Map, true)
                             .clicked()
                         {
                             app.view = View::Map;
                         }
-                        if icon_button(ui, Icon::List, "List", app.view == View::List, true)
+                        if icon_button(ui, Icon::List, tr("List"), app.view == View::List, true)
                             .clicked()
                         {
                             app.view = View::List;
@@ -992,7 +997,7 @@ fn breadcrumb(app: &mut App, ui: &mut Ui, p: &Palette, width: f32) {
         let target = all[skip - 1].loc.clone();
         if ui
             .add(egui::Button::new(RichText::new("…").color(p.dim)).frame(false))
-            .on_hover_text("Show earlier folders")
+            .on_hover_text(tr("Show earlier folders"))
             .clicked()
         {
             go = Some(target);
@@ -1045,9 +1050,9 @@ fn search_box(app: &mut App, ui: &mut Ui, p: &Palette) {
             ui.horizontal(|ui| {
                 icons::icon(ui, 14.0, Icon::Search, p.faint);
                 let hint = if app.in_archive() {
-                    "Search this archive"
+                    tr("Search this archive")
                 } else {
-                    "Filter this folder"
+                    tr("Filter this folder")
                 };
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut app.search)
@@ -1091,7 +1096,7 @@ fn action_bar(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             ui.painter().text(
                 pos2(rect.left() + 24.0, rect.center().y),
                 Align2::LEFT_CENTER,
-                format!("Only {}", c.label().to_lowercase()),
+                tf!("Only {}", c.label().to_lowercase()),
                 FontId::proportional(12.5),
                 p.text,
             );
@@ -1104,7 +1109,7 @@ fn action_bar(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 Icon::Close,
                 p.dim,
             );
-            if resp.on_hover_text("Show everything").clicked() {
+            if resp.on_hover_text(tr("Show everything")).clicked() {
                 app.class_filter = None;
                 app.rows_dirty = true;
             }
@@ -1113,31 +1118,40 @@ fn action_bar(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             ui.spacing_mut().item_spacing.x = 8.0;
             if app.in_archive() {
                 let label = if app.selection.is_empty() {
-                    "Extract"
+                    tr("Extract")
                 } else {
-                    "Extract selected"
+                    tr("Extract selected")
                 };
                 if button(ui, Some(Icon::Extract), label, true, true)
-                    .on_hover_text("Choose where to extract (Ctrl+E)")
+                    .on_hover_text(tr("Choose where to extract (Ctrl+E)"))
                     .clicked()
                 {
                     app.dialog = Some(Dialog::Extract(ExtractForm::new(app)));
                 }
-                if button(ui, None, "Extract here", false, true)
-                    .on_hover_text("Next to the archive; a folder is created only when needed")
+                if button(ui, None, tr("Extract here"), false, true)
+                    .on_hover_text(tr(
+                        "Next to the archive; a folder is created only when needed",
+                    ))
                     .clicked()
                 {
                     app.smart_extract_here(ctx);
                 }
                 ui.add_space(4.0);
-                if icon_button(ui, Icon::Layers, "Convert to another format", false, true).clicked()
+                if icon_button(
+                    ui,
+                    Icon::Layers,
+                    tr("Convert to another format"),
+                    false,
+                    true,
+                )
+                .clicked()
                 {
                     app.open_convert();
                 }
                 if icon_button(
                     ui,
                     Icon::Test,
-                    "Test: check every file against its checksum",
+                    tr("Test: check every file against its checksum"),
                     false,
                     true,
                 )
@@ -1165,21 +1179,21 @@ fn action_bar(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 let primary = archives.is_empty();
                 if !archives.is_empty() {
                     let label = if archives.len() == 1 {
-                        "Extract".to_string()
+                        tr("Extract").to_string()
                     } else {
-                        format!("Extract {}", archives.len())
+                        tf!("Extract {}", archives.len())
                     };
                     if button(ui, Some(Icon::Extract), &label, true, true).clicked() {
                         app.dialog = Some(Dialog::batch(archives));
                     }
                 }
                 let label = if paths.is_empty() {
-                    "New archive"
+                    tr("New archive")
                 } else {
-                    "Compress"
+                    tr("Compress")
                 };
                 if button(ui, Some(Icon::Pack), label, primary, true)
-                    .on_hover_text("Pack files into an archive (Ctrl+N)")
+                    .on_hover_text(tr("Pack files into an archive (Ctrl+N)"))
                     .clicked()
                 {
                     app.dialog = Some(Dialog::pack(paths));
@@ -1227,11 +1241,11 @@ fn list(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
         let sort = app.sort;
         if rows.is_empty() {
             let msg = if let Some(e) = &app.list_error {
-                format!("This folder can't be opened\n{e}")
+                tf!("This folder can't be opened\n{e}", e = e)
             } else if searching || app.class_filter.is_some() {
-                "Nothing matches".to_string()
+                tr("Nothing matches").to_string()
             } else {
-                "This folder is empty".to_string()
+                tr("This folder is empty").to_string()
             };
             ui.centered_and_justified(|ui| {
                 ui.label(RichText::new(msg).color(p.dim));
@@ -1299,12 +1313,20 @@ fn list(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             tb = tb.scroll_to_row(i, None);
         }
         tb.header(30.0, |mut h| {
-            h.col(|ui| header_cell(ui, "Name", SortCol::Name, false, &mut sort_click));
-            h.col(|ui| header_cell(ui, "Modified", SortCol::Modified, false, &mut sort_click));
-            h.col(|ui| header_cell(ui, "Type", SortCol::Kind, false, &mut sort_click));
-            h.col(|ui| header_cell(ui, "Size", SortCol::Size, true, &mut sort_click));
+            h.col(|ui| header_cell(ui, tr("Name"), SortCol::Name, false, &mut sort_click));
+            h.col(|ui| {
+                header_cell(
+                    ui,
+                    tr("Modified"),
+                    SortCol::Modified,
+                    false,
+                    &mut sort_click,
+                )
+            });
+            h.col(|ui| header_cell(ui, tr("Type"), SortCol::Kind, false, &mut sort_click));
+            h.col(|ui| header_cell(ui, tr("Size"), SortCol::Size, true, &mut sort_click));
             if in_archive {
-                h.col(|ui| header_cell(ui, "Packed", SortCol::Packed, true, &mut sort_click));
+                h.col(|ui| header_cell(ui, tr("Packed"), SortCol::Packed, true, &mut sort_click));
             }
         })
         .body(|body| {
@@ -1413,32 +1435,32 @@ fn list(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                             ui.close();
                         }
                     };
-                    item(ui, "Open", MenuAct::Open);
+                    item(ui, tr("Open"), MenuAct::Open);
                     match &r.target {
                         Target::Node(_) => {
-                            item(ui, "Extract to…", MenuAct::ExtractTo);
-                            item(ui, "Extract next to the archive", MenuAct::ExtractHere);
+                            item(ui, tr("Extract to…"), MenuAct::ExtractTo);
+                            item(ui, tr("Extract next to the archive"), MenuAct::ExtractHere);
                             if r.is_archive() {
-                                item(ui, "Browse inside", MenuAct::OpenAsArchive);
+                                item(ui, tr("Browse inside"), MenuAct::OpenAsArchive);
                             }
                         }
                         Target::Disk(_) => {
                             if r.is_archive() {
-                                item(ui, "Extract here", MenuAct::ExtractHere);
-                                item(ui, "Extract to folder…", MenuAct::ExtractTo);
-                                item(ui, "Open as folder", MenuAct::OpenAsFolder);
+                                item(ui, tr("Extract here"), MenuAct::ExtractHere);
+                                item(ui, tr("Extract to folder…"), MenuAct::ExtractTo);
+                                item(ui, tr("Open as folder"), MenuAct::OpenAsFolder);
                             }
-                            item(ui, "Compress…", MenuAct::Compress);
-                            item(ui, "Show in Explorer", MenuAct::Reveal);
+                            item(ui, tr("Compress…"), MenuAct::Compress);
+                            item(ui, tr("Show in Explorer"), MenuAct::Reveal);
                         }
                     }
                     ui.separator();
-                    item(ui, "Copy", MenuAct::Copy);
+                    item(ui, tr("Copy"), MenuAct::Copy);
                     if can_paste {
-                        item(ui, "Paste", MenuAct::Paste);
+                        item(ui, tr("Paste"), MenuAct::Paste);
                     }
-                    item(ui, "Copy name", MenuAct::CopyName);
-                    item(ui, "Copy path", MenuAct::CopyPath);
+                    item(ui, tr("Copy name"), MenuAct::CopyName);
+                    item(ui, tr("Copy path"), MenuAct::CopyPath);
                 });
             });
         });
@@ -1640,7 +1662,7 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
                             .desired_rows(1)
                             .font(FontId::monospace(11.5))
                             .hint_text(
-                                RichText::new("Paste a hash to check this file")
+                                RichText::new(tr("Paste a hash to check this file"))
                                     .font(FontId::proportional(12.0))
                                     .color(p.faint),
                             )
@@ -1685,7 +1707,7 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
             ui.horizontal(|ui| {
                 icons::icon(ui, 14.0, Icon::Check, p.ok);
                 ui.label(
-                    RichText::new(format!("{} matches", exp.algo.name()))
+                    RichText::new(tf!("{} matches", exp.algo.name()))
                         .font(theme::semibold(12.5))
                         .color(p.ok),
                 );
@@ -1695,14 +1717,14 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
             ui.horizontal(|ui| {
                 icons::icon(ui, 14.0, Icon::Alert, p.danger);
                 ui.label(
-                    RichText::new(format!("{} doesn't match", exp.algo.name()))
+                    RichText::new(tf!("{} doesn't match", exp.algo.name()))
                         .font(theme::semibold(12.5))
                         .color(p.danger),
                 );
             });
             ui.add(
                 egui::Label::new(
-                    RichText::new(format!("This file: {actual}"))
+                    RichText::new(tf!("This file: {actual}", actual = actual))
                         .monospace()
                         .size(11.0)
                         .color(p.dim),
@@ -1715,7 +1737,7 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new().size(14.0));
                 ui.label(
-                    RichText::new(format!("Computing {}…", exp.algo.name()))
+                    RichText::new(tf!("Computing {}…", exp.algo.name()))
                         .size(12.0)
                         .color(p.dim),
                 );
@@ -1733,7 +1755,7 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
             }
             Some(false) => {}
             None => {
-                let label = format!("Check {}", exp.algo.name());
+                let label = tf!("Check {}", exp.algo.name());
                 if button(ui, None, &label, false, true).clicked() {
                     app.preview.ensure_hash(ctx, exp.algo);
                 }
@@ -1743,7 +1765,7 @@ fn hash_check(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette, name
     if let Some(other) = exp.name.as_deref().filter(|_| !exp.is_for(name)) {
         ui.add(
             egui::Label::new(
-                RichText::new(format!("The pasted hash is for {other}."))
+                RichText::new(tf!("The pasted hash is for {other}.", other = other))
                     .size(12.0)
                     .color(p.caution),
             )
@@ -1799,7 +1821,7 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
     if selected.len() > 1 {
         let size: u64 = selected.iter().filter_map(|r| r.size).sum();
         ui.label(
-            RichText::new(format!("{} items selected", selected.len())).font(theme::semibold(16.0)),
+            RichText::new(tf!("{} items selected", selected.len())).font(theme::semibold(16.0)),
         );
         ui.label(RichText::new(human_size(size)).color(p.dim));
         return;
@@ -1832,20 +1854,21 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
     let mut size = row.size.map(human_size).unwrap_or_default();
     if let (Some(s), Some(pk)) = (row.size, row.packed) {
         if s > 0 {
-            size = format!(
-                "{size}  ·  packed {} ({:.0}%)",
-                human_size(pk),
-                pk as f64 * 100.0 / s as f64
+            size = tf!(
+                "{size}  ·  packed {packed} ({percent}%)",
+                size = size,
+                packed = human_size(pk),
+                percent = format!("{:.0}", pk as f64 * 100.0 / s as f64)
             );
         }
     }
-    prop(ui, p, "Size", &size);
-    prop(ui, p, "Modified", &fmt_time(row.mtime));
+    prop(ui, p, tr("Size"), &size);
+    prop(ui, p, tr("Modified"), &fmt_time(row.mtime));
     match &row.target {
         Target::Disk(path) => prop(
             ui,
             p,
-            "Location",
+            tr("Location"),
             &path
                 .parent()
                 .map(|d| d.display().to_string())
@@ -1855,9 +1878,9 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             if let Loc::Archive { depth, .. } = app.loc {
                 let level = &app.stack[depth];
                 let node = &level.tree.nodes[*n];
-                prop(ui, p, "Path", &node.path);
+                prop(ui, p, tr("Path"), &node.path);
                 if let Some(e) = node.entry.map(|i| &level.opened.archive().entries()[i]) {
-                    prop(ui, p, "Method", e.method.as_deref().unwrap_or(""));
+                    prop(ui, p, tr("Method"), e.method.as_deref().unwrap_or(""));
                     prop(
                         ui,
                         p,
@@ -1865,10 +1888,10 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                         &e.crc.map(|c| format!("{c:08X}")).unwrap_or_default(),
                     );
                     if e.encrypted {
-                        prop(ui, p, "Encrypted", "yes");
+                        prop(ui, p, tr("Encrypted"), "yes");
                     }
                     if let Some(c) = &e.comment {
-                        prop(ui, p, "Comment", c);
+                        prop(ui, p, tr("Comment"), c);
                     }
                 }
             }
@@ -1892,17 +1915,17 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(82.0);
-                    if ui.small_button("Copy SHA-256").clicked() {
+                    if ui.small_button(tr("Copy SHA-256")).clicked() {
                         ctx.copy_text(sha.clone());
                     }
-                    if ui.small_button("Copy CRC32").clicked() {
+                    if ui.small_button(tr("Copy CRC32")).clicked() {
                         ctx.copy_text(crc.clone());
                     }
                 });
             }
             Some(Err(e)) => {
                 ui.label(
-                    RichText::new(format!("Couldn't hash: {e}"))
+                    RichText::new(tf!("Couldn't hash: {e}", e = e))
                         .size(12.0)
                         .color(p.danger),
                 );
@@ -1910,11 +1933,11 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
             None if app.preview.hashing() => {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(14.0));
-                    ui.label(RichText::new("Hashing…").size(12.0).color(p.dim));
+                    ui.label(RichText::new(tr("Hashing…")).size(12.0).color(p.dim));
                 });
             }
             None => {
-                if button(ui, None, "Compute SHA-256", false, true).clicked() {
+                if button(ui, None, tr("Compute SHA-256"), false, true).clicked() {
                     app.preview.start_hash(ctx);
                 }
             }
@@ -1926,20 +1949,20 @@ fn preview_body(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
     ui.horizontal_wrapped(|ui| {
         let target = row.target.clone();
         let label = if row.is_dir {
-            "Open"
+            tr("Open")
         } else if row.is_archive() {
-            "Browse"
+            tr("Browse")
         } else {
-            "Open"
+            tr("Open")
         };
         if button(ui, Some(Icon::External), label, true, true).clicked() {
             app.activate(ctx, &target);
         }
         if let Target::Disk(path) = &target {
-            if button(ui, None, "Show in Explorer", false, true).clicked() {
+            if button(ui, None, tr("Show in Explorer"), false, true).clicked() {
                 shell::reveal(path);
             }
-        } else if button(ui, Some(Icon::Extract), "Extract", false, true).clicked() {
+        } else if button(ui, Some(Icon::Extract), tr("Extract"), false, true).clicked() {
             let mut f = ExtractForm::new(app);
             f.selected_only = true;
             app.dialog = Some(Dialog::Extract(f));
@@ -1983,11 +2006,11 @@ fn preview_content(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette)
             .show(ui, |ui| {
                 ui.set_width(width - 28.0);
                 ui.label(
-                    RichText::new("Large file; not previewed automatically.")
+                    RichText::new(tr("Large file; not previewed automatically."))
                         .size(12.5)
                         .color(p.dim),
                 );
-                if button(ui, None, "Preview anyway", false, true).clicked() {
+                if button(ui, None, tr("Preview anyway"), false, true).clicked() {
                     app.preview.start(ctx);
                 }
             });
@@ -2002,7 +2025,11 @@ fn preview_content(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette)
                 ui.set_width(width - 28.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(16.0).color(p.accent));
-                    ui.label(RichText::new("Loading preview…").size(12.5).color(p.dim));
+                    ui.label(
+                        RichText::new(tr("Loading preview…"))
+                            .size(12.5)
+                            .color(p.dim),
+                    );
                 });
             });
         return;
@@ -2048,11 +2075,9 @@ fn preview_content(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette)
                 .inner_margin(Margin::same(12))
                 .show(ui, |ui| {
                     ui.set_width(width - 26.0);
+                    ui.label(RichText::new(tf!("{} archive", s.chain)).font(theme::semibold(13.0)));
                     ui.label(
-                        RichText::new(format!("{} archive", s.chain)).font(theme::semibold(13.0)),
-                    );
-                    ui.label(
-                        RichText::new(format!(
+                        RichText::new(tf!(
                             "{} files · {} folders · {} → {}",
                             group(s.files),
                             group(s.dirs as u64),
@@ -2063,7 +2088,7 @@ fn preview_content(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette)
                         .color(p.dim),
                     );
                     if s.encrypted {
-                        ui.label(RichText::new("Encrypted").size(12.0).color(p.caution));
+                        ui.label(RichText::new(tr("Encrypted")).size(12.0).color(p.caution));
                     }
                     ui.add_space(6.0);
                     for (name, dir) in &s.top {
@@ -2079,7 +2104,7 @@ fn preview_content(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette)
                     }
                     if s.more > 0 {
                         ui.label(
-                            RichText::new(format!("and {} more", s.more))
+                            RichText::new(tf!("and {} more", s.more))
                                 .size(12.0)
                                 .color(p.faint),
                         );
@@ -2111,22 +2136,22 @@ fn preview_content(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette)
                     ui.horizontal(|ui| {
                         icons::icon(ui, 16.0, Icon::Lock, p.dim);
                         ui.label(
-                            RichText::new("Encrypted. Unlock to preview.")
+                            RichText::new(tr("Encrypted. Unlock to preview."))
                                 .size(12.5)
                                 .color(p.dim),
                         );
                     });
-                    if button(ui, None, "Enter password", false, true).clicked() {
+                    if button(ui, None, tr("Enter password"), false, true).clicked() {
                         unlock = true;
                     }
                 });
         }
         Some(Ok(Body::Empty)) => {
-            ui.label(RichText::new("Empty file").size(12.5).color(p.dim));
+            ui.label(RichText::new(tr("Empty file")).size(12.5).color(p.dim));
         }
         Some(Err(e)) => {
             ui.label(
-                RichText::new(format!("No preview: {e}"))
+                RichText::new(tf!("No preview: {e}", e = e))
                     .size(12.5)
                     .color(p.dim),
             );
@@ -2178,7 +2203,7 @@ fn code_box(
         });
     if truncated || lines > 3000 {
         ui.label(
-            RichText::new("Showing the beginning of the file")
+            RichText::new(tr("Showing the beginning of the file"))
                 .size(11.5)
                 .color(p.faint),
         );
@@ -2198,7 +2223,7 @@ fn folder_summary(app: &mut App, ui: &mut Ui, p: &Palette) {
             let archives = app.rows.iter().filter(|r| r.is_archive()).count();
             let size: u64 = app.rows.iter().filter_map(|r| r.size).sum();
             ui.label(
-                RichText::new(format!(
+                RichText::new(tf!(
                     "{} folders · {} files · {}",
                     group(dirs as u64),
                     group(files as u64),
@@ -2210,8 +2235,9 @@ fn folder_summary(app: &mut App, ui: &mut Ui, p: &Palette) {
             if archives > 0 {
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new(format!(
-                        "{archives} archives here. Double-click one to look inside."
+                    RichText::new(tf!(
+                        "{archives} archives here. Double-click one to look inside.",
+                        archives = archives
                     ))
                     .size(12.5)
                     .color(p.dim),
@@ -2219,9 +2245,9 @@ fn folder_summary(app: &mut App, ui: &mut Ui, p: &Palette) {
             }
             ui.add_space(14.0);
             ui.label(
-                RichText::new(
+                RichText::new(tr(
                     "Select a file to preview it. Drop files on the window to compress them.",
-                )
+                ))
                 .size(12.0)
                 .color(p.faint),
             );
@@ -2231,7 +2257,7 @@ fn folder_summary(app: &mut App, ui: &mut Ui, p: &Palette) {
             let n = &t.nodes[*node];
             ui.label(RichText::new(&n.name).font(theme::semibold(16.0)));
             ui.label(
-                RichText::new(format!("{} files · {}", group(n.files), human_size(n.size)))
+                RichText::new(tf!("{} files · {}", group(n.files), human_size(n.size)))
                     .size(12.5)
                     .color(p.dim),
             );
@@ -2283,33 +2309,29 @@ fn status(app: &mut App, root: &mut Ui, p: &Palette) {
                 let count = app.rows.len() as u64;
                 let total: u64 = app.rows.iter().filter_map(|r| r.size).sum();
                 let mut text = if app.search.trim().is_empty() {
-                    format!("{} items · {}", group(count), human_size(total))
+                    tf!("{} items · {}", group(count), human_size(total))
                 } else {
                     format!("{} matches", group(count))
                 };
                 if !sel.is_empty() {
                     let size: u64 = sel.iter().filter_map(|r| r.size).sum();
-                    text.push_str(&format!(
-                        "   ·   {} selected · {}",
-                        sel.len(),
-                        human_size(size)
-                    ));
+                    text.push_str(&tf!("   ·   {} selected · {}", sel.len(), human_size(size)));
                 } else if let Loc::Disk(d) = &app.loc {
                     if let Some(dr) = app.drives.iter().find(|dr| d.starts_with(&dr.root)) {
-                        text.push_str(&format!("   ·   {} free", human_size(dr.free)));
+                        text.push_str(&tf!("   ·   {} free", human_size(dr.free)));
                     }
                 }
                 ui.label(RichText::new(text).size(11.5).color(p.faint));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if !app.queue.is_empty() {
                         ui.label(
-                            RichText::new(format!("{} queued", app.queue.len()))
+                            RichText::new(tf!("{} queued", app.queue.len()))
                                 .size(11.5)
                                 .color(p.faint),
                         );
                     } else {
                         ui.label(
-                            RichText::new("Ctrl+Shift+F  search everywhere")
+                            RichText::new(tr("Ctrl+Shift+F  search everywhere"))
                                 .size(11.5)
                                 .color(p.faint),
                         );
@@ -2353,7 +2375,7 @@ fn activity(app: &mut App, ctx: &egui::Context, p: &Palette) {
                                 Icon::Close,
                                 if cancelling { p.faint } else { p.dim },
                             );
-                            if resp.on_hover_text("Stop").clicked() {
+                            if resp.on_hover_text(tr("Stop")).clicked() {
                                 s.request_cancel();
                             }
                         });
@@ -2398,12 +2420,12 @@ fn activity(app: &mut App, ctx: &egui::Context, p: &Palette) {
                     let mut line = if total > 0 {
                         format!("{} of {}", human_size(done), human_size(total))
                     } else {
-                        "Preparing…".into()
+                        tr("Preparing…").into()
                     };
                     if elapsed > 0.5 && rate > 0.0 {
                         line.push_str(&format!(" · {}/s", human_size(rate as u64)));
                         if total > done && done * 10 >= total {
-                            line.push_str(&format!(
+                            line.push_str(&tf!(
                                 " · {} left",
                                 secs(Duration::from_secs_f64((total - done) as f64 / rate))
                             ));
@@ -2520,9 +2542,9 @@ fn drop_overlay(app: &App, ctx: &egui::Context, p: &Palette) {
         p.accent,
     );
     let text = if matches!(app.dialog, Some(Dialog::Pack(_))) {
-        "Add to the new archive"
+        tr("Add to the new archive")
     } else {
-        "Drop archives to open or extract them,\nother files to compress them"
+        tr("Drop archives to open or extract them,\nother files to compress them")
     };
     painter.text(
         pos2(card.center().x, card.top() + 100.0),

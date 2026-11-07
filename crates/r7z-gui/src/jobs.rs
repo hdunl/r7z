@@ -5,6 +5,7 @@
 //! and cancellable, so browsing stays responsive while a job runs. Both turn panics into
 //! errors instead of taking the app down.
 
+use crate::i18n::{tf, tr};
 use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
@@ -27,8 +28,8 @@ fn panic_message(p: Box<dyn Any + Send>) -> Error {
         .downcast_ref::<&str>()
         .map(|s| s.to_string())
         .or_else(|| p.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "unknown failure".into());
-    Error::Other(format!("internal error: {msg}"))
+        .unwrap_or_else(|| tr("unknown failure").into());
+    Error::Other(tf!("internal error: {msg}", msg = msg))
 }
 
 fn guarded<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
@@ -409,10 +410,10 @@ pub struct ExtractRequest {
     pub total: u64,
 }
 
-pub fn extract(ctx: &egui::Context, title: String, req: ExtractRequest) -> Job {
-    Job::spawn(ctx, title.clone(), "Extracting", req.total, move |s| {
-        let what = title.strip_prefix("Extracting ").unwrap_or(&title);
-        let label = format!("{what} into {}", req.dest.display());
+pub fn extract(ctx: &egui::Context, name: String, req: ExtractRequest) -> Job {
+    let title = tf!("Extracting {}", name);
+    Job::spawn(ctx, title, tr("Extracting"), req.total, move |s| {
+        let label = tf!("{what} into {dest}", what = name, dest = req.dest.display());
         let rec = crate::undo::Recorder::new(crate::undo::Store::user(), &label, &req.dest);
         rec.note_dir(&req.dest);
         let result = std::fs::create_dir_all(&req.dest)
@@ -465,7 +466,7 @@ pub fn stage(ctx: &egui::Context, title: String, req: StageRequest) -> Job {
         abort,
         ready,
     } = req;
-    Job::spawn(ctx, title, "Extracting", x.total, move |s| {
+    Job::spawn(ctx, title, tr("Extracting"), x.total, move |s| {
         let aborted = Outcome::Staged {
             report: Report::default(),
             paths: Vec::new(),
@@ -538,7 +539,7 @@ pub fn test(
     password: Option<String>,
     total: u64,
 ) -> Job {
-    Job::spawn(ctx, title, "Testing", total, move |s| {
+    Job::spawn(ctx, title, tr("Testing"), total, move |s| {
         let opts = ExtractOptions {
             base: None,
             password,
@@ -556,8 +557,8 @@ pub fn test(
 pub fn recover(ctx: &egui::Context, path: PathBuf, password: Option<String>, dest: PathBuf) -> Job {
     let total = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let name = file_name(&path);
-    let title = format!("Recovering {name}");
-    Job::spawn(ctx, title, "Recovery", total, move |s| {
+    let title = tf!("Recovering {name}", name = name);
+    Job::spawn(ctx, title, tr("Recovery"), total, move |s| {
         let opts = ExtractOptions {
             base: None,
             password: password.clone(),
@@ -631,10 +632,10 @@ pub fn batch_extract(
         .filter_map(|p| std::fs::metadata(p).ok())
         .map(|m| m.len())
         .sum();
-    let title = format!("Extracting {} archives", archives.len());
+    let title = tf!("Extracting {} archives", archives.len());
     let what = match archives.as_slice() {
         [one] => file_name(one),
-        _ => format!("{} archives", archives.len()),
+        _ => tf!("{} archives", archives.len()),
     };
     let (label, undo_dest) = match &dest {
         BatchDest::Into(d) => (format!("{what} into {}", d.display()), d.clone()),
@@ -644,10 +645,13 @@ pub fn batch_extract(
                 .and_then(|p| p.parent())
                 .map(Path::to_path_buf)
                 .unwrap_or_default();
-            (format!("{what} in {}", parent.display()), parent)
+            (
+                tf!("{what} in {dest}", what = what, dest = parent.display()),
+                parent,
+            )
         }
     };
-    Job::spawn(ctx, title, "Extracting", total, move |s| {
+    Job::spawn(ctx, title, tr("Extracting"), total, move |s| {
         let rec = crate::undo::Recorder::new(crate::undo::Store::user(), &label, &undo_dest);
         let result = batch_run(&s, &rec, archives, &dest, overwrite, password);
         *s.undo.lock().unwrap() = rec.finish();
@@ -670,7 +674,12 @@ fn batch_run(
         if s.cancel.load(Ordering::Relaxed) {
             return Err(Error::Cancelled);
         }
-        s.set_phase(format!("{} of {count} · {}", k + 1, file_name(&path)));
+        s.set_phase(tf!(
+            "{n} of {count} · {name}",
+            n = k + 1,
+            count = count,
+            name = file_name(&path)
+        ));
         let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         let base_done = s.done.load(Ordering::Relaxed);
         let result = (|| -> Result<(PathBuf, Report)> {
@@ -729,7 +738,14 @@ fn batch_run(
                     .first()
                     .map(|(n, e)| format!("{n}: {e}"))
                     .unwrap_or_default();
-                failed.push((path, format!("{} errors, first: {first}", rep.errors.len())));
+                failed.push((
+                    path,
+                    tf!(
+                        "{n} errors, first: {first}",
+                        n = rep.errors.len(),
+                        first = first
+                    ),
+                ));
             }
             Err(Error::Cancelled) => return Err(Error::Cancelled),
             Err(e) => failed.push((path, e.to_string())),
@@ -745,11 +761,18 @@ fn batch_run(
 
 /// Reverses the extract recorded as `id` (see `undo`).
 pub fn undo(ctx: &egui::Context, id: String) -> Job {
-    Job::spawn(ctx, "Undoing extract".into(), "Undo", 0, move |_| {
-        let store = crate::undo::Store::user()
-            .ok_or_else(|| Error::Other("there is no settings folder to read from".into()))?;
-        Ok(Outcome::Undone(crate::undo::undo(&store, &id)?))
-    })
+    Job::spawn(
+        ctx,
+        tr("Undoing extract").into(),
+        tr("Undo"),
+        0,
+        move |_| {
+            let store = crate::undo::Store::user().ok_or_else(|| {
+                Error::Other(tr("there is no settings folder to read from").into())
+            })?;
+            Ok(Outcome::Undone(crate::undo::undo(&store, &id)?))
+        },
+    )
 }
 
 /// Reports extraction progress in another unit (archive bytes instead of file bytes).
@@ -831,9 +854,9 @@ fn write_archive(
 }
 
 pub fn create(ctx: &egui::Context, req: CreateRequest) -> Job {
-    let title = format!("Creating {}", file_name(&req.archive));
-    Job::spawn(ctx, title, "Compressing", 0, move |s| {
-        s.set_phase("Scanning files".into());
+    let title = tf!("Creating {}", file_name(&req.archive));
+    Job::spawn(ctx, title, tr("Compressing"), 0, move |s| {
+        s.set_phase(tr("Scanning files").into());
         let names: Vec<String> = req
             .paths
             .iter()
@@ -842,7 +865,7 @@ pub fn create(ctx: &egui::Context, req: CreateRequest) -> Job {
         let scan = r7z::ops::scan::scan(&names, false, &[], &req.archive);
         s.warnings.lock().unwrap().extend(scan.warnings);
         if scan.items.is_empty() {
-            return Err(Error::Other("there is nothing to add".into()));
+            return Err(Error::Other(tr("there is nothing to add").into()));
         }
         s.total
             .store(scan.items.iter().map(|i| i.size).sum(), Ordering::Relaxed);
@@ -864,12 +887,12 @@ pub fn convert(
     scratch: PathBuf,
 ) -> Job {
     let unpacked: u64 = archive.entries().iter().map(|e| e.size_or_zero()).sum();
-    let title = format!("Converting to {}", file_name(&req.archive));
-    Job::spawn(ctx, title, "Converting", unpacked * 2, move |s| {
+    let title = tf!("Converting to {}", file_name(&req.archive));
+    Job::spawn(ctx, title, tr("Converting"), unpacked * 2, move |s| {
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(&scratch)?;
         let result = (|| {
-            s.set_phase("Unpacking".into());
+            s.set_phase(tr("Unpacking").into());
             let opts = ExtractOptions {
                 base: None,
                 password,
@@ -885,7 +908,7 @@ pub fn convert(
             if let Some((n, e)) = rep.errors.into_iter().next() {
                 return Err(Error::Other(format!("{n}: {e}")));
             }
-            s.set_phase("Packing".into());
+            s.set_phase(tr("Packing").into());
             let names: Vec<String> = std::fs::read_dir(&scratch)?
                 .filter_map(|e| e.ok())
                 .map(|e| e.path().to_string_lossy().into_owned())

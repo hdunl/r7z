@@ -113,6 +113,7 @@ pub fn paste(
 
 #[cfg(windows)]
 mod imp {
+    use crate::i18n::tf;
     use std::ffi::{c_void, OsString};
     use std::os::windows::ffi::{OsStrExt, OsStringExt};
     use std::path::{Path, PathBuf};
@@ -809,7 +810,10 @@ mod imp {
         if rc == 0 || rc == 0x4C7 || op.aborted != 0 {
             Ok(())
         } else {
-            Err(format!("the files could not be pasted (error {rc:#x})"))
+            Err(tf!(
+                "the files could not be pasted (error {code})",
+                code = format!("{rc:#x}")
+            ))
         }
     }
 }

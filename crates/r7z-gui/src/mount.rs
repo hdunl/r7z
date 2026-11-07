@@ -11,6 +11,7 @@
 //! mount lives, so a later run can tell a root left by a crash from one in use by another
 //! running copy of the app.
 
+use crate::i18n::{tf, tr};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
@@ -29,11 +30,15 @@ use crate::model::{Tree, ROOT};
 use crate::projfs::{self as pf, Api, CallbackData, FileBasicInfo, GUID, HRESULT};
 
 /// What the GUI shows when ProjFS is missing.
-pub const ENABLE_HELP: &str = "Open as folder uses Windows Projected File System (ProjFS), \
+fn enable_help() -> &'static str {
+    tr(
+        "Open as folder uses Windows Projected File System (ProjFS), \
 an optional Windows feature that is turned off on this PC.\n\n\
 To turn it on, open PowerShell as administrator and run:\n\n\
 Enable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS\n\n\
-Windows may ask to restart. r7z never changes this setting itself.";
+Windows may ask to restart. r7z never changes this setting itself.",
+    )
+}
 
 /// Most decoded data kept on disk per mount for solid blocks; less when the drive is
 /// short of space (a quarter of what is free).
@@ -55,7 +60,7 @@ const PRJ_FLAG_USE_NEGATIVE_PATH_CACHE: u32 = 0x1;
 pub fn available() -> std::result::Result<(), String> {
     pf::api().map(|_| ()).map_err(|e| {
         if e == pf::NOT_ENABLED {
-            ENABLE_HELP.to_string()
+            enable_help().to_string()
         } else {
             e
         }
@@ -451,7 +456,9 @@ impl Data {
                 Msg::Done(r) => return r,
             }
         }
-        Err(Error::Other("the entry was not found in its block".into()))
+        Err(Error::Other(
+            tr("the entry was not found in its block").into(),
+        ))
     }
 
     fn walk(&self, unit: usize, target: usize, tx: mpsc::SyncSender<Msg>) {
@@ -1094,11 +1101,14 @@ fn start_error(hr: HRESULT) -> String {
     match hr as u32 {
         // ERROR_NOT_SUPPORTED: the folder is not on NTFS, or the driver is not running.
         0x8007_0032 => {
-            "ProjFS can't run here (it needs an NTFS drive and its driver loaded)".into()
+            tr("ProjFS can't run here (it needs an NTFS drive and its driver loaded)").into()
         }
-        0x8007_0005 => "access to the mount folder was denied".into(),
-        0x8007_0003 | 0x8007_0002 => "the mount folder does not exist".into(),
-        h => format!("ProjFS refused to start (0x{h:08X})"),
+        0x8007_0005 => tr("access to the mount folder was denied").into(),
+        0x8007_0003 | 0x8007_0002 => tr("the mount folder does not exist").into(),
+        h => tf!(
+            "ProjFS refused to start ({code})",
+            code = format!("0x{h:08X}")
+        ),
     }
 }
 
@@ -1232,9 +1242,9 @@ impl Mount {
     /// UI thread.
     pub fn start(src: Source, cache_dir: PathBuf) -> std::result::Result<Mount, String> {
         let api = pf::api()?;
-        let base_dir = mounts_dir().ok_or("LOCALAPPDATA is not set")?;
+        let base_dir = mounts_dir().ok_or(tr("LOCALAPPDATA is not set"))?;
         std::fs::create_dir_all(&base_dir)
-            .map_err(|e| format!("can't create {}: {e}", base_dir.display()))?;
+            .map_err(|e| tf!("can't create {path}: {e}", path = base_dir.display(), e = e))?;
         let base = r7z::ops::extract::safe_relative_path(&src.name)
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| "archive".into());
@@ -1255,8 +1265,9 @@ impl Mount {
             picked = Some((name, root, lock));
             break;
         }
-        let (name, root, lock) = picked.ok_or("no free mount folder name")?;
-        std::fs::create_dir(&root).map_err(|e| format!("can't create {}: {e}", root.display()))?;
+        let (name, root, lock) = picked.ok_or(tr("no free mount folder name"))?;
+        std::fs::create_dir(&root)
+            .map_err(|e| tf!("can't create {path}: {e}", path = root.display(), e = e))?;
         let root_w = wide(root.as_os_str());
         let version = pf::PlaceholderVersionInfo::default();
         let id = GUID::new();

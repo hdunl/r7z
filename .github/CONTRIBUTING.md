@@ -24,7 +24,6 @@ cargo clippy --workspace       # should print no warnings
 an installed 7-Zip. The source layout is described in
 [docs/development.md](../docs/development.md).
 
-
 ## Translations
 
 The desktop app's text lives in `crates/r7z-gui/res/lang/`, one plain text file per

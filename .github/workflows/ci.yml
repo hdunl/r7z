@@ -36,6 +36,12 @@ jobs:
       # Debug build: arithmetic overflow panics, so past fuzzing crashes stay fixed.
       - run: cargo test --test fuzz_regressions --locked
       - run: cargo clippy --release --workspace --locked
+      # The Store build leaves code out, so it has to compile and pass by itself. Last,
+      # since it rebuilds the app in place.
+      - run: cargo clippy --release --locked -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
+      - run: cargo test --release --locked -p r7z-gui --features store
+      - run: cargo build --release --locked -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
+      - run: python scripts/check_store_build.py target/release
 
   msrv:
     # The oldest Rust that Cargo.toml's rust-version promises.

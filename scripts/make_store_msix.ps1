@@ -1,5 +1,6 @@
 # Builds the Microsoft Store package of r7z from crates/r7z-shell/package/store and a `store` build of the
-# programs. The package is not signed: Partner Center signs it when it is published.
+# programs. Partner Center signs the package when it is published; the release workflow signs the
+# programs before they go in.
 #
 #   cargo build --release --target-dir target/store -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
 #   pwsh scripts/make_store_msix.ps1 -Version 0.1.8 -BinDir target/store/release -Out target/store/r7z-0.1.8-store.msix

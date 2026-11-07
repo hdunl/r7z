@@ -4,6 +4,14 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 
 ## Unreleased
 
+- The Microsoft Store build no longer contains the updater, the installer or the
+  self-delete that follows uninstalling. The `store` feature used to hide them; now they
+  are not compiled in, so the Store version holds no network code at all, as PRIVACY.md
+  says. `r7z-gui --uninstall` does nothing there, instead of offering to remove a copy
+  the Store manages.
+- The programs in the Microsoft Store package are Authenticode-signed like the ones in the
+  zip, and covered by the same build provenance. Until now only Partner Center's signature
+  on the package covered them.
 - Inno Setup installers from 5.5 to 6.7, ANSI and Unicode: files are listed under their
   install folders (`app/…`) and extracted from stored, zlib, bzip2, LZMA and LZMA2 data,
   with each file's SHA-1 or SHA-256 checked. Encrypted files and installers with their

@@ -138,7 +138,7 @@ pub fn undo_backups() -> PathBuf {
     std::env::temp_dir().join("r7z-undo")
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn reg(args: &[&str]) -> bool {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -151,7 +151,7 @@ pub fn reg(args: &[&str]) -> bool {
 }
 
 /// Explorer context-menu verbs, registered per user (HKCU, no administrator rights).
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 const VERBS: &[(&str, &str, &str, &str)] = &[
     ("*", "r7z.open", "Open with r7z", ""),
     (
@@ -170,18 +170,18 @@ const VERBS: &[(&str, &str, &str, &str)] = &[
     ("Directory", "r7z.add", "Add to archive… (r7z)", "--add "),
 ];
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn explorer_installed() -> bool {
     reg(&["query", r"HKCU\Software\Classes\*\shell\r7z.open"])
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn install_explorer() -> bool {
     std::env::current_exe().is_ok_and(|exe| install_explorer_for(&exe))
 }
 
 /// Adds the classic menu verbs, starting `exe`.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn install_explorer_for(exe: &Path) -> bool {
     let exe = exe.display().to_string();
     let mut ok = true;
@@ -195,7 +195,7 @@ pub fn install_explorer_for(exe: &Path) -> bool {
     ok
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn uninstall_explorer() -> bool {
     let mut ok = true;
     for (class, key, _, _) in VERBS {
@@ -207,15 +207,15 @@ pub fn uninstall_explorer() -> bool {
     ok
 }
 
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn explorer_installed() -> bool {
     false
 }
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn install_explorer() -> bool {
     false
 }
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn uninstall_explorer() -> bool {
     false
 }
@@ -235,7 +235,7 @@ pub enum ModernMenu {
     Unavailable(String),
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn powershell(script: &str) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -258,12 +258,12 @@ pub fn powershell(script: &str) -> Result<String, String> {
 }
 
 /// A path as a single-quoted PowerShell string.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn ps_path(p: &Path) -> String {
     format!("'{}'", p.display().to_string().replace('\'', "''"))
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 fn reg_value(key: &str, name: &str) -> Option<String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -277,7 +277,7 @@ fn reg_value(key: &str, name: &str) -> Option<String> {
     line.split_whitespace().last().map(str::to_string)
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 fn windows_11() -> bool {
     reg_value(
         r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion",
@@ -287,7 +287,7 @@ fn windows_11() -> bool {
     .is_some_and(|b| b >= 22000)
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 fn developer_mode() -> bool {
     reg_value(
         r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock",
@@ -298,7 +298,7 @@ fn developer_mode() -> bool {
 
 /// The package next to this program: a signed `r7z-shell.msix` (releases) or the loose
 /// `package\AppxManifest.xml` of a development build, which needs Developer Mode.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 fn modern_menu_package() -> Result<(PathBuf, bool), ModernMenu> {
     let dir = std::env::current_exe()
         .ok()
@@ -307,7 +307,7 @@ fn modern_menu_package() -> Result<(PathBuf, bool), ModernMenu> {
     modern_menu_package_in(&dir)
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 fn modern_menu_package_in(dir: &Path) -> Result<(PathBuf, bool), ModernMenu> {
     if !dir.join("r7z_shell.dll").is_file() {
         return Err(ModernMenu::Missing);
@@ -323,7 +323,7 @@ fn modern_menu_package_in(dir: &Path) -> Result<(PathBuf, bool), ModernMenu> {
     Err(ModernMenu::Missing)
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn modern_menu_status() -> ModernMenu {
     if !windows_11() {
         return ModernMenu::Unavailable("Windows 10 has only the classic menu.".into());
@@ -341,7 +341,7 @@ pub fn modern_menu_status() -> ModernMenu {
 
 /// Fetches the Windows 11 menu files this copy lacks from this version's release (with
 /// the same signed-manifest checks as updates), then registers the menu.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn get_modern_menu() -> ModernMenu {
     match crate::update::install_missing(&std::sync::atomic::AtomicBool::new(false)) {
         Ok(_) => install_modern_menu(),
@@ -349,7 +349,7 @@ pub fn get_modern_menu() -> ModernMenu {
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn install_modern_menu() -> ModernMenu {
     let (package, signed) = match modern_menu_package() {
         Ok(p) => p,
@@ -364,7 +364,7 @@ pub fn install_modern_menu() -> ModernMenu {
 
 /// Points the Windows 11 menu at the copy of r7z in `dir`, replacing a registration for
 /// another folder.
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn move_modern_menu(dir: &Path) -> ModernMenu {
     if !windows_11() {
         return ModernMenu::Unavailable("Windows 10 has only the classic menu.".into());
@@ -375,7 +375,7 @@ pub fn move_modern_menu(dir: &Path) -> ModernMenu {
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 fn register_modern_menu(package: &Path, signed: bool, dir: &Path, replace: bool) -> ModernMenu {
     let remove = if replace {
         "Get-AppxPackage -Name r7z | Remove-AppxPackage; "
@@ -394,25 +394,25 @@ fn register_modern_menu(package: &Path, signed: bool, dir: &Path, replace: bool)
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(feature = "store")))]
 pub fn uninstall_modern_menu() -> ModernMenu {
     let _ = powershell("Get-AppxPackage -Name r7z | Remove-AppxPackage");
     modern_menu_status()
 }
 
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn modern_menu_status() -> ModernMenu {
     ModernMenu::Unavailable("Only on Windows 11.".into())
 }
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn install_modern_menu() -> ModernMenu {
     modern_menu_status()
 }
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn uninstall_modern_menu() -> ModernMenu {
     modern_menu_status()
 }
-#[cfg(not(windows))]
+#[cfg(any(not(windows), feature = "store"))]
 pub fn get_modern_menu() -> ModernMenu {
     modern_menu_status()
 }

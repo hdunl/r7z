@@ -2,8 +2,27 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.0 - 2026-11-07
 
+- Security: a crafted archive could create a symbolic link pointing outside the extraction
+  folder, and a later extraction into that folder could write through it. A link's target
+  was checked against its archive name, but `..` parts, a stripped base folder or flat
+  extraction can place the link shallower than that. Targets are now judged from where
+  the link lands, split the way the platform resolves them, and names made only of dots
+  and spaces are refused.
+- Security: a file opened from inside an archive in the desktop app is staged with the
+  archive's Mark of the Web, so SmartScreen checks programs and Office opens documents in
+  Protected View, and it is not opened if the mark can't be copied. This is the issue
+  behind 7-Zip's CVE-2025-0411.
+- Security: sizes declared by headers are bounded. VMDK grains are limited to 32 MiB, VMDK
+  and QCOW2 disk sizes must fit the tables that address them, RAR 5 dictionaries past 4 GiB
+  are refused and the decoder window is allocated fallibly, GPT entries and VMDK extents
+  whose sizes overflow are refused, and a damaged xz block that decodes past the memory
+  budget counts as lost.
+- Security: an update installs from the bytes whose checksum was verified, not from a
+  temporary copy another program could replace between the check and the install.
+- lzma-rust2 0.25, with xz padding and LZMA2 chunk-boundary fixes, and ctutils 0.4.5 for
+  RUSTSEC-2026-0385.
 - Simplified Chinese (简体中文). The desktop app follows the Windows display language, and
   Settings → Language chooses one for it; the right-click menus follow Windows. The
   translation is one plain text file, `crates/r7z-gui/res/lang/zh-CN.txt`. The command line
@@ -12,7 +31,7 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   self-delete that follows uninstalling. The `store` feature used to hide them; now they
   are not compiled in, so the Store version holds no network code at all, as PRIVACY.md
   says. `r7z-gui --uninstall` does nothing there, instead of offering to remove a copy
-  the Store manages.
+  the Store manages. This follows a report of Huorong flagging the Store build (#50).
 - The programs in the Microsoft Store package are Authenticode-signed like the ones in the
   zip, and covered by the same build provenance. Until now only Partner Center's signature
   on the package covered them.
@@ -26,6 +45,17 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 - RAR 2.x archives with comments inside their headers, Unix owner blocks or an
   authenticity signature open instead of failing a header CRC check, and RAR 2.x volume
   sets, which have no end blocks, open from the `.rar` file.
+- Entries that share a destination extract deterministically. Both used to be written and
+  the parallel writers decided which won. A repeat now follows the overwrite mode, as a
+  file on disk does: the later entry wins with overwrite, the first with skip, and the
+  rename modes keep both.
+- Ctrl-C, Ctrl-Break or closing the console no longer leaves `name.r7z-tmp-<pid>` beside
+  the archive being written.
+- zstd literal blocks with more than 128 distinct byte values are Huffman coded instead of
+  stored raw, using FSE-coded weights. Executables in zstd zips come out 2.7% smaller, at
+  the same speed.
+- Command-line paths and right-click selections that aren't valid Unicode no longer end
+  the app or drop out of the selection.
 
 ## 0.2.0 - 2026-10-22
 

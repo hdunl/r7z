@@ -59,6 +59,12 @@ jobs:
       - name: Build
         run: cargo build --release --workspace --locked
 
+      - name: Build the Microsoft Store programs
+        run: cargo build --release --locked --target-dir target/store -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
+
+      - name: Check what the Microsoft Store programs leave out
+        run: python scripts/check_store_build.py target/store/release
+
       - name: Sign in to Azure
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
@@ -91,6 +97,9 @@ jobs:
             ${{ github.workspace }}\target\release\r7z.exe
             ${{ github.workspace }}\target\release\r7z-gui.exe
             ${{ github.workspace }}\target\release\r7z_shell.dll
+            ${{ github.workspace }}\target\store\release\r7z.exe
+            ${{ github.workspace }}\target\store\release\r7z-gui.exe
+            ${{ github.workspace }}\target\store\release\r7z_shell.dll
 
       - name: Build the Windows 11 menu package
         shell: pwsh
@@ -128,8 +137,11 @@ jobs:
         run: |
           # Compare the subject's parts, not their order or spacing.
           function Parts($dn) { ($dn -split ',\s*' | ForEach-Object { $_.Trim() } | Sort-Object) -join '|' }
-          foreach ($f in "r7z.exe", "r7z-gui.exe", "r7z_shell.dll", "r7z-shell.msix") {
-            $sig = Get-AuthenticodeSignature "target/release/$f"
+          $programs = "r7z.exe", "r7z-gui.exe", "r7z_shell.dll"
+          $files = @($programs + "r7z-shell.msix" | ForEach-Object { "target/release/$_" }) +
+            @($programs | ForEach-Object { "target/store/release/$_" })
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f
             if ($sig.Status -ne "Valid") { throw "$f is not validly signed: $($sig.StatusMessage)" }
             if ((Parts $sig.SignerCertificate.Subject) -ne (Parts $env:SUBJECT)) { throw "$f is signed by an unexpected certificate" }
             if (-not $sig.TimeStamperCertificate) { throw "$f has no timestamp" }
@@ -148,6 +160,22 @@ jobs:
         env:
           R7Z_RELEASE_DIR: ${{ github.workspace }}/dist
 
+      - name: Build the Microsoft Store package
+        # Partner Center signs the package on publishing; the programs in it are signed
+        # above. Kept as a workflow artifact for upload to Partner Center, not attached to
+        # the release, since it can't be installed directly.
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          scripts/make_store_msix.ps1 -Version $version -BinDir target/store/release -Out "target/store/r7z-$version-store.msix"
+
+      - name: Keep the Microsoft Store package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: store-package
+          path: target/store/*.msix
+          if-no-files-found: error
+
       - name: Attest build provenance
         id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -158,6 +186,10 @@ jobs:
             target/release/r7z-gui.exe
             target/release/r7z_shell.dll
             target/release/r7z-shell.msix
+            target/store/release/r7z.exe
+            target/store/release/r7z-gui.exe
+            target/store/release/r7z_shell.dll
+            target/store/*.msix
 
       - name: Attach the provenance to the release
         # The Sigstore bundle verifies offline (`gh attestation verify --bundle`); the
@@ -169,23 +201,6 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           cp "$BUNDLE" "dist/r7z-$version.sigstore.json"
           python -c "import json, sys; print(json.dumps(json.load(open(sys.argv[1]))['dsseEnvelope'], separators=(',', ':')))" "$BUNDLE" > "dist/r7z-$version.intoto.jsonl"
-
-      - name: Build the Microsoft Store package
-        # Unsigned: Partner Center signs it on publishing. Kept as a workflow artifact for
-        # upload to Partner Center, not attached to the release, since it can't be
-        # installed directly.
-        shell: pwsh
-        run: |
-          $version = $env:GITHUB_REF_NAME.TrimStart("v")
-          cargo build --release --locked --target-dir target/store -p r7z -p r7z-gui -p r7z-shell --features r7z-gui/store,r7z-shell/store
-          scripts/make_store_msix.ps1 -Version $version -BinDir target/store/release -Out "target/store/r7z-$version-store.msix"
-
-      - name: Keep the Microsoft Store package
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: store-package
-          path: target/store/*.msix
-          if-no-files-found: error
 
       - name: Publish
         shell: bash

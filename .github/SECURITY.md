@@ -72,5 +72,10 @@ with GitHub's OIDC token rather than a stored secret; Azure trusts that token on
 `release` environment, which only version tags can use. The workflow fails the release if
 any file is unsigned, untimestamped or signed by another certificate.
 
+Partner Center signs the Microsoft Store package when it is published. In releases after
+0.2.0 the programs inside it are signed as above and checked the same way, and their
+provenance is attested with the rest. In Store versions up to 0.2.0 only the package is
+signed, so `r7z-gui.exe` there shows no signature of its own.
+
 To check a file, open its Properties → Digital Signatures, or run
 `Get-AuthenticodeSignature r7z-gui.exe` in PowerShell.

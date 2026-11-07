@@ -46,6 +46,9 @@ pipeline and the CLI.
    the run's summary page, and the `release` job waits for a maintainer to approve the
    `release` environment. Read the summary, then approve: only then are the programs
    built, signed (Authenticode, the update manifest and the notes) and published.
+3. Publish to the Microsoft Store: download the `store-package` artifact from the run
+   and submit the `.msix` in Partner Center. Nothing does this for you, and Store users
+   stay on the old version until it passes certification.
 
 ## Testing
 

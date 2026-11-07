@@ -12,6 +12,10 @@ mod dialogs;
 mod dnd;
 mod finder;
 mod icons;
+#[cfg(not(feature = "store"))]
+mod install;
+#[cfg(feature = "store")]
+#[path = "install_stub.rs"]
 mod install;
 mod jobs;
 mod logo;
@@ -33,6 +37,10 @@ mod theme;
 mod tour;
 mod ui;
 mod undo;
+#[cfg(not(feature = "store"))]
+mod update;
+#[cfg(feature = "store")]
+#[path = "update_stub.rs"]
 mod update;
 
 use std::io::Write;
@@ -45,6 +53,10 @@ fn parse_args() -> app::Startup {
     // OS strings, so a file name that isn't valid Unicode still opens instead of
     // ending the app.
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    startup_from(&args)
+}
+
+fn startup_from(args: &[std::ffi::OsString]) -> app::Startup {
     let path = |i: usize| args.get(i).map(PathBuf::from);
     match args.first().map(|a| a.to_str().unwrap_or("")) {
         None => app::Startup::None,
@@ -70,6 +82,7 @@ fn parse_args() -> app::Startup {
                 },
             ),
         },
+        Some("--uninstall") if STORE => app::Startup::None,
         Some("--uninstall") => app::Startup::Uninstall,
         Some("--test") => match path(1) {
             Some(p) => app::Startup::Test(p),
@@ -195,4 +208,19 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| Ok(Box::new(app::App::new(cc, startup)))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uninstall_opens_its_dialog_only_where_r7z_installs_itself() {
+        let startup = startup_from(&["--uninstall".into()]);
+        if STORE {
+            assert!(matches!(startup, app::Startup::None));
+        } else {
+            assert!(matches!(startup, app::Startup::Uninstall));
+        }
+    }
 }

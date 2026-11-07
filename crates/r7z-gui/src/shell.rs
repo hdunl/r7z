@@ -1,5 +1,8 @@
 //! Operating-system glue: launching files, Explorer integration, small settings files.
 
+#[cfg(all(windows, not(feature = "store")))]
+use crate::i18n::tf;
+use crate::i18n::tr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -188,7 +191,7 @@ pub fn install_explorer_for(exe: &Path) -> bool {
     for (class, key, label, flag) in VERBS {
         let base = format!(r"HKCU\Software\Classes\{class}\shell\{key}");
         let cmd = format!("\"{exe}\" {flag}\"%1\"");
-        ok &= reg(&["add", &base, "/v", "MUIVerb", "/d", label, "/f"]);
+        ok &= reg(&["add", &base, "/v", "MUIVerb", "/d", tr(label), "/f"]);
         ok &= reg(&["add", &base, "/v", "Icon", "/d", &exe, "/f"]);
         ok &= reg(&["add", &format!(r"{base}\command"), "/ve", "/d", &cmd, "/f"]);
     }
@@ -303,7 +306,7 @@ fn modern_menu_package() -> Result<(PathBuf, bool), ModernMenu> {
     let dir = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(Path::to_path_buf))
-        .ok_or_else(|| ModernMenu::Unavailable("cannot tell where r7z is installed".into()))?;
+        .ok_or_else(|| ModernMenu::Unavailable(tr("cannot tell where r7z is installed").into()))?;
     modern_menu_package_in(&dir)
 }
 
@@ -326,7 +329,7 @@ fn modern_menu_package_in(dir: &Path) -> Result<(PathBuf, bool), ModernMenu> {
 #[cfg(all(windows, not(feature = "store")))]
 pub fn modern_menu_status() -> ModernMenu {
     if !windows_11() {
-        return ModernMenu::Unavailable("Windows 10 has only the classic menu.".into());
+        return ModernMenu::Unavailable(tr("Windows 10 has only the classic menu.").into());
     }
     let installed =
         powershell("(Get-AppxPackage -Name r7z).Name").is_ok_and(|out| out.trim() == "r7z");
@@ -345,7 +348,7 @@ pub fn modern_menu_status() -> ModernMenu {
 pub fn get_modern_menu() -> ModernMenu {
     match crate::update::install_missing(&std::sync::atomic::AtomicBool::new(false)) {
         Ok(_) => install_modern_menu(),
-        Err(e) => ModernMenu::Unavailable(format!("Couldn't get the Windows 11 menu: {e}")),
+        Err(e) => ModernMenu::Unavailable(tf!("Couldn't get the Windows 11 menu: {e}", e = e)),
     }
 }
 
@@ -367,7 +370,7 @@ pub fn install_modern_menu() -> ModernMenu {
 #[cfg(all(windows, not(feature = "store")))]
 pub fn move_modern_menu(dir: &Path) -> ModernMenu {
     if !windows_11() {
-        return ModernMenu::Unavailable("Windows 10 has only the classic menu.".into());
+        return ModernMenu::Unavailable(tr("Windows 10 has only the classic menu.").into());
     }
     match modern_menu_package_in(dir) {
         Ok((package, signed)) => register_modern_menu(&package, signed, dir, true),
@@ -390,7 +393,7 @@ fn register_modern_menu(package: &Path, signed: bool, dir: &Path, replace: bool)
     );
     match powershell(&script) {
         Ok(_) => modern_menu_status(),
-        Err(e) => ModernMenu::Unavailable(format!("Windows refused the menu package: {e}")),
+        Err(e) => ModernMenu::Unavailable(tf!("Windows refused the menu package: {e}", e = e)),
     }
 }
 
@@ -402,7 +405,7 @@ pub fn uninstall_modern_menu() -> ModernMenu {
 
 #[cfg(any(not(windows), feature = "store"))]
 pub fn modern_menu_status() -> ModernMenu {
-    ModernMenu::Unavailable("Only on Windows 11.".into())
+    ModernMenu::Unavailable(tr("Only on Windows 11.").into())
 }
 #[cfg(any(not(windows), feature = "store"))]
 pub fn install_modern_menu() -> ModernMenu {
@@ -675,6 +678,16 @@ pub fn sweep_stale_temp() {
             .is_some_and(|age| age.as_secs() > 12 * 3600);
         if e.file_name().to_string_lossy().starts_with("r7z-gui-") && path != mine && stale {
             let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+}
+
+#[cfg(all(test, windows, not(feature = "store")))]
+mod tests {
+    #[test]
+    fn classic_menu_labels_have_translations() {
+        for (_, _, label, _) in super::VERBS {
+            assert!(crate::i18n::translated(label), "{label}");
         }
     }
 }

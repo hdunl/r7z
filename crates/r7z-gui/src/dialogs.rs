@@ -1,5 +1,6 @@
 //! Modal dialogs. Each frame `show` draws the open dialog and applies its result.
 
+use crate::i18n::{tf, tr};
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{
@@ -81,12 +82,12 @@ impl Fmt {
     }
     fn note(self) -> &'static str {
         match self {
-            Fmt::SevenZ => "Smallest files. Opens in r7z, 7-Zip and most archivers.",
-            Fmt::Zip => "Opens everywhere, including Windows and macOS without extra tools.",
-            Fmt::Tar => "No compression. Keeps files together for Unix systems.",
-            Fmt::TarGz => "The common format on Linux. Fast.",
-            Fmt::TarXz => "Smaller than tar.gz; slower to create.",
-            Fmt::TarBz2 => "Older Unix format, between gzip and xz.",
+            Fmt::SevenZ => tr("Smallest files. Opens in r7z, 7-Zip and most archivers."),
+            Fmt::Zip => tr("Opens everywhere, including Windows and macOS without extra tools."),
+            Fmt::Tar => tr("No compression. Keeps files together for Unix systems."),
+            Fmt::TarGz => tr("The common format on Linux. Fast."),
+            Fmt::TarXz => tr("Smaller than tar.gz; slower to create."),
+            Fmt::TarBz2 => tr("Older Unix format, between gzip and xz."),
         }
     }
     fn password(self) -> bool {
@@ -252,9 +253,9 @@ pub fn pick_and_open(app: &mut App, ctx: &egui::Context) {
         .flat_map(|f| f.extensions.iter().copied())
         .collect();
     let d = rfd::FileDialog::new()
-        .set_title("Open archive")
-        .add_filter("Archives", &exts)
-        .add_filter("All files", &["*"])
+        .set_title(tr("Open archive"))
+        .add_filter(tr("Archives"), &exts)
+        .add_filter(tr("All files"), &["*"])
         .set_directory(app.disk_dir());
     if let Some(p) = d.pick_file() {
         app.open_disk_archive(ctx, p, None);
@@ -347,28 +348,32 @@ fn segmented<T: PartialEq + Copy>(
 
 fn level_picker(ui: &mut Ui, p: &Palette, level: &mut u32) {
     let levels = [
-        (0u32, "Store"),
-        (1, "Fastest"),
-        (3, "Fast"),
-        (5, "Normal"),
-        (7, "Max"),
-        (9, "Ultra"),
+        (0u32, tr("Store")),
+        (1, tr("Fastest")),
+        (3, tr("Fast")),
+        (5, tr("Normal")),
+        (7, tr("Max")),
+        (9, tr("Ultra")),
     ];
     segmented(ui, p, &levels, level);
     let note = match *level {
-        0 => "No compression; just packs the files together.",
-        1 => "Quickest, larger file.",
-        3 => "Fast with a good ratio.",
-        5 => "Balanced. The default.",
-        7 => "Smaller, slower. Uses more memory.",
-        _ => "Smallest possible, slowest. Uses a lot of memory.",
+        0 => tr("No compression; just packs the files together."),
+        1 => tr("Quickest, larger file."),
+        3 => tr("Fast with a good ratio."),
+        5 => tr("Balanced. The default."),
+        7 => tr("Smaller, slower. Uses more memory."),
+        _ => tr("Smallest possible, slowest. Uses a lot of memory."),
     };
     ui.label(RichText::new(note).size(11.5).color(p.faint));
 }
 
 fn overwrite_picker(ui: &mut Ui, p: &Palette, value: &mut Overwrite) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("If a file exists").size(12.5).color(p.dim));
+        ui.label(
+            RichText::new(tr("If a file exists"))
+                .size(12.5)
+                .color(p.dim),
+        );
         let mut v = match *value {
             Overwrite::RenameExisting => Overwrite::RenameNew,
             other => other,
@@ -377,10 +382,10 @@ fn overwrite_picker(ui: &mut Ui, p: &Palette, value: &mut Overwrite) {
             ui,
             p,
             &[
-                (Overwrite::Ask, "Ask"),
-                (Overwrite::All, "Replace"),
-                (Overwrite::Skip, "Skip"),
-                (Overwrite::RenameNew, "Keep both"),
+                (Overwrite::Ask, tr("Ask")),
+                (Overwrite::All, tr("Replace")),
+                (Overwrite::Skip, tr("Skip")),
+                (Overwrite::RenameNew, tr("Keep both")),
             ],
             &mut v,
         ) {
@@ -397,7 +402,7 @@ fn footer(ui: &mut Ui, primary: &str, enabled: bool) -> (bool, bool) {
         if button(ui, None, primary, true, enabled).clicked() && enabled {
             go = true;
         }
-        if button(ui, None, "Cancel", false, true).clicked() {
+        if button(ui, None, tr("Cancel"), false, true).clicked() {
             cancel = true;
         }
     });
@@ -454,7 +459,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     });
                 ui.add_space(12.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    button(ui, None, "OK", true, true).clicked()
+                    button(ui, None, tr("OK"), true, true).clicked()
                 })
                 .inner
             });
@@ -479,18 +484,18 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         Dialog::Uninstall { from_windows } => {
             let state = app.install_state();
             let what = match &state {
-                crate::install::State::Installed { dir, .. } => format!(
+                crate::install::State::Installed { dir, .. } => tf!(
                     "Removes r7z from the Start menu, Installed apps, the right-click menu and \"Open with\", and deletes {}. Your settings stay in %APPDATA%\\r7z.",
                     dir.display()
                 ),
                 crate::install::State::NotInstalled => {
-                    "Removes r7z from the right-click menu and \"Open with\".".to_string()
+                    tr("Removes r7z from the right-click menu and \"Open with\".").to_string()
                 }
             };
             let ((go, cancel), close) = modal(ctx, "uninstall", 460.0, |ui| {
-                title(ui, "Uninstall r7z?");
+                title(ui, tr("Uninstall r7z?"));
                 ui.add(egui::Label::new(RichText::new(&what).size(13.0).color(p.dim)).wrap());
-                footer(ui, "Uninstall", true)
+                footer(ui, tr("Uninstall"), true)
             });
             if go {
                 match crate::install::uninstall() {
@@ -503,10 +508,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         if from_windows || here {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         } else {
-                            app.toast("r7z was uninstalled".into(), true, None);
+                            app.toast(tr("r7z was uninstalled").into(), true, None);
                         }
                     }
-                    Err(e) => app.message("Couldn't uninstall r7z", &e, true),
+                    Err(e) => app.message(tr("Couldn't uninstall r7z"), &e, true),
                 }
                 None
             } else if cancel || close {
@@ -530,9 +535,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 title(
                     ui,
                     &if installed {
-                        format!("What's new in r7z {version}")
+                        tf!("What's new in r7z {version}", version = version)
                     } else {
-                        format!("Update to r7z {version}?")
+                        tf!("Update to r7z {version}?", version = version)
                     },
                 );
                 egui::ScrollArea::vertical()
@@ -543,7 +548,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         None => {
                             ui.label(
                                 RichText::new(
-                                    "This release's notes aren't available in the app. The release page lists what changed.",
+                                    tr("This release's notes aren't available in the app. The release page lists what changed."),
                                 )
                                 .size(13.0)
                                 .color(p.dim),
@@ -552,15 +557,15 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     });
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    page = button(ui, None, "Release page", false, true).clicked();
+                    page = button(ui, None, tr("Release page"), false, true).clicked();
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let primary = if installed {
-                            "Restart now"
+                            tr("Restart now")
                         } else {
-                            "Update now"
+                            tr("Update now")
                         };
                         go = button(ui, None, primary, true, true).clicked();
-                        later = button(ui, None, "Later", false, true).clicked();
+                        later = button(ui, None, tr("Later"), false, true).clicked();
                     });
                 });
             });
@@ -598,23 +603,32 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
             let ((), close) = modal(ctx, "password", 380.0, |ui| {
                 ui.horizontal(|ui| {
                     icons::icon(ui, 18.0, Icon::Lock, p.dim);
-                    title(ui, "Password");
+                    title(ui, tr("Password"));
                 });
                 let what = match &purpose {
                     PwFor::Open(Opening::Disk(path)) => {
-                        format!("{} is encrypted.", jobs::file_name(path))
+                        tf!("{} is encrypted.", jobs::file_name(path))
                     }
-                    PwFor::Open(Opening::Nested { name, .. }) => format!("{name} is encrypted."),
-                    _ => "These files are encrypted.".into(),
+                    PwFor::Open(Opening::Nested { name, .. }) => {
+                        tf!("{name} is encrypted.", name = name)
+                    }
+                    _ => tr("These files are encrypted.").into(),
                 };
                 ui.label(RichText::new(what).size(12.5).color(p.dim));
                 ui.add_space(6.0);
-                let r = field(ui, p, &mut input, "Password", true, ui.available_width());
+                let r = field(
+                    ui,
+                    p,
+                    &mut input,
+                    tr("Password"),
+                    true,
+                    ui.available_width(),
+                );
                 r.request_focus();
                 if let Some(e) = &error {
                     ui.label(RichText::new(e).size(12.0).color(p.danger));
                 }
-                let (go, cancel) = footer(ui, "Unlock", !input.is_empty());
+                let (go, cancel) = footer(ui, tr("Unlock"), !input.is_empty());
                 submit = go;
                 if cancel {
                     input.clear();
@@ -672,7 +686,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         if let Some(l) = app.stack.last_mut() {
                             l.password = Some(pw);
                         }
-                        app.toast("Unlocked; drag the files again".into(), true, None);
+                        app.toast(tr("Unlocked; drag the files again").into(), true, None);
                     }
                 }
                 None
@@ -705,14 +719,15 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
             let (go, cancel, close);
             {
                 let ((g, c), cl) = modal(ctx, "extract", 520.0, |ui| {
-                    title(ui, "Extract");
-                    label(ui, p, "Destination");
+                    title(ui, tr("Extract"));
+                    label(ui, p, tr("Destination"));
                     ui.horizontal(|ui| {
                         let w = ui.available_width() - 92.0;
-                        field(ui, p, &mut form.dest, "Folder", false, w);
-                        if button(ui, None, "Browse…", false, true).clicked() {
-                            if let Some(d) =
-                                rfd::FileDialog::new().set_title("Extract to").pick_folder()
+                        field(ui, p, &mut form.dest, tr("Folder"), false, w);
+                        if button(ui, None, tr("Browse…"), false, true).clicked() {
+                            if let Some(d) = rfd::FileDialog::new()
+                                .set_title(tr("Extract to"))
+                                .pick_folder()
                             {
                                 form.dest = d.display().to_string();
                             }
@@ -727,7 +742,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                             .unwrap_or_default();
                         let mut chips: Vec<(String, PathBuf)> = vec![
                             (format!("{stem}\\"), disk.join(&stem)),
-                            ("Same folder".into(), disk.clone()),
+                            (tr("Same folder").into(), disk.clone()),
                         ];
                         for k in [shell::Known::Desktop, shell::Known::Downloads] {
                             if let Some(d) = shell::known_folder(k) {
@@ -750,32 +765,32 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     ui.add_space(6.0);
                     if n_sel > 0 {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("What").size(12.5).color(p.dim));
+                            ui.label(RichText::new(tr("What")).size(12.5).color(p.dim));
                             segmented(
                                 ui,
                                 p,
                                 &[
-                                    (true, &*format!("Selected ({n_sel})")),
-                                    (false, "Everything"),
+                                    (true, &*tf!("Selected ({n_sel})", n_sel = n_sel)),
+                                    (false, tr("Everything")),
                                 ],
                                 &mut form.selected_only,
                             );
                         });
                     }
-                    ui.checkbox(&mut form.full_paths, "Keep folder structure");
+                    ui.checkbox(&mut form.full_paths, tr("Keep folder structure"));
                     overwrite_picker(ui, p, &mut form.overwrite);
                     if needs_pw {
-                        label(ui, p, "Password");
+                        label(ui, p, tr("Password"));
                         field(
                             ui,
                             p,
                             &mut form.password,
-                            "Password",
+                            tr("Password"),
                             true,
                             ui.available_width(),
                         );
                     }
-                    ui.checkbox(&mut form.open_after, "Open the folder when done");
+                    ui.checkbox(&mut form.open_after, tr("Open the folder when done"));
                     if !findings.is_empty() {
                         ui.add_space(6.0);
                         egui::Frame::new()
@@ -795,7 +810,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     if let Some(e) = &form.error {
                         ui.label(RichText::new(e).size(12.0).color(p.danger));
                     }
-                    footer(ui, "Extract", true)
+                    footer(ui, tr("Extract"), true)
                 });
                 go = g;
                 cancel = c;
@@ -814,8 +829,8 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
         }
         Dialog::Pack(mut form) => {
             let ((go, cancel), close) = modal(ctx, "pack", 580.0, |ui| {
-                title(ui, "New archive");
-                label(ui, p, &format!("Files ({})", form.paths.len()));
+                title(ui, tr("New archive"));
+                label(ui, p, &tf!("Files ({})", form.paths.len()));
                 egui::Frame::new()
                     .fill(p.input)
                     .stroke(Stroke::new(1.0, p.line))
@@ -829,7 +844,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                             .show(ui, |ui| {
                                 if form.paths.is_empty() {
                                     ui.label(
-                                        RichText::new("Drop files here, or add them below")
+                                        RichText::new(tr("Drop files here, or add them below"))
                                             .size(12.5)
                                             .color(p.faint),
                                     );
@@ -884,31 +899,31 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                             });
                     });
                 ui.horizontal(|ui| {
-                    if button(ui, None, "Add files…", false, true).clicked() {
+                    if button(ui, None, tr("Add files…"), false, true).clicked() {
                         if let Some(fs) = rfd::FileDialog::new().pick_files() {
                             form.add(fs);
                         }
                     }
-                    if button(ui, None, "Add folder…", false, true).clicked() {
+                    if button(ui, None, tr("Add folder…"), false, true).clicked() {
                         if let Some(d) = rfd::FileDialog::new().pick_folder() {
                             form.add(vec![d]);
                         }
                     }
                 });
-                label(ui, p, "Format");
+                label(ui, p, tr("Format"));
                 let before = form.format;
                 let opts: Vec<(Fmt, &str)> = Fmt::ALL.iter().map(|f| (*f, f.ext())).collect();
                 if segmented(ui, p, &opts, &mut form.format) {
                     form.archive = replace_ext(&form.archive, before, form.format);
                 }
                 ui.label(RichText::new(form.format.note()).size(11.5).color(p.faint));
-                label(ui, p, "Save as");
+                label(ui, p, tr("Save as"));
                 ui.horizontal(|ui| {
                     let w = ui.available_width() - 92.0;
-                    field(ui, p, &mut form.archive, "Archive file", false, w);
-                    if button(ui, None, "Browse…", false, true).clicked() {
+                    field(ui, p, &mut form.archive, tr("Archive file"), false, w);
+                    if button(ui, None, tr("Browse…"), false, true).clicked() {
                         let cur = PathBuf::from(&form.archive);
-                        let mut d = rfd::FileDialog::new().set_title("Save archive as");
+                        let mut d = rfd::FileDialog::new().set_title(tr("Save archive as"));
                         if let Some(dir) = cur.parent().filter(|d| d.is_dir()) {
                             d = d.set_directory(dir);
                         }
@@ -921,29 +936,29 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     }
                 });
                 if form.format.compresses() {
-                    label(ui, p, "Compression");
+                    label(ui, p, tr("Compression"));
                     level_picker(ui, p, &mut form.level);
                     if form.format == Fmt::SevenZ {
                         ui.checkbox(
                             &mut form.solid,
-                            "Solid (compress files together for a smaller archive)",
+                            tr("Solid (compress files together for a smaller archive)"),
                         );
                     }
                 }
                 if form.format.password() {
-                    label(ui, p, "Password (optional, AES-256)");
+                    label(ui, p, tr("Password (optional, AES-256)"));
                     ui.horizontal(|ui| {
                         let w = (ui.available_width() - 8.0) / 2.0;
-                        field(ui, p, &mut form.password, "Password", true, w);
-                        field(ui, p, &mut form.confirm, "Repeat it", true, w);
+                        field(ui, p, &mut form.password, tr("Password"), true, w);
+                        field(ui, p, &mut form.confirm, tr("Repeat it"), true, w);
                     });
                     if form.format == Fmt::SevenZ && !form.password.is_empty() {
-                        ui.checkbox(&mut form.encrypt_names, "Hide file names too");
+                        ui.checkbox(&mut form.encrypt_names, tr("Hide file names too"));
                     }
                 }
                 if Path::new(form.archive.trim()).exists() {
                     ui.label(
-                        RichText::new("A file with this name exists and will be replaced.")
+                        RichText::new(tr("A file with this name exists and will be replaced."))
                             .size(12.0)
                             .color(p.caution),
                     );
@@ -951,15 +966,15 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 if let Some(e) = &form.error {
                     ui.label(RichText::new(e).size(12.0).color(p.danger));
                 }
-                footer(ui, "Create", true)
+                footer(ui, tr("Create"), true)
             });
             if go {
                 form.error = if form.paths.is_empty() {
-                    Some("Add at least one file or folder.".into())
+                    Some(tr("Add at least one file or folder.").into())
                 } else if form.archive.trim().is_empty() {
-                    Some("Choose where to save the archive.".into())
+                    Some(tr("Choose where to save the archive.").into())
                 } else if form.format.password() && form.password != form.confirm {
-                    Some("The two passwords don't match.".into())
+                    Some(tr("The two passwords don't match.").into())
                 } else {
                     None
                 };
@@ -993,9 +1008,9 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 title(
                     ui,
                     if form.archives.len() == 1 {
-                        "Extract archive"
+                        tr("Extract archive")
                     } else {
-                        "Extract archives"
+                        tr("Extract archives")
                     },
                 );
                 egui::Frame::new()
@@ -1026,43 +1041,46 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                                 }
                             });
                     });
-                label(ui, p, "Where");
+                label(ui, p, tr("Where"));
                 segmented(
                     ui,
                     p,
-                    &[(true, "Next to each archive"), (false, "Into a folder")],
+                    &[
+                        (true, tr("Next to each archive")),
+                        (false, tr("Into a folder")),
+                    ],
                     &mut form.smart,
                 );
                 if form.smart {
-                    ui.label(RichText::new("A folder is created only when an archive holds several top-level items.").size(11.5).color(p.faint));
+                    ui.label(RichText::new(tr("A folder is created only when an archive holds several top-level items.")).size(11.5).color(p.faint));
                 } else {
                     ui.horizontal(|ui| {
                         let w = ui.available_width() - 92.0;
-                        field(ui, p, &mut form.dest, "Folder", false, w);
-                        if button(ui, None, "Browse…", false, true).clicked() {
+                        field(ui, p, &mut form.dest, tr("Folder"), false, w);
+                        if button(ui, None, tr("Browse…"), false, true).clicked() {
                             if let Some(d) = rfd::FileDialog::new().pick_folder() {
                                 form.dest = d.display().to_string();
                             }
                         }
                     });
                     ui.label(
-                        RichText::new("Each archive gets its own subfolder.")
+                        RichText::new(tr("Each archive gets its own subfolder."))
                             .size(11.5)
                             .color(p.faint),
                     );
                 }
                 ui.add_space(4.0);
                 overwrite_picker(ui, p, &mut form.overwrite);
-                label(ui, p, "Password (if any are encrypted)");
+                label(ui, p, tr("Password (if any are encrypted)"));
                 field(
                     ui,
                     p,
                     &mut form.password,
-                    "Optional",
+                    tr("Optional"),
                     true,
                     ui.available_width(),
                 );
-                footer(ui, "Extract", true)
+                footer(ui, tr("Extract"), true)
             });
             if go {
                 let dest = if form.smart {
@@ -1084,15 +1102,15 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
         }
         Dialog::Convert(mut form) => {
             let ((go, cancel), close) = modal(ctx, "convert", 520.0, |ui| {
-                title(ui, "Convert archive");
+                title(ui, tr("Convert archive"));
                 ui.label(
-                    RichText::new(
+                    RichText::new(tr(
                         "Repack the contents into another format. The original stays as it is.",
-                    )
+                    ))
                     .size(12.5)
                     .color(p.dim),
                 );
-                label(ui, p, "Format");
+                label(ui, p, tr("Format"));
                 let before = form.format;
                 let opts: Vec<(Fmt, &str)> = Fmt::ALL.iter().map(|f| (*f, f.ext())).collect();
                 if segmented(ui, p, &opts, &mut form.format) {
@@ -1100,22 +1118,23 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 }
                 ui.label(RichText::new(form.format.note()).size(11.5).color(p.faint));
                 if form.format.compresses() {
-                    label(ui, p, "Compression");
+                    label(ui, p, tr("Compression"));
                     level_picker(ui, p, &mut form.level);
                 }
-                label(ui, p, "Save as");
+                label(ui, p, tr("Save as"));
                 let w = ui.available_width();
-                field(ui, p, &mut form.archive, "Archive file", false, w);
+                field(ui, p, &mut form.archive, tr("Archive file"), false, w);
                 if let Some(e) = &form.error {
                     ui.label(RichText::new(e).size(12.0).color(p.danger));
                 }
-                footer(ui, "Convert", true)
+                footer(ui, tr("Convert"), true)
             });
             if go {
                 let level = app.stack.last()?;
                 if level.encrypted() && level.password.is_none() {
                     form.error = Some(
-                        "Unlock the archive first (Test or Extract asks for the password).".into(),
+                        tr("Unlock the archive first (Test or Extract asks for the password).")
+                            .into(),
                     );
                     return Some(Dialog::Convert(form));
                 }
@@ -1163,10 +1182,10 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
             let (done, close) = modal(ctx, "safety", 540.0, |ui| {
                 ui.horizontal(|ui| {
                     icons::icon(ui, 18.0, Icon::Shield, p.dim);
-                    title(ui, "Safety check");
+                    title(ui, tr("Safety check"));
                 });
                 if findings.is_empty() {
-                    ui.label(RichText::new("Nothing unusual: no paths that escape the destination, no disguised programs, no decompression bombs.").size(12.5).color(p.dim));
+                    ui.label(RichText::new(tr("Nothing unusual: no paths that escape the destination, no disguised programs, no decompression bombs.")).size(12.5).color(p.dim));
                 }
                 egui::ScrollArea::vertical()
                     .max_height(380.0)
@@ -1208,7 +1227,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     });
                 ui.add_space(8.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    button(ui, None, "Done", true, true).clicked()
+                    button(ui, None, tr("Done"), true, true).clicked()
                 })
                 .inner
             });
@@ -1220,24 +1239,41 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
         }
         Dialog::Settings => {
             let (done, close) = modal(ctx, "settings", 480.0, |ui| {
-                title(ui, "Settings");
-                label(ui, p, "Appearance");
+                title(ui, tr("Settings"));
+                label(ui, p, tr("Appearance"));
                 let mut pref = app.theme_pref;
                 if segmented(
                     ui,
                     p,
                     &[
-                        (egui::ThemePreference::System, "System"),
-                        (egui::ThemePreference::Light, "Light"),
-                        (egui::ThemePreference::Dark, "Dark"),
+                        (egui::ThemePreference::System, tr("System")),
+                        (egui::ThemePreference::Light, tr("Light")),
+                        (egui::ThemePreference::Dark, tr("Dark")),
                     ],
                     &mut pref,
                 ) {
                     app.set_theme(ctx, pref);
                 }
-                label(ui, p, "Files");
+                label(ui, p, tr("Language"));
+                // Each language is named in itself, so the choice needs the CJK font even
+                // on an English system.
+                app.need_cjk();
+                let mut language = app.language;
+                if segmented(
+                    ui,
+                    p,
+                    &[
+                        (crate::i18n::Preference::System, tr("System")),
+                        (crate::i18n::Preference::English, "English"),
+                        (crate::i18n::Preference::SimplifiedChinese, "简体中文"),
+                    ],
+                    &mut language,
+                ) {
+                    app.set_language(language);
+                }
+                label(ui, p, tr("Files"));
                 let mut hidden = app.show_hidden;
-                if ui.checkbox(&mut hidden, "Show hidden files").changed() {
+                if ui.checkbox(&mut hidden, tr("Show hidden files")).changed() {
                     app.toggle_hidden();
                 }
                 ui.horizontal(|ui| {
@@ -1246,27 +1282,27 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     if ui
                         .add_enabled(
                             app.show_hidden,
-                            egui::Checkbox::new(&mut prot, "Also show protected system items"),
+                            egui::Checkbox::new(&mut prot, tr("Also show protected system items")),
                         )
-                        .on_hover_text("Folders like FOUND.000 and System Volume Information, which Explorer always hides")
+                        .on_hover_text(tr("Folders like FOUND.000 and System Volume Information, which Explorer always hides"))
                         .changed()
                     {
                         app.toggle_protected();
                     }
                 });
                 if crate::STORE {
-                    label(ui, p, "Updates");
+                    label(ui, p, tr("Updates"));
                     ui.label(
-                        RichText::new("The Microsoft Store keeps r7z up to date.")
+                        RichText::new(tr("The Microsoft Store keeps r7z up to date."))
                             .size(12.5)
                             .color(p.dim),
                     );
                 } else {
-                    label(ui, p, "Updates");
+                    label(ui, p, tr("Updates"));
                     let mut auto = crate::app::auto_updates();
                     if ui
-                    .checkbox(&mut auto, "Check for updates automatically")
-                    .on_hover_text("Once a day, r7z asks GitHub for the latest release. Updates are signed and checked before anything is installed.")
+                    .checkbox(&mut auto, tr("Check for updates automatically"))
+                    .on_hover_text(tr("Once a day, r7z asks GitHub for the latest release. Updates are signed and checked before anything is installed."))
                     .changed()
                 {
                     shell::save_setting("updates", if auto { "on" } else { "off" });
@@ -1278,7 +1314,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         if ui
                             .add_enabled(
                                 auto,
-                                egui::Checkbox::new(&mut silent, "Install them without asking"),
+                                egui::Checkbox::new(&mut silent, tr("Install them without asking")),
                             )
                             .changed()
                         {
@@ -1292,18 +1328,24 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     ui.horizontal(|ui| {
                         let busy = app.update_check.is_some() || app.update_install.is_some();
                         if app.update_ready.is_some() {
-                            if button(ui, None, "Restart now", true, true).clicked() {
+                            if button(ui, None, tr("Restart now"), true, true).clicked() {
                                 app.restart(ctx);
                             }
                         } else if let Some(version) =
                             app.update_offer.as_ref().map(|m| m.version.clone())
                         {
-                            if button(ui, None, &format!("Update to {version}…"), true, !busy)
-                                .clicked()
+                            if button(
+                                ui,
+                                None,
+                                &tf!("Update to {version}…", version = version),
+                                true,
+                                !busy,
+                            )
+                            .clicked()
                             {
                                 app.dialog = Some(Dialog::Update { installed: false });
                             }
-                        } else if button(ui, None, "Check now", false, !busy).clicked() {
+                        } else if button(ui, None, tr("Check now"), false, !busy).clicked() {
                             app.check_for_updates(ctx, true);
                         }
                         if let Some(note) = &app.update_note {
@@ -1311,31 +1353,31 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         }
                     });
                     if cfg!(windows) {
-                        label(ui, p, "Install");
+                        label(ui, p, tr("Install"));
                         let installing = app.install_task.is_some();
                         let (text, install_label) = match app.install_state() {
                         crate::install::State::NotInstalled => (
-                            format!(
+                            tf!(
                                 "Copies r7z to {} and adds it to the Start menu, Windows search, Installed apps, \"Open with\" and the right-click menu. Only your user account is changed.",
                                 crate::install::target_dir()
                                     .map(|d| d.display().to_string())
                                     .unwrap_or_default()
                             ),
-                            Some("Install r7z"),
+                            Some(tr("Install r7z")),
                         ),
                         crate::install::State::Installed { dir, here: true } => (
-                            format!(
+                            tf!(
                                 "Installed in {}. Updates install there, and Windows lists r7z under Settings → Apps.",
                                 dir.display()
                             ),
                             None,
                         ),
                         crate::install::State::Installed { dir, here: false } => (
-                            format!(
+                            tf!(
                                 "Installed in {}. This copy runs from another folder.",
                                 dir.display()
                             ),
-                            Some("Install this copy"),
+                            Some(tr("Install this copy")),
                         ),
                     };
                         ui.add(
@@ -1349,18 +1391,18 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                                 }
                             }
                             if app.install_state() != crate::install::State::NotInstalled
-                                && button(ui, None, "Uninstall…", false, !installing).clicked()
+                                && button(ui, None, tr("Uninstall…"), false, !installing).clicked()
                             {
                                 app.dialog = Some(Dialog::Uninstall {
                                     from_windows: false,
                                 });
                             }
                             if installing {
-                                ui.label(RichText::new("Installing…").size(12.0).color(p.dim));
+                                ui.label(RichText::new(tr("Installing…")).size(12.0).color(p.dim));
                             }
                         });
                     }
-                    label(ui, p, "Explorer menu");
+                    label(ui, p, tr("Explorer menu"));
                     if app.modern_menu.is_none() {
                         app.modern_menu_job(ctx, shell::modern_menu_status);
                     }
@@ -1368,23 +1410,23 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     let modern = app.modern_menu.clone();
                     let text = match (installed, &modern) {
                     (true, Some(shell::ModernMenu::Installed)) => {
-                        "r7z is in the right-click menu for files and folders, in Windows 11's main menu and under \"Show more options\".".to_string()
+                        tr("r7z is in the right-click menu for files and folders, in Windows 11's main menu and under \"Show more options\".").to_string()
                     }
                     (true, Some(shell::ModernMenu::Unavailable(why))) => {
-                        format!("r7z is in the right-click menu for files and folders. {why}")
+                        tf!("r7z is in the right-click menu for files and folders. {why}", why = why)
                     }
                     (true, Some(shell::ModernMenu::Missing)) => {
-                        "r7z is in the right-click menu for files and folders, under \"Show more options\" on Windows 11. To be in the main menu as well, it needs two files from its release.".to_string()
+                        tr("r7z is in the right-click menu for files and folders, under \"Show more options\" on Windows 11. To be in the main menu as well, it needs two files from its release.").to_string()
                     }
-                    (true, _) => "r7z is in the right-click menu for files and folders.".to_string(),
-                    (false, _) => "Adds \"Open with r7z\", \"Extract here\", \"Extract to folder\" and \"Add to archive\" to the right-click menu. Only your user account is changed; no administrator rights are needed.".to_string(),
+                    (true, _) => tr("r7z is in the right-click menu for files and folders.").to_string(),
+                    (false, _) => tr("Adds \"Open with r7z\", \"Extract here\", \"Extract to folder\" and \"Add to archive\" to the right-click menu. Only your user account is changed; no administrator rights are needed.").to_string(),
                 };
                     ui.add(egui::Label::new(RichText::new(text).size(12.5).color(p.dim)).wrap());
                     ui.add_space(4.0);
                     let busy = app.modern_task.is_some();
                     ui.horizontal(|ui| {
                         if installed {
-                            if button(ui, None, "Remove from menu", false, !busy).clicked() {
+                            if button(ui, None, tr("Remove from menu"), false, !busy).clicked() {
                                 shell::uninstall_explorer();
                                 app.explorer = Some(shell::explorer_installed());
                                 if modern == Some(shell::ModernMenu::Installed) {
@@ -1392,20 +1434,20 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                                 }
                             }
                             if modern == Some(shell::ModernMenu::Available)
-                                && button(ui, None, "Add to the Windows 11 menu", false, !busy)
+                                && button(ui, None, tr("Add to the Windows 11 menu"), false, !busy)
                                     .clicked()
                             {
                                 app.modern_menu_job(ctx, shell::install_modern_menu);
                             }
                             if modern == Some(shell::ModernMenu::Missing)
-                                && button(ui, None, "Get the Windows 11 menu", false, !busy)
+                                && button(ui, None, tr("Get the Windows 11 menu"), false, !busy)
                                     .clicked()
                             {
                                 app.modern_menu_job(ctx, shell::get_modern_menu);
                             }
-                        } else if button(ui, None, "Add to menu", false, !busy).clicked() {
+                        } else if button(ui, None, tr("Add to menu"), false, !busy).clicked() {
                             if !shell::install_explorer() {
-                                app.toast("Couldn't add the menu entries".into(), false, None);
+                                app.toast(tr("Couldn't add the menu entries").into(), false, None);
                             }
                             app.explorer = Some(shell::explorer_installed());
                             match modern {
@@ -1420,7 +1462,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         }
                         if busy {
                             ui.label(
-                                RichText::new("Updating the Windows 11 menu…")
+                                RichText::new(tr("Updating the Windows 11 menu…"))
                                     .size(12.0)
                                     .color(p.dim),
                             );
@@ -1430,7 +1472,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 ui.add_space(14.0);
                 ui.separator();
                 ui.label(
-                    RichText::new(format!(
+                    RichText::new(tf!(
                         "r7z {} · opens {} archive formats",
                         env!("CARGO_PKG_VERSION"),
                         r7z::format::FORMATS.len()
@@ -1440,8 +1482,8 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 );
                 ui.add_space(6.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let done = button(ui, None, "Done", true, true).clicked();
-                    let tour = button(ui, None, "Welcome tour", false, true).clicked();
+                    let done = button(ui, None, tr("Done"), true, true).clicked();
+                    let tour = button(ui, None, tr("Welcome tour"), false, true).clicked();
                     if tour {
                         crate::tour::open(app);
                     }
@@ -1460,8 +1502,8 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 crate::recover::body(ui, p, &view);
                 ui.add_space(12.0);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let done = button(ui, None, "Done", true, true).clicked();
-                    let show = button(ui, None, "Show files", false, true).clicked();
+                    let done = button(ui, None, tr("Done"), true, true).clicked();
+                    let show = button(ui, None, tr("Show files"), false, true).clicked();
                     (done, show)
                 })
                 .inner
@@ -1487,7 +1529,7 @@ fn overwrite_prompt(app: &mut App, ctx: &egui::Context, p: &Palette) {
     };
     egui::Modal::new(Id::unique("overwrite")).show(ctx, |ui| {
         ui.set_width(460.0);
-        title(ui, "Replace the existing file?");
+        title(ui, tr("Replace the existing file?"));
         ui.add(
             egui::Label::new(
                 RichText::new(path.display().to_string())
@@ -1499,7 +1541,7 @@ fn overwrite_prompt(app: &mut App, ctx: &egui::Context, p: &Palette) {
         if let Ok(m) = std::fs::metadata(&path) {
             let when = m.modified().ok().map(r7z::util::time::to_filetime);
             ui.label(
-                RichText::new(format!(
+                RichText::new(tf!(
                     "Existing: {} · {}",
                     r7z::util::fmt::human_size(m.len()),
                     crate::ui::fmt_time(when)
@@ -1510,25 +1552,25 @@ fn overwrite_prompt(app: &mut App, ctx: &egui::Context, p: &Palette) {
         }
         ui.add_space(12.0);
         ui.horizontal_wrapped(|ui| {
-            if button(ui, None, "Replace", true, true).clicked() {
+            if button(ui, None, tr("Replace"), true, true).clicked() {
                 s.answer(OverwriteAnswer::Yes);
             }
-            if button(ui, None, "Skip", false, true).clicked() {
+            if button(ui, None, tr("Skip"), false, true).clicked() {
                 s.answer(OverwriteAnswer::No);
             }
-            if button(ui, None, "Keep both", false, true).clicked() {
+            if button(ui, None, tr("Keep both"), false, true).clicked() {
                 s.answer(OverwriteAnswer::Rename);
             }
         });
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            if button(ui, None, "Replace all", false, true).clicked() {
+            if button(ui, None, tr("Replace all"), false, true).clicked() {
                 s.answer(OverwriteAnswer::YesAll);
             }
-            if button(ui, None, "Skip all", false, true).clicked() {
+            if button(ui, None, tr("Skip all"), false, true).clicked() {
                 s.answer(OverwriteAnswer::NoAll);
             }
-            if button(ui, None, "Stop", false, true).clicked() {
+            if button(ui, None, tr("Stop"), false, true).clicked() {
                 s.answer(OverwriteAnswer::Quit);
             }
         });

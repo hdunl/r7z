@@ -11,6 +11,7 @@ mod app;
 mod dialogs;
 mod dnd;
 mod finder;
+mod i18n;
 mod icons;
 #[cfg(not(feature = "store"))]
 mod install;
@@ -43,6 +44,7 @@ mod update;
 #[path = "update_stub.rs"]
 mod update;
 
+use crate::i18n::{tf, tr};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -136,10 +138,10 @@ fn install_panic_hook() {
         }
         if thread == "main" {
             let where_ = saved
-                .map(|p| format!("\n\nDetails were saved to {}", p.display()))
+                .map(|p| tf!("\n\nDetails were saved to {}", p.display()))
                 .unwrap_or_default();
             shell::fatal_box(
-                "r7z stopped unexpectedly",
+                tr("r7z stopped unexpectedly"),
                 &format!("{payload}\n({location}){where_}"),
             );
         }
@@ -173,6 +175,7 @@ fn run_without_window() -> Option<i32> {
 
 fn main() -> eframe::Result {
     install_panic_hook();
+    i18n::set(i18n::Preference::parse(shell::load_setting("language").as_deref()).lang());
     if let Some(code) = run_without_window() {
         std::process::exit(code);
     }

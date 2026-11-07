@@ -3,6 +3,7 @@
 //! started from the Explorer menu to do a job), and again from Settings or search
 //! everywhere.
 
+use crate::i18n::{tf, tr};
 use eframe::egui::{
     self, pos2, vec2, Align, Align2, Color32, CornerRadius, Id, Key, Layout, Margin, Rect,
     RichText, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions,
@@ -160,12 +161,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             ui.set_width(width);
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(format!("{} of {}", page + 1, PAGES.len()))
+                    RichText::new(tf!("{} of {}", page + 1, PAGES.len()))
                         .size(12.0)
                         .color(p.faint),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if page < last && text_button(ui, "Skip tour", &p).clicked() {
+                    if page < last && text_button(ui, tr("Skip tour"), &p).clicked() {
                         done = true;
                     }
                 });
@@ -218,7 +219,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 
             ui.add_space(20.0);
             ui.label(
-                RichText::new(PAGES[page].title)
+                RichText::new(tr(PAGES[page].title))
                     .font(theme::semibold(22.0))
                     .color(p.text.gamma_multiply(fade)),
             );
@@ -228,7 +229,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 ui.set_min_height(42.0);
                 ui.add(
                     egui::Label::new(
-                        RichText::new(PAGES[page].body)
+                        RichText::new(tr(PAGES[page].body))
                             .size(14.0)
                             .color(p.dim.gamma_multiply(fade)),
                     )
@@ -254,7 +255,11 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     }
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let next = if page == last { "Get started" } else { "Next" };
+                    let next = if page == last {
+                        tr("Get started")
+                    } else {
+                        tr("Next")
+                    };
                     if button(ui, None, next, true, true).clicked() {
                         if page == last {
                             done = true;
@@ -262,15 +267,21 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                             go = Some(page + 1);
                         }
                     }
-                    if page > 0 && button(ui, None, "Back", false, true).clicked() {
+                    if page > 0 && button(ui, None, tr("Back"), false, true).clicked() {
                         go = Some(page - 1);
                     }
                     if page == last
                         && cfg!(windows)
                         && !crate::STORE
                         && app.install_state() == crate::install::State::NotInstalled
-                        && button(ui, None, "Install r7z", false, app.install_task.is_none())
-                            .clicked()
+                        && button(
+                            ui,
+                            None,
+                            tr("Install r7z"),
+                            false,
+                            app.install_task.is_none(),
+                        )
+                        .clicked()
                     {
                         // The installed copy starts in place of this one; it shouldn't
                         // show the tour again.
@@ -347,6 +358,8 @@ mod tests {
     #[test]
     fn every_screenshot_decodes() {
         for page in PAGES {
+            assert!(crate::i18n::translated(page.title), "{}", page.title);
+            assert!(crate::i18n::translated(page.body), "{}", page.body);
             if let Some(bytes) = page.image {
                 let img = image::load_from_memory(bytes).expect(page.title);
                 assert!(img.width() > 100 && img.height() > 50, "{}", page.title);

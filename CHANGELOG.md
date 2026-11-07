@@ -4,6 +4,10 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
 
 ## Unreleased
 
+- Simplified Chinese (简体中文). The desktop app follows the Windows display language, and
+  Settings → Language chooses one for it; the right-click menus follow Windows. The
+  translation is one plain text file, `crates/r7z-gui/res/lang/zh-CN.txt`. The command line
+  stays in English, as do error messages from the archive readers.
 - The Microsoft Store build no longer contains the updater, the installer or the
   self-delete that follows uninstalling. The `store` feature used to hide them; now they
   are not compiled in, so the Store version holds no network code at all, as PRIVACY.md

@@ -6,6 +6,7 @@
 //! the user's own folders, so no administrator rights are needed. Settings in
 //! `%APPDATA%\r7z` are left alone by both.
 
+use crate::i18n::{tf, tr};
 use std::path::{Path, PathBuf};
 
 /// Where r7z is installed, as recorded in its Installed apps entry.
@@ -63,8 +64,8 @@ pub fn state() -> State {
 /// the installed `r7z-gui.exe`.
 #[cfg(windows)]
 pub fn install() -> Result<PathBuf, String> {
-    let from = this_dir().ok_or("cannot tell where r7z is running from")?;
-    let dir = target_dir().ok_or("LOCALAPPDATA is not set")?;
+    let from = this_dir().ok_or(tr("cannot tell where r7z is running from"))?;
+    let dir = target_dir().ok_or(tr("LOCALAPPDATA is not set"))?;
     if !same_dir(&from, &dir) {
         copy_files(&from, &dir)?;
     }
@@ -72,7 +73,7 @@ pub fn install() -> Result<PathBuf, String> {
     register(&exe, &dir)?;
     // The right-click menus point at the installed copy from now on.
     if !crate::shell::install_explorer_for(&exe) {
-        return Err("couldn't add the right-click menu entries".into());
+        return Err(tr("couldn't add the right-click menu entries").into());
     }
     // Without it (Windows 10, or no package next to this copy) r7z is still installed;
     // the entries are then under "Show more options".
@@ -86,7 +87,8 @@ pub fn install() -> Result<PathBuf, String> {
 /// updater's cleanup removes those on the next start) before the new one is copied in.
 #[cfg(windows)]
 fn copy_files(from: &Path, dir: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
+    std::fs::create_dir_all(dir)
+        .map_err(|e| tf!("can't create {path}: {e}", path = dir.display(), e = e))?;
     let mut names: Vec<String> = crate::update::release_files()
         .iter()
         .map(|s| s.to_string())
@@ -102,9 +104,9 @@ fn copy_files(from: &Path, dir: &Path) -> Result<(), String> {
             let old = crate::update::sibling(&dst, ".old");
             let _ = std::fs::remove_file(&old);
             std::fs::rename(&dst, &old)
-                .map_err(|e| format!("can't replace {}: {e}", dst.display()))?;
+                .map_err(|e| tf!("can't replace {path}: {e}", path = dst.display(), e = e))?;
         }
-        std::fs::copy(&src, &dst).map_err(|e| format!("can't copy {name}: {e}"))?;
+        std::fs::copy(&src, &dst).map_err(|e| tf!("can't copy {name}: {e}", name = name, e = e))?;
     }
     // Development builds carry the Windows 11 menu as a loose package folder.
     let package = from.join("package");
@@ -115,7 +117,7 @@ fn copy_files(from: &Path, dir: &Path) -> Result<(), String> {
             let entry = entry.map_err(|e| e.to_string())?;
             if entry.path().is_file() {
                 std::fs::copy(entry.path(), to.join(entry.file_name()))
-                    .map_err(|e| format!("can't copy the menu package: {e}"))?;
+                    .map_err(|e| tf!("can't copy the menu package: {e}", e = e))?;
             }
         }
     }
@@ -189,7 +191,7 @@ Set-ItemProperty -LiteralPath (Key 'HKCU:\Software\RegisteredApplications') -Nam
     );
     crate::shell::powershell(&script)
         .map(drop)
-        .map_err(|e| format!("couldn't register r7z with Windows: {e}"))
+        .map_err(|e| tf!("couldn't register r7z with Windows: {e}", e = e))
 }
 
 /// Removes everything installing added. When the installed copy is the one running, its
@@ -221,7 +223,7 @@ foreach ($e in @({exts})) {{
         uninstall = UNINSTALL_KEY,
     );
     crate::shell::powershell(&script)
-        .map_err(|e| format!("couldn't remove r7z's registration: {e}"))?;
+        .map_err(|e| tf!("couldn't remove r7z's registration: {e}", e = e))?;
     changed_associations();
     if let State::Installed { dir, here } = state {
         // Only the folder installing made is ever deleted, never a folder r7z was merely
@@ -327,11 +329,11 @@ pub fn state() -> State {
 }
 #[cfg(not(windows))]
 pub fn install() -> Result<PathBuf, String> {
-    Err("installing is only for Windows".into())
+    Err(tr("installing is only for Windows").into())
 }
 #[cfg(not(windows))]
 pub fn uninstall() -> Result<(), String> {
-    Err("installing is only for Windows".into())
+    Err(tr("installing is only for Windows").into())
 }
 #[cfg(not(windows))]
 pub fn refresh() {}

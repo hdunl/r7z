@@ -130,27 +130,70 @@ struct Command {
     kind: Kind,
 }
 
+/// Whether a Windows display language reads Simplified Chinese. Traditional Chinese readers
+/// get English rather than the wrong script.
+fn chinese_language(id: u16) -> bool {
+    matches!(id, 0x0804 | 0x1004 | 0x0004 | 0x7804)
+}
+
+/// The menu runs inside Explorer, so it follows Windows and not the app's own Language
+/// setting, which a Store install keeps in storage only the app can read.
+fn windows_is_chinese() -> bool {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetUserDefaultUILanguage() -> u16;
+    }
+    // SAFETY: takes no arguments and only returns a language ID.
+    chinese_language(unsafe { GetUserDefaultUILanguage() })
+}
+
+fn title(kind: Kind, paths: &[PathBuf], chinese: bool) -> String {
+    let base = || r7z::util::archive_base_name(paths);
+    let stem = |one: &PathBuf| {
+        one.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    };
+    if chinese {
+        return match kind {
+            Kind::Root => "r7z".into(),
+            Kind::Open if paths.iter().all(|p| p.is_dir()) => "在 r7z 中打开".into(),
+            Kind::Open => "用 r7z 打开".into(),
+            Kind::ExtractHere => "解压到此处".into(),
+            Kind::ExtractTo => match paths {
+                [one] => format!("解压到“{}\\”", stem(one)),
+                _ => "解压到…".into(),
+            },
+            Kind::Test => "测试压缩包".into(),
+            Kind::Convert => "转换为 .7z".into(),
+            Kind::Separator => String::new(),
+            Kind::Add7z => format!("添加到“{}.7z”", base()),
+            Kind::AddZip => format!("添加到“{}.zip”", base()),
+            Kind::Add => "添加到压缩包…".into(),
+        };
+    }
+    match kind {
+        Kind::Root => "r7z".into(),
+        Kind::Open if paths.iter().all(|p| p.is_dir()) => "Open in r7z".into(),
+        Kind::Open => "Open with r7z".into(),
+        Kind::ExtractHere => "Extract here".into(),
+        Kind::ExtractTo => match paths {
+            [one] => format!("Extract to \"{}\\\"", stem(one)),
+            _ => "Extract to…".into(),
+        },
+        Kind::Test => "Test archive".into(),
+        Kind::Convert => "Convert to .7z".into(),
+        Kind::Separator => String::new(),
+        Kind::Add7z => format!("Add to \"{}.7z\"", base()),
+        Kind::AddZip => format!("Add to \"{}.zip\"", base()),
+        Kind::Add => "Add to archive…".into(),
+    }
+}
+
 impl Command {
     fn title(&self, paths: &[PathBuf]) -> String {
-        match self.kind {
-            Kind::Root => "r7z".into(),
-            Kind::Open if paths.iter().all(|p| p.is_dir()) => "Open in r7z".into(),
-            Kind::Open => "Open with r7z".into(),
-            Kind::ExtractHere => "Extract here".into(),
-            Kind::ExtractTo => match paths {
-                [one] => format!(
-                    "Extract to \"{}\\\"",
-                    one.file_stem().unwrap_or_default().to_string_lossy()
-                ),
-                _ => "Extract to…".into(),
-            },
-            Kind::Test => "Test archive".into(),
-            Kind::Convert => "Convert to .7z".into(),
-            Kind::Separator => String::new(),
-            Kind::Add7z => format!("Add to \"{}.7z\"", r7z::util::archive_base_name(paths)),
-            Kind::AddZip => format!("Add to \"{}.zip\"", r7z::util::archive_base_name(paths)),
-            Kind::Add => "Add to archive…".into(),
-        }
+        title(self.kind, paths, windows_is_chinese())
     }
 
     fn visible(&self, paths: &[PathBuf]) -> bool {
@@ -411,6 +454,27 @@ mod tests {
                 CoTaskMemFree(Some(p as *const c_void));
             }
             out
+        }
+    }
+
+    #[test]
+    fn labels_follow_the_windows_language() {
+        let files = [PathBuf::from("Backup.zip")];
+        assert_eq!(title(Kind::ExtractHere, &files, false), "Extract here");
+        assert_eq!(title(Kind::ExtractHere, &files, true), "解压到此处");
+        assert_eq!(title(Kind::Add, &files, true), "添加到压缩包…");
+        assert_eq!(title(Kind::ExtractTo, &files, true), "解压到“Backup\\”");
+        assert_eq!(title(Kind::Add7z, &files, true), "添加到“Backup.7z”");
+    }
+
+    #[test]
+    fn only_simplified_chinese_windows_gets_chinese_labels() {
+        for id in [0x0804, 0x1004, 0x0004, 0x7804] {
+            assert!(chinese_language(id), "{id:#x}");
+        }
+        // English, Traditional Chinese, Japanese.
+        for id in [0x0409, 0x0404, 0x0C04, 0x0411] {
+            assert!(!chinese_language(id), "{id:#x}");
         }
     }
 

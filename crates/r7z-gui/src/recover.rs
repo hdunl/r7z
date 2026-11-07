@@ -1,6 +1,7 @@
 //! "Recover files…": salvaging a damaged archive. The work runs as a job (`jobs::recover`);
 //! this holds where the files go and the outcome list shown when it finishes.
 
+use crate::i18n::{tf, tr};
 use std::path::{Path, PathBuf};
 
 use eframe::egui::{self, RichText, Ui};
@@ -32,12 +33,12 @@ pub fn destination(archive: &Path) -> PathBuf {
 
 /// One line for the toast after a recovery.
 pub fn headline(r: &RecoverReport) -> String {
-    let mut s = format!("Recovered {} of {} files", r.recovered(), r.entries.len());
+    let mut s = tf!("Recovered {} of {} files", r.recovered(), r.entries.len());
     if r.partial() > 0 {
-        s.push_str(&format!(" · {} partial", r.partial()));
+        s.push_str(&tf!(" · {} partial", r.partial()));
     }
     if r.lost() > 0 {
-        s.push_str(&format!(" · {} lost", r.lost()));
+        s.push_str(&tf!(" · {} lost", r.lost()));
     }
     s
 }
@@ -57,7 +58,7 @@ pub fn body(ui: &mut Ui, p: &Palette, v: &RecoverView) {
         ui.label(RichText::new(headline(r)).font(theme::semibold(18.0)));
     });
     ui.label(
-        RichText::new(format!("{} · {} written", v.name, human_size(r.bytes)))
+        RichText::new(tf!("{} · {} written", v.name, human_size(r.bytes)))
             .size(12.5)
             .color(p.dim),
     );
@@ -85,11 +86,19 @@ pub fn body(ui: &mut Ui, p: &Palette, v: &RecoverView) {
                         kept,
                         reason,
                     } => (
-                        if *kept { "Partial" } else { "Partial, removed" },
+                        if *kept {
+                            tr("Partial")
+                        } else {
+                            tr("Partial, removed")
+                        },
                         p.caution,
-                        format!("{} readable · {reason}", human_size(*bytes)),
+                        tf!(
+                            "{size} readable · {reason}",
+                            size = human_size(*bytes),
+                            reason = reason
+                        ),
                     ),
-                    Outcome::Lost { reason } => ("Lost", p.danger, reason.clone()),
+                    Outcome::Lost { reason } => (tr("Lost"), p.danger, reason.clone()),
                     Outcome::Recovered { .. } => continue,
                 };
                 ui.horizontal(|ui| {

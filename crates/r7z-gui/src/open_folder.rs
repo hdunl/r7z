@@ -1,6 +1,7 @@
 //! The app side of "Open as folder": mounting the archive being browsed, keeping the list
 //! of mounts the sidebar shows, and ejecting them (from the sidebar and when the app closes).
 
+use crate::i18n::{tf, tr};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
@@ -72,7 +73,7 @@ impl App {
     /// Shows the archive being browsed as a folder in Explorer, mounting it first.
     pub fn open_as_folder(&mut self, ctx: &egui::Context) {
         if let Err(e) = mount::available() {
-            self.message("Open as folder isn't available", &e, true);
+            self.message(tr("Open as folder isn't available"), &e, true);
             return;
         }
         let Loc::Archive { depth, .. } = self.loc else {
@@ -120,7 +121,7 @@ impl App {
     /// Open as folder on an archive file on disk: open it here, then mount it.
     pub fn open_as_folder_from_disk(&mut self, ctx: &egui::Context, path: PathBuf) {
         if let Err(e) = mount::available() {
-            self.message("Open as folder isn't available", &e, true);
+            self.message(tr("Open as folder isn't available"), &e, true);
             return;
         }
         self.mounts.after_open = Some(path.clone());
@@ -146,7 +147,7 @@ impl App {
             Ok(m) => {
                 shell::open_path(&m.root);
                 self.toast(
-                    format!("{} is open in Explorer (read-only)", m.name),
+                    tf!("{} is open in Explorer (read-only)", m.name),
                     true,
                     None,
                 );
@@ -156,10 +157,10 @@ impl App {
             Err(Error::WrongPassword) => {
                 self.dialog = Some(Dialog::password(
                     PwFor::Mount,
-                    Some("That password is not correct.".into()),
+                    Some(tr("That password is not correct.").into()),
                 ));
             }
-            Err(e) => self.message("Can't open as folder", &e.to_string(), true),
+            Err(e) => self.message(tr("Can't open as folder"), &e.to_string(), true),
         }
     }
 

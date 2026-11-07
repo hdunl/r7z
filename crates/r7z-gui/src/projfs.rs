@@ -8,6 +8,7 @@
 
 #![allow(non_snake_case, clippy::upper_case_acronyms)]
 
+use crate::i18n::tf;
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
@@ -261,8 +262,9 @@ fn load() -> Result<Api, String> {
         // SAFETY: valid module handle and NUL-terminated ASCII name.
         let p = unsafe { GetProcAddress(module, z.as_ptr()) };
         if p.is_null() {
-            Err(format!(
-                "ProjectedFSLib.dll has no {n}; Windows 10 1809 or later is needed"
+            Err(tf!(
+                "ProjectedFSLib.dll has no {n}; Windows 10 1809 or later is needed",
+                n = n
             ))
         } else {
             Ok(p)

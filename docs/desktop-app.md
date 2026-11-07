@@ -85,6 +85,8 @@ single 10 MB executable with no installer, and it starts instantly.
 - **Look:** light and dark themes that follow Windows (or set one in Settings), including
   the title bar. Text uses Segoe UI, and the icons are vector-drawn. CJK fonts load only
   when a name needs them.
+- **Language:** English and Simplified Chinese (简体中文). The app follows the Windows
+  display language until you choose one in Settings, and the right-click menus follow Windows.
 - **Explorer integration:** Settings → "Add to menu" adds "Open with r7z", "Extract here",
   "Extract to folder" and "Add to archive…" to the right-click menu. It writes per-user
   registry keys only (no administrator rights); "Remove from menu" deletes them. These

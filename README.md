@@ -86,6 +86,7 @@ executables with no installer and no runtime to set up.
 - Drag files out to Explorer, or copy and paste them.
 - Batch extract, convert between formats, and create archives with AES-256.
 - Light and dark themes that follow Windows, and Ctrl+Shift+F to search everywhere.
+- In English and Simplified Chinese (简体中文), following Windows or your choice in Settings.
 - **Right-click menu** in Explorer, including Windows 11's main menu: extract, test,
   convert to 7z, or compress to `.7z` or `.zip` in one click without opening the app.
 - The portable version updates itself from GitHub releases. Every update is signed, and

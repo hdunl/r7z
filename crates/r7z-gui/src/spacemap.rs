@@ -1,5 +1,6 @@
 //! The space map: a squarified treemap of what takes room inside the current folder.
 
+use crate::i18n::{tf, tr};
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Ui,
 };
@@ -168,7 +169,7 @@ pub fn show(
         painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
-            "Nothing here takes up space",
+            tr("Nothing here takes up space"),
             FontId::proportional(13.5),
             p.dim,
         );
@@ -247,7 +248,7 @@ pub fn show(
             let total = tree.nodes[node].size.max(1);
             let pct = nd.size as f64 * 100.0 / total as f64;
             let kind = if nd.is_dir {
-                format!("{} files", nd.files)
+                tf!("{} files", nd.files)
             } else {
                 crate::icons::kind_label(&nd.name, false)
             };

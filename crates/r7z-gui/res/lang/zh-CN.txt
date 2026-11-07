@@ -1,0 +1,1478 @@
+# Simplified Chinese.
+#
+# Each entry is the English text on one line and its translation on the next. Blank lines
+# and lines starting with # are ignored. \n is a line break, and spaces at the start and
+# end of a line count. The English must match the program exactly; if it changes here but
+# not there, the program falls back to English.
+#
+# Keep every {placeholder}. Named ones can move anywhere. For {} use {0}, {1} and so on to
+# change their order.
+#
+# Corrections are welcome, no Rust needed. Terms used throughout:
+#   archive 压缩包 · extract 解压 · compress 压缩 · solid 固实 · checksum 校验和
+#   Explorer 资源管理器 · right-click menu 右键菜单 · undo 撤销 · recover 恢复
+
+\n\nDetails were saved to {}
+\n\n详细信息已保存到 {}
+
+\n{} {} fine.
+\n{} {}正常。
+
+    and {} more\n
+    还有 {} 项\n
+
+   ·   {} free
+   ·   可用 {}
+
+   ·   {} selected · {}
+   ·   已选择 {} 项 · {}
+
+ · left {} you changed
+ · 保留了您修改过的 {}
+
+ · skipped {} existing
+ · 跳过 {} 个已存在的文件
+
+ · {} left
+ · 剩余 {}
+
+ · {} lost
+ · {} 个丢失
+
+ · {} partial
+ · {} 个不完整
+
+ · {} put back under a new name
+ · {} 已用新名称放回
+
+(unnamed)
+（未命名）
+
+, {} read so far
+，已读取 {}
+
+A file with this name exists and will be replaced.
+已存在同名文件，它将被替换。
+
+A folder is created only when an archive holds several top-level items.
+仅当压缩包的顶层有多个项目时才会创建文件夹。
+
+Add at least one file or folder.
+请至少添加一个文件或文件夹。
+
+Add files…
+添加文件…
+
+Add folder…
+添加文件夹…
+
+Add to menu
+添加到菜单
+
+Add to the Windows 11 menu
+添加到 Windows 11 菜单
+
+Add to the new archive
+添加到新压缩包
+
+Adds "Open with r7z", "Extract here", "Extract to folder" and "Add to archive" to the right-click menu. Only your user account is changed; no administrator rights are needed.
+将“用 r7z 打开”“解压到此处”“解压到文件夹”和“添加到压缩包”添加到右键菜单。只更改您的用户帐户，无需管理员权限。
+
+All files
+所有文件
+
+Also show protected system items
+同时显示受保护的系统项目
+
+Appearance
+外观
+
+Archive
+压缩包
+
+Archive file
+压缩包文件
+
+Archives
+压缩包
+
+Ask
+询问
+
+Audio & video
+音频和视频
+
+Back
+上一步
+
+Back (Alt+Left)
+后退 (Alt+Left)
+
+Backspace
+退格键
+
+Balanced. The default.
+均衡。默认选项。
+
+Browse
+浏览
+
+Browse inside
+浏览内容
+
+Browse it in Explorer like a normal folder, without extracting
+无需解压，像普通文件夹一样在资源管理器中浏览
+
+Browse…
+浏览…
+
+Can't find the file
+找不到文件
+
+Can't open as folder
+无法作为文件夹打开
+
+Can't open this archive
+无法打开此压缩包
+
+Can't open {name}: {e}
+无法打开 {name}：{e}
+
+Check for updates automatically
+自动检查更新
+
+Check now
+立即检查
+
+Check {}
+校验 {}
+
+Checking…
+正在检查…
+
+Choose where to extract (Ctrl+E)
+选择解压位置 (Ctrl+E)
+
+Choose where to put the files.
+请选择文件的存放位置。
+
+Choose where to save the archive.
+请选择压缩包的保存位置。
+
+Code
+代码
+
+Code page of the file names
+文件名的代码页
+
+Comment
+注释
+
+Compress
+压缩
+
+Compressing
+正在压缩
+
+Compression
+压缩级别
+
+Compress…
+压缩…
+
+Compute SHA-256
+计算 SHA-256
+
+Computing {}…
+正在计算 {}…
+
+Convert
+转换
+
+Convert archive
+转换压缩包
+
+Convert to another format
+转换为其他格式
+
+Convert to another format…
+转换为其他格式…
+
+Converting
+正在转换
+
+Converting to {}
+正在转换为 {}
+
+Copied {what}
+已复制 {what}
+
+Copies r7z to {} and adds it to the Start menu, Windows search, Installed apps, "Open with" and the right-click menu. Only your user account is changed.
+将 r7z 复制到 {}，并添加到开始菜单、Windows 搜索、已安装的应用、“打开方式”和右键菜单。只更改您的用户帐户。
+
+Copy
+复制
+
+Copy CRC32
+复制 CRC32
+
+Copy SHA-256
+复制 SHA-256
+
+Copy name
+复制名称
+
+Copy path
+复制路径
+
+Couldn't add the menu entries
+无法添加菜单项
+
+Couldn't check for updates: {e}
+无法检查更新：{e}
+
+Couldn't check: {e}
+无法检查：{e}
+
+Couldn't get the Windows 11 menu: {e}
+无法获取 Windows 11 菜单：{e}
+
+Couldn't hash: {e}
+无法计算哈希值：{e}
+
+Couldn't install r7z
+无法安装 r7z
+
+Couldn't open the file: {e}
+无法打开文件：{e}
+
+Couldn't paste: {e}
+无法粘贴：{e}
+
+Couldn't restart r7z: {e}
+无法重新启动 r7z：{e}
+
+Couldn't uninstall r7z
+无法卸载 r7z
+
+Create
+创建
+
+Creating {}
+正在创建 {}
+
+Ctrl+Shift+F  search everywhere
+Ctrl+Shift+F  全局搜索
+
+Dark
+深色
+
+Dark theme
+深色主题
+
+Desktop
+桌面
+
+Destination
+目标位置
+
+Detect automatically
+自动检测
+
+Documents
+文档
+
+Done
+完成
+
+Download page
+下载页面
+
+Downloading r7z {}…
+正在下载 r7z {}…
+
+Downloads
+下载
+
+Drive ({letter})
+驱动器 ({letter})
+
+Drives
+驱动器
+
+Drop archives to open or extract them,\nother files to compress them
+拖入压缩包可打开或解压，\n拖入其他文件可进行压缩
+
+Drop files here, or add them below
+将文件拖到此处，或在下方添加
+
+Each archive gets its own subfolder.
+每个压缩包解压到各自的子文件夹。
+
+Eject
+弹出
+
+Eject {}
+弹出 {}
+
+Empty file
+空文件
+
+Encrypted
+已加密
+
+Encrypted. Unlock to preview.
+已加密。解锁后即可预览。
+
+Enter password
+输入密码
+
+Everything
+全部
+
+Existing: {} · {}
+现有文件：{} · {}
+
+Explorer menu
+资源管理器菜单
+
+Extract
+解压
+
+Extract archive
+解压压缩包
+
+Extract archives
+解压多个压缩包
+
+Extract everything that is still readable
+解压所有仍可读取的内容
+
+Extract here
+解压到此处
+
+Extract next to the archive
+解压到压缩包所在位置
+
+Extract selected
+解压所选项目
+
+Extract to
+解压到
+
+Extract to folder…
+解压到文件夹…
+
+Extract to…
+解压到…
+
+Extract {}
+解压 {}
+
+Extracted {} archives · {}
+已解压 {} 个压缩包 · {}
+
+Extracted {} in {}
+已解压 {}，用时 {}
+
+Extracting
+正在解压
+
+Extracting {what} to copy
+正在解压 {what} 以便复制
+
+Extracting {what} to drop
+正在解压 {what} 以便拖放
+
+Extracting {}
+正在解压 {}
+
+Extracting {} archives
+正在解压 {} 个压缩包
+
+Extract…
+解压…
+
+Fast
+快速
+
+Fast with a good ratio.
+速度快，压缩率也不错。
+
+Fastest
+最快
+
+File
+文件
+
+Files
+文件
+
+Files ({})
+文件（{}）
+
+Files from the unfinished extract are still there
+未完成解压的文件仍保留在原处
+
+Filter this folder
+筛选此文件夹
+
+Folder
+文件夹
+
+Folders like FOUND.000 and System Volume Information, which Explorer always hides
+例如 FOUND.000 和 System Volume Information 等资源管理器始终隐藏的文件夹
+
+Format
+格式
+
+Forward (Alt+Right)
+前进 (Alt+Right)
+
+Get started
+开始使用
+
+Get the Windows 11 menu
+获取 Windows 11 菜单
+
+GitHub answered with HTTP {code}
+GitHub 返回了 HTTP {code}
+
+Go to {}
+转到 {}
+
+Hashing…
+正在计算哈希值…
+
+Hide file names too
+同时隐藏文件名
+
+Hide hidden files
+不显示隐藏文件
+
+Home
+主文件夹
+
+If a file exists
+如果文件已存在
+
+Images
+图片
+
+Install
+安装
+
+Install r7z
+安装 r7z
+
+Install r7z to find it in the Start menu and Windows search
+安装 r7z 后，即可在开始菜单和 Windows 搜索中找到它
+
+Install them without asking
+无需询问，直接安装
+
+Install this copy
+安装此副本
+
+Installed in {}. This copy runs from another folder.
+已安装在 {}。此副本从其他文件夹运行。
+
+Installed in {}. Updates install there, and Windows lists r7z under Settings → Apps.
+已安装在 {}。更新会安装到该位置，您可以在 Windows 设置 → 应用中找到 r7z。
+
+Installing…
+正在安装…
+
+Into a folder
+解压到一个文件夹
+
+It says {} but has {} hex digits, the length of {}.
+标注为 {}，但有 {} 位十六进制数字，这是 {} 的长度。
+
+Keep both
+保留两者
+
+Keep folder structure
+保留文件夹结构
+
+LOCALAPPDATA is not set
+未设置 LOCALAPPDATA
+
+Language
+语言
+
+Large file; not previewed automatically.
+文件较大，未自动预览。
+
+Later
+稍后
+
+Light
+浅色
+
+Light theme
+浅色主题
+
+List
+列表
+
+List view
+列表视图
+
+Loading preview…
+正在加载预览…
+
+Location
+位置
+
+Lost
+已丢失
+
+Max
+最大
+
+Method
+压缩方法
+
+Modified
+修改时间
+
+Name
+名称
+
+Names
+文件名
+
+Names (detected)
+文件名（已检测）
+
+New archive
+新建压缩包
+
+New archive…
+新建压缩包…
+
+Next
+下一步
+
+Next to each archive
+解压到各压缩包所在位置
+
+Next to the archive; a folder is created only when needed
+解压到压缩包所在位置，仅在需要时创建文件夹
+
+No compression. Keeps files together for Unix systems.
+不压缩。将文件打包在一起，适用于 Unix 系统。
+
+No compression; just packs the files together.
+不压缩，只将文件打包在一起。
+
+No errors · {} checked in {}
+没有错误 · 已检查 {}，用时 {}
+
+No matches
+没有匹配项
+
+No preview: {e}
+无法预览：{e}
+
+No safety concerns
+没有安全问题
+
+None of the pasted lines is for {file_name}.
+粘贴的内容中没有 {file_name} 的哈希值。
+
+Normal
+标准
+
+Nothing here takes up space
+这里没有占用空间的内容
+
+Nothing left to undo
+没有可撤销的内容
+
+Nothing matches
+没有匹配的内容
+
+Nothing new to extract
+没有需要解压的新内容
+
+Nothing unusual: no paths that escape the destination, no disguised programs, no decompression bombs.
+未发现异常：没有逃出目标位置的路径，没有伪装的程序，也没有解压炸弹。
+
+OK
+确定
+
+Older Unix format, between gzip and xz.
+较旧的 Unix 格式，性能介于 gzip 和 xz 之间。
+
+Once a day, r7z asks GitHub for the latest release. Updates are signed and checked before anything is installed.
+r7z 每天向 GitHub 查询一次最新版本。更新都经过签名，并在安装前进行校验。
+
+Only on Windows 11.
+仅适用于 Windows 11。
+
+Only {}
+仅 {}
+
+Open
+打开
+
+Open archive
+打开压缩包
+
+Open archive…
+打开压缩包…
+
+Open as archive
+作为压缩包打开
+
+Open as folder
+作为文件夹打开
+
+Open as folder isn't available
+“作为文件夹打开”不可用
+
+Open as folder uses Windows Projected File System (ProjFS), an optional Windows feature that is turned off on this PC.\n\nTo turn it on, open PowerShell as administrator and run:\n\nEnable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS\n\nWindows may ask to restart. r7z never changes this setting itself.
+“作为文件夹打开”需要 Windows 投影文件系统 (ProjFS)，这是一项可选的 Windows 功能，此电脑尚未启用。\n\n要启用此功能，请以管理员身份打开 PowerShell 并运行：\n\nEnable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS\n\nWindows 可能会要求重新启动。r7z 绝不会自行更改此设置。
+
+Open as folders
+作为文件夹打开
+
+Open the folder when done
+完成后打开文件夹
+
+Opening {name}…
+正在打开 {name}…
+
+Opening {}
+正在打开 {}
+
+Opens everywhere, including Windows and macOS without extra tools.
+到处都能打开，Windows 和 macOS 无需额外工具。
+
+Optional
+可选
+
+Other
+其他
+
+Pack files into an archive (Ctrl+N)
+将文件打包为压缩包 (Ctrl+N)
+
+Packed
+压缩后
+
+Packing
+正在打包
+
+Partial
+不完整
+
+Partial, removed
+不完整，已删除
+
+Password
+密码
+
+Password (if any are encrypted)
+密码（如有加密）
+
+Password (optional, AES-256)
+密码（可选，AES-256）
+
+Paste
+粘贴
+
+Paste a SHA-256, SHA-1, MD5 or CRC32 hash.
+请粘贴 SHA-256、SHA-1、MD5 或 CRC32 哈希值。
+
+Paste a hash to check this file
+粘贴哈希值以校验此文件
+
+Path
+路径
+
+Pictures
+图片
+
+Places
+位置
+
+Preparing…
+正在准备…
+
+Preview anyway
+仍要预览
+
+Preview pane (Space)
+预览窗格（空格键）
+
+Programs
+程序
+
+ProjFS can't run here (it needs an NTFS drive and its driver loaded)
+ProjFS 无法在此运行（需要 NTFS 驱动器并已加载其驱动程序）
+
+ProjFS refused to start ({code})
+ProjFS 拒绝启动 ({code})
+
+ProjectedFSLib.dll has no {n}; Windows 10 1809 or later is needed
+ProjectedFSLib.dll 中没有 {n}；需要 Windows 10 1809 或更高版本
+
+Queued; it starts when the current task finishes
+已排队，将在当前任务完成后开始
+
+Quickest, larger file.
+最快，文件较大。
+
+Recent
+最近使用
+
+Recover files…
+恢复文件…
+
+Recovered {} of {} files
+已恢复 {} 个文件，共 {} 个
+
+Recovering {name}
+正在恢复 {name}
+
+Recovery
+恢复
+
+Refresh
+刷新
+
+Release page
+发布页面
+
+Remove from menu
+从菜单中移除
+
+Removes r7z from the Start menu, Installed apps, the right-click menu and "Open with", and deletes {}. Your settings stay in %APPDATA%\r7z.
+从开始菜单、已安装的应用、右键菜单和“打开方式”中移除 r7z，并删除 {}。您的设置保留在 %APPDATA%\r7z 中。
+
+Removes r7z from the right-click menu and "Open with".
+从右键菜单和“打开方式”中移除 r7z。
+
+Repack the contents into another format. The original stays as it is.
+将内容重新打包为其他格式。原文件保持不变。
+
+Repeat it
+再次输入
+
+Replace
+替换
+
+Replace all
+全部替换
+
+Replace the existing file?
+要替换现有文件吗？
+
+Restart now
+立即重新启动
+
+Safety check
+安全检查
+
+Same folder
+同一文件夹
+
+Save archive as
+压缩包另存为
+
+Save as
+另存为
+
+Scanning files
+正在扫描文件
+
+Search files, folders, places and actions
+搜索文件、文件夹、位置和操作
+
+Search this archive
+搜索此压缩包
+
+Select a file to preview it. Drop files on the window to compress them.
+选择文件即可预览。将文件拖到窗口中即可压缩。
+
+Selected ({n_sel})
+已选择（{n_sel}）
+
+Settings
+设置
+
+Show
+显示
+
+Show earlier folders
+显示更早的文件夹
+
+Show everything
+显示全部
+
+Show files
+显示文件
+
+Show folder
+显示文件夹
+
+Show hidden files
+显示隐藏文件
+
+Show in Explorer
+在资源管理器中显示
+
+Show only these
+仅显示这些项目
+
+Showing the beginning of the file
+仅显示文件开头部分
+
+Size
+大小
+
+Skip
+跳过
+
+Skip all
+全部跳过
+
+Skip tour
+跳过导览
+
+Smaller than tar.gz; slower to create.
+比 tar.gz 更小，但创建较慢。
+
+Smaller, slower. Uses more memory.
+文件更小，速度较慢，占用更多内存。
+
+Smallest files. Opens in r7z, 7-Zip and most archivers.
+文件最小。可用 r7z、7-Zip 和大多数压缩软件打开。
+
+Smallest possible, slowest. Uses a lot of memory.
+文件尽可能小，速度最慢，占用大量内存。
+
+Solid (compress files together for a smaller archive)
+固实压缩（将文件合并压缩，使压缩包更小）
+
+Some changes could not be undone
+部分更改无法撤销
+
+Some files are damaged
+部分文件已损坏
+
+Some files could not be extracted
+部分文件无法解压
+
+Some originals were put back under a new name
+部分原始文件已用新名称放回
+
+Space
+空格键
+
+Space map
+空间图
+
+Stop
+停止
+
+Stopped
+已停止
+
+Store
+仅存储
+
+System
+跟随系统
+
+System theme
+跟随系统主题
+
+Test archive
+测试压缩包
+
+Test: check every file against its checksum
+测试：根据校验和检查每个文件
+
+Testing
+正在测试
+
+Testing {}
+正在测试 {}
+
+That has {n} hex digits; SHA-256 has 64, SHA-1 40, MD5 32 and CRC32 8.
+这里有 {n} 位十六进制数字；SHA-256 为 64 位，SHA-1 为 40 位，MD5 为 32 位，CRC32 为 8 位。
+
+That looks like SHA-384, which isn't supported here. {SUPPORTED}
+这看起来是 SHA-384，此处不支持。{SUPPORTED}
+
+That looks like SHA-512, which isn't supported here. {SUPPORTED}
+这看起来是 SHA-512，此处不支持。{SUPPORTED}
+
+That password is not correct.
+密码不正确。
+
+The Microsoft Store keeps r7z up to date.
+Microsoft Store 会让 r7z 保持最新版本。
+
+The clipboard is busy; try again
+剪贴板正忙，请重试
+
+The common format on Linux. Fast.
+Linux 上的常用格式。速度快。
+
+The pasted hash is for {other}.
+粘贴的哈希值属于 {other}。
+
+The two passwords don't match.
+两次输入的密码不一致。
+
+The update didn't install: {e}
+更新未能安装：{e}
+
+These files are encrypted.
+这些文件已加密。
+
+These files were changed after the extract, so they were left alone and the originals were put back next to them:\n
+这些文件在解压后被修改过，因此保持原样，原始文件已放回它们旁边：\n
+
+This archive is damaged
+此压缩包已损坏
+
+This file: {actual}
+此文件：{actual}
+
+This folder can't be opened\n{e}
+无法打开此文件夹\n{e}
+
+This folder is empty
+此文件夹为空
+
+This release's notes aren't available in the app. The release page lists what changed.
+应用内无法查看此版本的说明。发布页面列出了更改内容。
+
+Toggle preview pane
+显示或隐藏预览窗格
+
+Type
+类型
+
+Ultra
+极限
+
+Undo
+撤销
+
+Undo last extract
+撤销上次解压
+
+Undoing extract
+正在撤销解压
+
+Undone: {}
+已撤销：{}
+
+Uninstall
+卸载
+
+Uninstall r7z?
+要卸载 r7z 吗？
+
+Uninstall…
+卸载…
+
+Unlock
+解锁
+
+Unlock the archive first (Test or Extract asks for the password).
+请先解锁压缩包（“测试”或“解压”时会询问密码）。
+
+Unlocked; drag the files again
+已解锁，请重新拖动文件
+
+Unpacking
+正在解包
+
+Up one level
+上一级
+
+Up one level (Backspace)
+上一级（退格键）
+
+Update failed: {e}
+更新失败：{e}
+
+Update now
+立即更新
+
+Update to r7z {version}?
+要更新到 r7z {version} 吗？
+
+Update to {version}…
+更新到 {version}…
+
+Updated to r7z {version}
+已更新到 r7z {version}
+
+Updates
+更新
+
+Update…
+更新…
+
+Updating the Windows 11 menu…
+正在更新 Windows 11 菜单…
+
+Welcome tour
+欢迎导览
+
+What
+内容
+
+What's new
+新增内容
+
+What's new in r7z {version}
+r7z {version} 的新增内容
+
+Where
+位置
+
+Windows 10 has only the classic menu.
+Windows 10 只有经典菜单。
+
+Windows refused the menu package: {e}
+Windows 拒绝了菜单包：{e}
+
+You have the latest version
+您使用的已是最新版本
+
+access to the mount folder was denied
+拒绝访问挂载文件夹
+
+and {} more
+还有 {} 项
+
+before extract
+解压前
+
+before extract {n}
+解压前 {n}
+
+browse in Explorer without extracting
+无需解压，在资源管理器中浏览
+
+can't copy the menu package: {e}
+无法复制菜单包：{e}
+
+can't copy {name}: {e}
+无法复制 {name}：{e}
+
+can't create {path}: {e}
+无法创建 {path}：{e}
+
+can't replace {path}: {e}
+无法替换 {path}：{e}
+
+cannot tell where r7z is installed
+无法确定 r7z 的安装位置
+
+cannot tell where r7z is running from
+无法确定 r7z 的运行位置
+
+cannot write to {path} ({e})
+无法写入 {path} ({e})
+
+close the folder in Explorer
+在资源管理器中关闭此文件夹
+
+could not reach GitHub ({other})
+无法连接到 GitHub ({other})
+
+could not replace {}; nothing was changed
+无法替换 {}，未做任何更改
+
+couldn't add the right-click menu entries
+无法添加右键菜单项
+
+couldn't register r7z with Windows: {e}
+无法向 Windows 注册 r7z：{e}
+
+couldn't remove r7z's registration: {e}
+无法移除 r7z 的注册信息：{e}
+
+couldn't set the existing file aside, so it was left as is: {e}
+无法移开现有文件，因此保持原样：{e}
+
+file
+个文件
+
+file name
+文件名
+
+file was
+个文件
+
+files
+个文件
+
+files were
+个文件
+
+folder
+个文件夹
+
+folders
+个文件夹
+
+installing is only for Windows
+安装功能仅适用于 Windows
+
+internal error: {msg}
+内部错误：{msg}
+
+item
+项
+
+items
+项
+
+next to the archive
+压缩包所在位置
+
+no file
+没有文件
+
+no free mount folder name
+没有可用的挂载文件夹名称
+
+no release has been published yet
+尚未发布任何版本
+
+no version
+没有版本号
+
+not text
+不是文本
+
+note
+条说明
+
+notes
+条说明
+
+original
+个原始文件
+
+originals
+个原始文件
+
+put back {}
+已放回 {}
+
+r7z is in the right-click menu for files and folders, in Windows 11's main menu and under "Show more options".
+r7z 已添加到文件和文件夹的右键菜单，包括 Windows 11 的主菜单和“显示更多选项”。
+
+r7z is in the right-click menu for files and folders, under "Show more options" on Windows 11. To be in the main menu as well, it needs two files from its release.
+r7z 已添加到文件和文件夹的右键菜单，在 Windows 11 上位于“显示更多选项”下。要同时显示在主菜单中，还需要发布版本中的两个文件。
+
+r7z is in the right-click menu for files and folders.
+r7z 已添加到文件和文件夹的右键菜单。
+
+r7z is in the right-click menu for files and folders. {why}
+r7z 已添加到文件和文件夹的右键菜单。{why}
+
+r7z is installed. Find it in the Start menu or Windows search
+r7z 已安装。您可以在开始菜单或 Windows 搜索中找到它
+
+r7z stopped unexpectedly
+r7z 意外停止
+
+r7z was uninstalled
+r7z 已卸载
+
+r7z {version} is available
+r7z {version} 现已推出
+
+r7z {version} is installed; restart to use it
+r7z {version} 已安装，重新启动后生效
+
+r7z {} is available; updating to it brings these files too
+r7z {} 现已推出，更新到该版本也会带来这些文件
+
+r7z {} is the latest version
+r7z {} 已是最新版本
+
+r7z {} · opens {} archive formats
+r7z {} · 可打开 {} 种压缩格式
+
+recent archive
+最近的压缩包
+
+removed {}
+已删除 {}
+
+replaced file
+个被替换的文件
+
+replaced files
+个被替换的文件
+
+that extract is still running
+该解压任务仍在运行
+
+the downloaded update does not match its signed checksum
+下载的更新与其已签名的校验和不符
+
+the entry was not found in its block
+在其数据块中找不到该条目
+
+the files could not be pasted (error {code})
+无法粘贴文件（错误 {code}）
+
+the mount folder does not exist
+挂载文件夹不存在
+
+the release notes are invalid ({what})
+版本说明无效 ({what})
+
+the release notes' signature is not valid
+版本说明的签名无效
+
+the saved copy is gone
+保存的副本已不存在
+
+the update has no {name}
+更新中没有 {name}
+
+the update manifest is invalid ({what})
+更新清单无效 ({what})
+
+the update's signature is not valid
+更新的签名无效
+
+there is no record of that extract any more
+已没有该解压任务的记录
+
+there is no settings folder to read from
+没有可读取的设置文件夹
+
+there is nothing to add
+没有可添加的内容
+
+they describe another version
+它们描述的是另一个版本
+
+thing to check
+项待检查
+
+things to check
+项待检查
+
+unknown failure
+未知错误
+
+unknown format
+未知格式
+
+verify checksums
+校验校验和
+
+warning
+条警告
+
+warnings
+条警告
+
+what r7z can do
+了解 r7z 的功能
+
+{archives} archives here. Double-click one to look inside.
+这里有 {archives} 个压缩包。双击即可查看内容。
+
+{label} isn't supported here. {SUPPORTED}
+此处不支持 {label}。{SUPPORTED}
+
+{msg} · {n} files\n
+{msg} · {n} 个文件\n
+
+{name} in the update is not what it should be
+更新中的 {name} 不符合预期
+
+{name} is a program, not an archive
+{name} 是程序，不是压缩包
+
+{name} is encrypted.
+{name} 已加密。
+
+{n} errors, first: {first}
+{n} 个错误，第一个：{first}
+
+{n} of {count} · {name}
+第 {n} 个，共 {count} 个 · {name}
+
+{size}  ·  packed {packed} ({percent}%)
+{size}  ·  压缩后 {packed} ({percent}%)
+
+{size} readable · {reason}
+可读取 {size} · {reason}
+
+{url} is larger than expected
+{url} 比预期的大
+
+{what} in {dest}
+{dest} 中的 {what}
+
+{what} into {dest}
+将 {what} 解压到 {dest}
+
+{} archive
+{} 压缩包
+
+{} archives
+{} 个压缩包
+
+{} archives could not be extracted
+{} 个压缩包无法解压
+
+{} does not exist.
+{} 不存在。
+
+{} doesn't match
+{} 不匹配
+
+{} document
+{} 文档
+
+{} failed
+{} 失败
+
+{} file
+{} 文件
+
+{} files
+{} 个文件
+
+{} files · {}
+{} 个文件 · {}
+
+{} files · {} folders
+{} 个文件 · {} 个文件夹
+
+{} files · {} folders · {} → {}
+{} 个文件 · {} 个文件夹 · {} → {}
+
+{} folders · {} files · {}
+{} 个文件夹 · {} 个文件 · {}
+
+{} free
+可用 {}
+
+{} image
+{} 图片
+
+{} is encrypted.
+{} 已加密。
+
+{} is open in Explorer (read-only)
+{} 已在资源管理器中打开（只读）
+
+{} items selected
+已选择 {} 项
+
+{} items were skipped
+已跳过 {} 项
+
+{} items · {}
+{} 项 · {}
+
+{} matches
+{} 个匹配项
+
+{} media
+{} 媒体文件
+
+{} of {}
+第 {} 页，共 {} 页
+
+{} program
+{} 程序
+
+{} queued
+{} 个排队中
+
+{} source
+{} 源代码
+
+{} · {} written
+{} · 已写入 {}
+
+{} · {} → {}{} in {}
+{} · {} → {}{}，用时 {}
+
+# The welcome tour.
+
+Welcome to r7z
+欢迎使用 r7z
+
+A fast archiver that opens what 7-Zip opens and extracts several times faster. Here's a quick look at what it can do. It takes a minute, and you can skip it anytime.
+一款快速的压缩软件，能打开 7-Zip 可打开的格式，解压速度快数倍。下面快速了解它的功能，只需一分钟，也可以随时跳过。
+
+Look inside without extracting
+无需解压即可查看
+
+Select a file to preview pictures, text and code straight from the archive. Paste the hash a website publishes for a download, and r7z tells you whether the file matches.
+选择文件即可直接在压缩包中预览图片、文本和代码。粘贴网站公布的下载哈希值，r7z 会告诉您文件是否匹配。
+
+See what takes up space
+查看空间占用
+
+The space map shows an archive by size, down to single files, colored by type. Point at a block for details, and double-click a folder to go in.
+空间图按大小显示压缩包的内容，精确到单个文件，并按类型着色。将鼠标指向色块可查看详细信息，双击文件夹可进入。
+
+Know what you're opening
+了解您打开的内容
+
+Every archive is checked as it opens. Files that would land outside the folder, programs dressed up as documents and zip bombs are flagged before you extract anything.
+每个压缩包在打开时都会接受检查。会解压到文件夹之外的文件、伪装成文档的程序和压缩炸弹，都会在解压之前标记出来。
+
+Extract, and change your mind
+解压后也能反悔
+
+Extract here makes a folder only when the archive needs one, so files never spill everywhere. Every extraction can be undone, and anything it replaced comes back.
+“解压到此处”仅在需要时创建文件夹，文件不会散落一地。每次解压都可以撤销，被替换的内容也会恢复。
+
+Find anything
+快速查找
+
+Press Ctrl+Shift+F to reach files, folders, places and actions from one box. Ctrl+F filters the folder you're in.
+按 Ctrl+Shift+F，在一个搜索框中查找文件、文件夹、位置和操作。按 Ctrl+F 可筛选当前文件夹。
+
+Right from Explorer
+直接在资源管理器中使用
+
+Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. No need to open r7z first.
+右键单击压缩包，即可解压、测试或转换为 7z。右键单击任意文件或文件夹，一键压缩为 .7z 或 .zip。无需先打开 r7z。
+
+Right-click an archive to extract, test it or convert it to 7z. Right-click any files or folders to compress them to .7z or .zip in one click. Install r7z to add these menus, and to find r7z in the Start menu and Windows search. It keeps itself up to date with signed updates.
+右键单击压缩包，即可解压、测试或转换为 7z。右键单击任意文件或文件夹，一键压缩为 .7z 或 .zip。安装 r7z 后即可添加这些菜单，并可在开始菜单和 Windows 搜索中找到它。r7z 会通过已签名的更新保持最新版本。
+
+# The classic right-click menu. The Windows 11 menu is in crates/r7z-shell/src/lib.rs.
+
+Open with r7z
+用 r7z 打开
+
+Extract here (r7z)
+解压到此处 (r7z)
+
+Extract to folder (r7z)
+解压到文件夹 (r7z)
+
+Add to archive… (r7z)
+添加到压缩包… (r7z)
+
+Cancel
+取消

@@ -1,6 +1,7 @@
 //! Application state: where the user is (a disk folder or a folder inside an archive,
 //! possibly nested), what is listed and selected, and the work running in the background.
 
+use crate::i18n::{tf, tr};
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -187,6 +188,7 @@ pub struct App {
     pub drives: Vec<Drive>,
     drives_at: Instant,
     pub theme_pref: egui::ThemePreference,
+    pub language: crate::i18n::Preference,
     pub cjk: bool,
     cjk_pending: bool,
     title: String,
@@ -267,7 +269,8 @@ impl App {
             Some("dark") => egui::ThemePreference::Dark,
             _ => egui::ThemePreference::System,
         };
-        theme::install_fonts(&cc.egui_ctx, false);
+        let cjk = crate::i18n::current() != crate::i18n::Lang::English;
+        theme::install_fonts(&cc.egui_ctx, cjk);
         theme::apply(&cc.egui_ctx, theme_pref);
         std::thread::spawn(shell::sweep_stale_temp);
         std::thread::spawn(crate::mount::sweep_stale);
@@ -337,7 +340,8 @@ impl App {
             drives: shell::drives(),
             drives_at: Instant::now(),
             theme_pref,
-            cjk: false,
+            language: crate::i18n::Preference::parse(shell::load_setting("language").as_deref()),
+            cjk,
             cjk_pending: false,
             title: String::new(),
             pending: None,
@@ -382,8 +386,8 @@ impl App {
                 if !p.exists() =>
             {
                 app.message(
-                    "Can't find the file",
-                    &format!("{} does not exist.", p.display()),
+                    tr("Can't find the file"),
+                    &tf!("{} does not exist.", p.display()),
                     true,
                 );
             }
@@ -495,9 +499,9 @@ impl App {
         if self.install_state() == crate::install::State::NotInstalled {
             shell::save_setting("install_offer", "shown");
             self.toast_long(
-                "Install r7z to find it in the Start menu and Windows search".into(),
+                tr("Install r7z to find it in the Start menu and Windows search").into(),
                 true,
-                vec![("Install".into(), ToastAct::Install)],
+                vec![(tr("Install").into(), ToastAct::Install)],
             );
         }
     }
@@ -520,13 +524,13 @@ impl App {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 } else {
                     self.toast(
-                        "r7z is installed. Find it in the Start menu or Windows search".into(),
+                        tr("r7z is installed. Find it in the Start menu or Windows search").into(),
                         true,
                         None,
                     );
                 }
             }
-            Err(e) => self.message("Couldn't install r7z", &e.to_string(), true),
+            Err(e) => self.message(tr("Couldn't install r7z"), &e.to_string(), true),
         }
     }
 
@@ -542,7 +546,7 @@ impl App {
         }
         self.update_manual = manual;
         if manual {
-            self.update_note = Some("Checking…".into());
+            self.update_note = Some(tr("Checking…").into());
         }
         self.update_check = Some(Task::spawn(ctx, crate::update::check));
     }
@@ -554,7 +558,7 @@ impl App {
         if self.update_install.is_some() {
             return;
         }
-        self.update_note = Some(format!("Downloading r7z {}…", m.version));
+        self.update_note = Some(tf!("Downloading r7z {}…", m.version));
         self.update_install = Some(Task::spawn(ctx, move |cancel| {
             crate::update::download_and_install(&m, cancel)
         }));
@@ -563,7 +567,7 @@ impl App {
     pub fn restart(&mut self, ctx: &egui::Context) {
         match crate::update::relaunch() {
             Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-            Err(e) => self.toast(format!("Couldn't restart r7z: {e}"), false, None),
+            Err(e) => self.toast(tf!("Couldn't restart r7z: {e}", e = e), false, None),
         }
     }
 
@@ -578,7 +582,7 @@ impl App {
                 Ok(crate::update::Check::Available(m, notes)) => {
                     mark_update_checked();
                     let version = m.version.clone();
-                    self.update_note = Some(format!("r7z {version} is available"));
+                    self.update_note = Some(tf!("r7z {version} is available", version = version));
                     self.update_offer = Some(m);
                     self.update_notes = notes;
                     if shell::load_setting("update_install").as_deref() == Some("auto") {
@@ -586,27 +590,30 @@ impl App {
                     } else {
                         // "Update…" shows what changed first; nothing installs until then.
                         self.toast_long(
-                            format!("r7z {version} is available"),
+                            tf!("r7z {version} is available", version = version),
                             true,
-                            vec![("Update…".into(), ToastAct::UpdateNotes { installed: false })],
+                            vec![(
+                                tr("Update…").into(),
+                                ToastAct::UpdateNotes { installed: false },
+                            )],
                         );
                     }
                 }
                 Ok(crate::update::Check::UpToDate) => {
                     mark_update_checked();
-                    self.update_note = Some("You have the latest version".into());
+                    self.update_note = Some(tr("You have the latest version").into());
                     if manual {
                         self.toast(
-                            format!("r7z {} is the latest version", crate::update::CURRENT),
+                            tf!("r7z {} is the latest version", crate::update::CURRENT),
                             true,
                             None,
                         );
                     }
                 }
                 Err(e) => {
-                    self.update_note = Some(format!("Couldn't check: {e}"));
+                    self.update_note = Some(tf!("Couldn't check: {e}", e = e));
                     if manual {
-                        self.toast(format!("Couldn't check for updates: {e}"), false, None);
+                        self.toast(tf!("Couldn't check for updates: {e}", e = e), false, None);
                     }
                 }
             }
@@ -616,25 +623,31 @@ impl App {
             match result {
                 Ok(version) => {
                     self.update_offer = None;
-                    self.update_note =
-                        Some(format!("r7z {version} is installed; restart to use it"));
+                    self.update_note = Some(tf!(
+                        "r7z {version} is installed; restart to use it",
+                        version = version
+                    ));
                     self.update_ready = Some(version.clone());
-                    let mut actions = vec![("Restart now".into(), ToastAct::Restart)];
+                    let mut actions = vec![(tr("Restart now").into(), ToastAct::Restart)];
                     if self.update_notes.is_some() {
                         actions.push((
-                            "What's new".into(),
+                            tr("What's new").into(),
                             ToastAct::UpdateNotes { installed: true },
                         ));
                     }
-                    self.toast_long(format!("Updated to r7z {version}"), true, actions);
+                    self.toast_long(
+                        tf!("Updated to r7z {version}", version = version),
+                        true,
+                        actions,
+                    );
                 }
                 Err(e) => {
-                    self.update_note = Some(format!("Update failed: {e}"));
+                    self.update_note = Some(tf!("Update failed: {e}", e = e));
                     let url = self.update_offer.as_ref().map(|m| m.release_url());
                     self.toast_long(
-                        format!("The update didn't install: {e}"),
+                        tf!("The update didn't install: {e}", e = e),
                         false,
-                        url.map(|u| ("Download page".to_string(), ToastAct::Link(u)))
+                        url.map(|u| (tr("Download page").to_string(), ToastAct::Link(u)))
                             .into_iter()
                             .collect(),
                     );
@@ -1089,7 +1102,7 @@ impl App {
             (Err(Error::WrongPassword), what) => {
                 self.dialog = Some(Dialog::password(
                     crate::dialogs::PwFor::Open(what),
-                    Some("That password is not correct.".into()),
+                    Some(tr("That password is not correct.").into()),
                 ));
             }
             (Err(Error::NotArchive), Opening::Disk(path)) if is_executable(&path) => {
@@ -1097,9 +1110,9 @@ impl App {
                 self.exit_when_done = false;
                 let name = jobs::file_name(&path);
                 self.toast(
-                    format!("{name} is a program, not an archive"),
+                    tf!("{name} is a program, not an archive", name = name),
                     false,
-                    Some(("Open as archive".into(), ToastAct::OpenAsPe(path))),
+                    Some((tr("Open as archive").into(), ToastAct::OpenAsPe(path))),
                 );
             }
             (Err(Error::NotArchive), Opening::Disk(path)) => {
@@ -1110,9 +1123,13 @@ impl App {
             (Err(e @ (Error::Corrupt(_) | Error::Checksum(_))), Opening::Disk(path)) => {
                 self.exit_when_done = false;
                 self.toast(
-                    format!("Can't open {}: {e}", jobs::file_name(&path)),
+                    tf!(
+                        "Can't open {name}: {e}",
+                        name = jobs::file_name(&path),
+                        e = e
+                    ),
                     false,
-                    Some(("Recover files…".into(), ToastAct::Recover(path))),
+                    Some((tr("Recover files…").into(), ToastAct::Recover(path))),
                 );
             }
             (Err(e), what) => {
@@ -1121,7 +1138,11 @@ impl App {
                     Opening::Disk(p) => p.display().to_string(),
                     Opening::Nested { name, .. } => name.clone(),
                 };
-                self.message("Can't open this archive", &format!("{name}\n\n{e}"), true);
+                self.message(
+                    tr("Can't open this archive"),
+                    &format!("{name}\n\n{e}"),
+                    true,
+                );
             }
         }
     }
@@ -1208,11 +1229,7 @@ impl App {
             dir,
             level.disk.clone(),
         ));
-        self.toast(
-            format!("Opening {}", level.tree.nodes[node].name),
-            true,
-            None,
-        );
+        self.toast(tf!("Opening {}", level.tree.nodes[node].name), true, None);
     }
 
     // ------------------------------------------------------------------ jobs
@@ -1228,7 +1245,7 @@ impl App {
         } else {
             self.queue.push_back(Box::new(make));
             self.toast(
-                "Queued; it starts when the current task finishes".into(),
+                tr("Queued; it starts when the current task finishes").into(),
                 true,
                 None,
             );
@@ -1247,7 +1264,7 @@ impl App {
             return;
         }
         if form.dest.trim().is_empty() {
-            form.error = Some("Choose where to put the files.".into());
+            form.error = Some(tr("Choose where to put the files.").into());
             self.dialog = Some(Dialog::Extract(form));
             return;
         }
@@ -1273,9 +1290,9 @@ impl App {
             overwrite: form.overwrite,
             total,
         };
-        let title = format!("Extracting {}", level.name);
+        let name = level.name.clone();
         self.job_reveal = form.open_after;
-        self.enqueue(ctx, move |ctx| jobs::extract(ctx, title, req));
+        self.enqueue(ctx, move |ctx| jobs::extract(ctx, name, req));
     }
 
     pub fn open_convert(&mut self) {
@@ -1336,7 +1353,7 @@ impl App {
         let (a, pw, title) = (
             level.archive(),
             level.password.clone(),
-            format!("Testing {}", level.name),
+            tf!("Testing {}", level.name),
         );
         self.enqueue(ctx, move |ctx| jobs::test(ctx, title, a, pw, total));
     }
@@ -1356,19 +1373,23 @@ impl App {
                 if report.errors.is_empty() {
                     success = true;
                     let mut text = if report.files == 0 && report.skipped > 0 {
-                        "Nothing new to extract".to_string()
+                        tr("Nothing new to extract").to_string()
                     } else {
-                        format!(
+                        tf!(
                             "Extracted {} in {}",
                             crate::ui::summary(report.files, report.dirs, report.bytes),
                             crate::ui::secs(elapsed)
                         )
                     };
                     if report.skipped > 0 {
-                        text.push_str(&format!(" · skipped {} existing", report.skipped));
+                        text.push_str(&tf!(" · skipped {} existing", report.skipped));
                     }
-                    let mut actions = vec![("Show".into(), ToastAct::Go(dest.clone()))];
-                    actions.extend(undo_id.take().map(|id| ("Undo".into(), ToastAct::Undo(id))));
+                    let mut actions = vec![(tr("Show").into(), ToastAct::Go(dest.clone()))];
+                    actions.extend(
+                        undo_id
+                            .take()
+                            .map(|id| (tr("Undo").into(), ToastAct::Undo(id))),
+                    );
                     self.toast_with(text, true, actions);
                     if self.job_reveal {
                         shell::open_path(&dest);
@@ -1381,7 +1402,7 @@ impl App {
                     self.retry_with_password();
                 } else {
                     self.report_errors(
-                        "Some files could not be extracted",
+                        tr("Some files could not be extracted"),
                         &report.errors,
                         report.files,
                     );
@@ -1391,7 +1412,7 @@ impl App {
                 if report.errors.is_empty() {
                     success = true;
                     self.toast(
-                        format!(
+                        tf!(
                             "No errors · {} checked in {}",
                             crate::ui::summary(report.files, 0, report.bytes),
                             crate::ui::secs(elapsed)
@@ -1409,18 +1430,18 @@ impl App {
                     }
                     self.dialog = Some(Dialog::password(
                         crate::dialogs::PwFor::Test,
-                        Some("That password is not correct.".into()),
+                        Some(tr("That password is not correct.").into()),
                     ));
                 } else {
-                    self.report_errors("This archive is damaged", &report.errors, report.files);
+                    self.report_errors(tr("This archive is damaged"), &report.errors, report.files);
                     if let Some(l) = self.stack.last_mut() {
                         l.damaged = true;
                         let disk = l.disk.clone();
                         if self.stack.len() == 1 {
                             self.toast(
-                                "Some files are damaged".into(),
+                                tr("Some files are damaged").into(),
                                 false,
-                                Some(("Recover files…".into(), ToastAct::Recover(disk))),
+                                Some((tr("Recover files…").into(), ToastAct::Recover(disk))),
                             );
                         }
                     }
@@ -1432,7 +1453,7 @@ impl App {
                 self.toast(
                     crate::recover::headline(&report),
                     success,
-                    Some(("Show".into(), ToastAct::Go(dest.clone()))),
+                    Some((tr("Show").into(), ToastAct::Go(dest.clone()))),
                 );
                 self.dialog = Some(Dialog::Recovered(crate::recover::RecoverView {
                     name,
@@ -1452,15 +1473,16 @@ impl App {
                     String::new()
                 };
                 self.toast(
-                    format!(
-                        "{} · {} → {}{ratio} in {}",
+                    tf!(
+                        "{} · {} → {}{} in {}",
                         jobs::file_name(&path),
                         r7z::util::fmt::human_size(s.input_bytes),
                         r7z::util::fmt::human_size(s.archive_bytes),
+                        ratio,
                         crate::ui::secs(elapsed)
                     ),
                     true,
-                    Some(("Open".into(), ToastAct::OpenArchive(path))),
+                    Some((tr("Open").into(), ToastAct::OpenArchive(path))),
                 );
                 if !warnings.is_empty() {
                     let body = warnings
@@ -1469,11 +1491,7 @@ impl App {
                         .cloned()
                         .collect::<Vec<_>>()
                         .join("\n");
-                    self.message(
-                        &format!("{} items were skipped", warnings.len()),
-                        &body,
-                        false,
-                    );
+                    self.message(&tf!("{} items were skipped", warnings.len()), &body, false);
                 }
             }
             Ok(jobs::Outcome::Batch {
@@ -1486,10 +1504,14 @@ impl App {
                 success = failed.is_empty();
                 if !done.is_empty() {
                     let last = done.last().map(|(_, d)| d.clone()).unwrap_or_default();
-                    let mut actions = vec![("Show".into(), ToastAct::Go(last))];
-                    actions.extend(undo_id.take().map(|id| ("Undo".into(), ToastAct::Undo(id))));
+                    let mut actions = vec![(tr("Show").into(), ToastAct::Go(last))];
+                    actions.extend(
+                        undo_id
+                            .take()
+                            .map(|id| (tr("Undo").into(), ToastAct::Undo(id))),
+                    );
                     self.toast_with(
-                        format!(
+                        tf!(
                             "Extracted {} archives · {}",
                             done.len(),
                             crate::ui::summary(files, 0, bytes)
@@ -1505,7 +1527,7 @@ impl App {
                         .collect::<Vec<_>>()
                         .join("\n");
                     self.message(
-                        &format!("{} archives could not be extracted", failed.len()),
+                        &tf!("{} archives could not be extracted", failed.len()),
                         &body,
                         true,
                     );
@@ -1524,18 +1546,18 @@ impl App {
                         if !body.is_empty() {
                             body.push('\n');
                         }
-                        body.push_str(
+                        body.push_str(tr(
                             "These files were changed after the extract, so they were left \
                              alone and the originals were put back next to them:\n",
-                        );
+                        ));
                         for p in r.beside.iter().take(20) {
                             body.push_str(&format!("    {}\n", p.display()));
                         }
                     }
                     let title = if r.errors.is_empty() {
-                        "Some originals were put back under a new name"
+                        tr("Some originals were put back under a new name")
                     } else {
-                        "Some changes could not be undone"
+                        tr("Some changes could not be undone")
                     };
                     self.message(title, body.trim_end(), !r.errors.is_empty());
                 }
@@ -1553,8 +1575,8 @@ impl App {
                     if clipboard.is_some_and(|s| s == dnd::clipboard_sequence())
                         && dnd::set_clipboard(self.hwnd, &paths)
                     {
-                        let what = crate::ui::count(paths.len(), "item", "items");
-                        self.toast(format!("Copied {what}"), true, None);
+                        let what = crate::ui::count(paths.len(), tr("item"), tr("items"));
+                        self.toast(tf!("Copied {what}", what = what), true, None);
                     }
                 } else if report
                     .errors
@@ -1571,29 +1593,29 @@ impl App {
                     };
                     self.dialog = Some(Dialog::password(
                         purpose,
-                        Some("That password is not correct.".into()),
+                        Some(tr("That password is not correct.").into()),
                     ));
                 } else {
                     self.report_errors(
-                        "Some files could not be extracted",
+                        tr("Some files could not be extracted"),
                         &report.errors,
                         report.files,
                     );
                 }
             }
-            Err(Error::Cancelled) => self.toast("Stopped".into(), false, None),
+            Err(Error::Cancelled) => self.toast(tr("Stopped").into(), false, None),
             Err(Error::WrongPassword) => self.retry_with_password(),
             Err(e) => {
                 self.exit_when_done = false;
-                self.message(&format!("{} failed", job.verb), &e.to_string(), true);
+                self.message(&tf!("{} failed", job.verb), &e.to_string(), true);
             }
         }
         // Stopped or partly failed extracts can still be undone.
         if let Some(id) = undo_id {
             self.toast(
-                "Files from the unfinished extract are still there".into(),
+                tr("Files from the unfinished extract are still there").into(),
                 false,
-                Some(("Undo".into(), ToastAct::Undo(id))),
+                Some((tr("Undo").into(), ToastAct::Undo(id))),
             );
         }
         self.last_undo = crate::undo::Store::user().and_then(|s| crate::undo::latest(&s));
@@ -1630,7 +1652,7 @@ impl App {
         let form = crate::dialogs::ExtractForm::new(self);
         self.dialog = Some(Dialog::password(
             crate::dialogs::PwFor::Extract(form),
-            Some("That password is not correct.".into()),
+            Some(tr("That password is not correct.").into()),
         ));
     }
 
@@ -1651,22 +1673,22 @@ impl App {
             if names.len() == 1 {
                 body.push_str(&format!("{}\n    {msg}\n", names[0]));
             } else {
-                body.push_str(&format!("{msg} · {} files\n", names.len()));
+                body.push_str(&tf!("{msg} · {n} files\n", msg = msg, n = names.len()));
                 for n in names.iter().take(4) {
                     body.push_str(&format!("    {n}\n"));
                 }
                 if names.len() > 4 {
-                    body.push_str(&format!("    and {} more\n", names.len() - 4));
+                    body.push_str(&tf!("    and {} more\n", names.len() - 4));
                 }
             }
         }
-        body.push_str(&format!(
+        body.push_str(&tf!(
             "\n{} {} fine.",
             ok_files,
             if ok_files == 1 {
-                "file was"
+                tr("file was")
             } else {
-                "files were"
+                tr("files were")
             }
         ));
         self.message(title, &body, true);
@@ -1680,7 +1702,7 @@ impl App {
                 match r {
                     Ok(path) => shell::open_path(&path),
                     Err(Error::Cancelled) => {}
-                    Err(e) => self.toast(format!("Couldn't open the file: {e}"), false, None),
+                    Err(e) => self.toast(tf!("Couldn't open the file: {e}", e = e), false, None),
                 }
             } else {
                 i += 1;
@@ -1775,11 +1797,11 @@ impl App {
             abort: abort.clone(),
             ready: tx,
         };
-        let what = crate::ui::count(paths.len(), "item", "items");
+        let what = crate::ui::count(paths.len(), tr("item"), tr("items"));
         let title = if clipboard.is_some() {
-            format!("Extracting {what} to copy")
+            tf!("Extracting {what} to copy", what = what)
         } else {
-            format!("Extracting {what} to drop")
+            tf!("Extracting {what} to drop", what = what)
         };
         self.enqueue(ctx, move |ctx| jobs::stage(ctx, title, req));
         Some(Staged {
@@ -1861,10 +1883,10 @@ impl App {
         }
         let paths = self.selected_disk_paths();
         if dnd::set_clipboard(self.hwnd, &paths) {
-            let what = crate::ui::count(paths.len(), "item", "items");
-            self.toast(format!("Copied {what}"), true, None);
+            let what = crate::ui::count(paths.len(), tr("item"), tr("items"));
+            self.toast(tf!("Copied {what}", what = what), true, None);
         } else {
-            self.toast("The clipboard is busy; try again".into(), false, None);
+            self.toast(tr("The clipboard is busy; try again").into(), false, None);
         }
     }
 
@@ -1893,7 +1915,7 @@ impl App {
                 self.pastes.remove(i);
                 self.rows_dirty = true;
                 if let Err(e) = r {
-                    self.toast(format!("Couldn't paste: {e}"), false, None);
+                    self.toast(tf!("Couldn't paste: {e}", e = e), false, None);
                 }
             } else {
                 i += 1;
@@ -2005,6 +2027,20 @@ impl App {
             egui::ThemePreference::System => "system",
         };
         shell::save_setting("theme", key);
+    }
+
+    pub fn set_language(&mut self, pref: crate::i18n::Preference) {
+        self.language = pref;
+        crate::i18n::set(pref.lang());
+        shell::save_setting("language", pref.key());
+    }
+
+    /// Loads the CJK font on the next frame, if it isn't in yet.
+    pub fn need_cjk(&mut self) {
+        if !self.cjk {
+            self.cjk = true;
+            self.cjk_pending = true;
+        }
     }
 
     pub fn toggle_preview(&mut self) {

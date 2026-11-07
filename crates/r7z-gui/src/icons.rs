@@ -1,6 +1,7 @@
 //! Interface icons in one stroke style on a 16-unit grid, plus file-type glyphs and the
 //! mark. Everything is drawn with the painter, so it stays sharp at any scale.
 
+use crate::i18n::{tf, tr};
 use std::f32::consts::PI;
 
 use eframe::egui::{
@@ -297,13 +298,13 @@ pub enum FileClass {
 impl FileClass {
     pub fn label(self) -> &'static str {
         match self {
-            FileClass::Image => "Images",
-            FileClass::Document => "Documents",
-            FileClass::Code => "Code",
-            FileClass::Media => "Audio & video",
-            FileClass::Archive => "Archives",
-            FileClass::Program => "Programs",
-            FileClass::Other => "Other",
+            FileClass::Image => tr("Images"),
+            FileClass::Document => tr("Documents"),
+            FileClass::Code => tr("Code"),
+            FileClass::Media => tr("Audio & video"),
+            FileClass::Archive => tr("Archives"),
+            FileClass::Program => tr("Programs"),
+            FileClass::Other => tr("Other"),
         }
     }
 
@@ -362,22 +363,21 @@ pub fn classify(name: &str) -> FileClass {
 /// A short description for the Type column, e.g. "PNG image", "Folder".
 pub fn kind_label(name: &str, is_dir: bool) -> String {
     if is_dir {
-        return "Folder".into();
+        return tr("Folder").into();
     }
     let ext = extension(name);
-    let noun = match classify(name) {
-        FileClass::Image => "image",
-        FileClass::Document => "document",
-        FileClass::Code => "source",
-        FileClass::Media => "media",
-        FileClass::Archive => "archive",
-        FileClass::Program => "program",
-        FileClass::Other => "file",
-    };
     if ext.is_empty() {
-        "File".into()
-    } else {
-        format!("{} {noun}", ext.to_ascii_uppercase())
+        return tr("File").into();
+    }
+    let ext = ext.to_ascii_uppercase();
+    match classify(name) {
+        FileClass::Image => tf!("{} image", ext),
+        FileClass::Document => tf!("{} document", ext),
+        FileClass::Code => tf!("{} source", ext),
+        FileClass::Media => tf!("{} media", ext),
+        FileClass::Archive => tf!("{} archive", ext),
+        FileClass::Program => tf!("{} program", ext),
+        FileClass::Other => tf!("{} file", ext),
     }
 }
 

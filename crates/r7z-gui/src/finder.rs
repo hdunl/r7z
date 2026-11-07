@@ -1,6 +1,7 @@
 //! Search everywhere (Ctrl+Shift+F): actions, places, drives, recent archives and the
 //! files in the current listing, in one list.
 
+use crate::i18n::{tf, tr};
 use std::path::PathBuf;
 
 use eframe::egui::{
@@ -64,31 +65,41 @@ fn items(app: &App) -> Vec<Item> {
             cmd,
         });
     };
-    act("Open archive…", "Ctrl+O", Icon::Open, Cmd::Open);
-    act("New archive…", "Ctrl+N", Icon::Pack, Cmd::New);
+    act(tr("Open archive…"), "Ctrl+O", Icon::Open, Cmd::Open);
+    act(tr("New archive…"), "Ctrl+N", Icon::Pack, Cmd::New);
     if app.in_archive() {
-        act("Extract…", "Ctrl+E", Icon::Extract, Cmd::Extract);
+        act(tr("Extract…"), "Ctrl+E", Icon::Extract, Cmd::Extract);
         act(
-            "Extract here",
-            "next to the archive",
+            tr("Extract here"),
+            tr("next to the archive"),
             Icon::Extract,
             Cmd::ExtractHere,
         );
-        act("Test archive", "verify checksums", Icon::Test, Cmd::Test);
         act(
-            "Open as folder",
-            "browse in Explorer without extracting",
+            tr("Test archive"),
+            tr("verify checksums"),
+            Icon::Test,
+            Cmd::Test,
+        );
+        act(
+            tr("Open as folder"),
+            tr("browse in Explorer without extracting"),
             Icon::External,
             Cmd::OpenAsFolder,
         );
-        act("Convert to another format…", "", Icon::Layers, Cmd::Convert);
-        act("Safety check", "", Icon::Shield, Cmd::Safety);
-        act("Space map", "", Icon::Map, Cmd::Map);
-        act("List view", "", Icon::List, Cmd::List);
+        act(
+            tr("Convert to another format…"),
+            "",
+            Icon::Layers,
+            Cmd::Convert,
+        );
+        act(tr("Safety check"), "", Icon::Shield, Cmd::Safety);
+        act(tr("Space map"), "", Icon::Map, Cmd::Map);
+        act(tr("List view"), "", Icon::List, Cmd::List);
     }
     if let Some((id, title)) = &app.last_undo {
         act(
-            "Undo last extract",
+            tr("Undo last extract"),
             title,
             Icon::Back,
             Cmd::Undo(id.clone()),
@@ -96,53 +107,58 @@ fn items(app: &App) -> Vec<Item> {
     }
     for (i, m) in app.mounts.active.iter().enumerate() {
         act(
-            &format!("Eject {}", m.name),
-            "close the folder in Explorer",
+            &tf!("Eject {}", m.name),
+            tr("close the folder in Explorer"),
             Icon::Eject,
             Cmd::Eject(i),
         );
     }
     act(
-        "Toggle preview pane",
-        "Space",
+        tr("Toggle preview pane"),
+        tr("Space"),
         Icon::Preview,
         Cmd::TogglePreview,
     );
-    act("Up one level", "Backspace", Icon::Up, Cmd::Up);
-    act("Refresh", "F5", Icon::Refresh, Cmd::Refresh);
+    act(tr("Up one level"), tr("Backspace"), Icon::Up, Cmd::Up);
+    act(tr("Refresh"), "F5", Icon::Refresh, Cmd::Refresh);
     act(
         if app.show_hidden {
-            "Hide hidden files"
+            tr("Hide hidden files")
         } else {
-            "Show hidden files"
+            tr("Show hidden files")
         },
         "",
         Icon::Settings,
         Cmd::Hidden,
     );
     act(
-        "Light theme",
+        tr("Light theme"),
         "",
         Icon::Settings,
         Cmd::Theme(egui::ThemePreference::Light),
     );
     act(
-        "Dark theme",
+        tr("Dark theme"),
         "",
         Icon::Settings,
         Cmd::Theme(egui::ThemePreference::Dark),
     );
     act(
-        "System theme",
+        tr("System theme"),
         "",
         Icon::Settings,
         Cmd::Theme(egui::ThemePreference::System),
     );
-    act("Settings", "", Icon::Settings, Cmd::Settings);
-    act("Welcome tour", "what r7z can do", Icon::Layers, Cmd::Tour);
+    act(tr("Settings"), "", Icon::Settings, Cmd::Settings);
+    act(
+        tr("Welcome tour"),
+        tr("what r7z can do"),
+        Icon::Layers,
+        Cmd::Tour,
+    );
     for (k, path) in &app.places {
         v.push(Item {
-            label: format!("Go to {k:?}"),
+            label: tf!("Go to {}", crate::ui::place_label(*k)),
             hint: path.display().to_string(),
             icon: Some(Icon::ChevronRight),
             file: None,
@@ -151,7 +167,7 @@ fn items(app: &App) -> Vec<Item> {
     }
     for d in &app.drives {
         v.push(Item {
-            label: format!("Go to {}", d.root.display()),
+            label: tf!("Go to {}", d.root.display()),
             hint: d.label.clone(),
             icon: Some(Icon::Drive),
             file: None,
@@ -165,7 +181,7 @@ fn items(app: &App) -> Vec<Item> {
             .unwrap_or_default();
         v.push(Item {
             label: name.clone(),
-            hint: "recent archive".into(),
+            hint: tr("recent archive").into(),
             icon: None,
             file: Some((name, false)),
             cmd: Cmd::Recent(r.clone()),
@@ -273,7 +289,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         .frame(egui::Frame::NONE)
                         .align(egui::Align2::LEFT_CENTER)
                         .hint_text(
-                            RichText::new("Search files, folders, places and actions")
+                            RichText::new(tr("Search files, folders, places and actions"))
                                 .color(p.faint),
                         )
                         .font(FontId::proportional(15.0))
@@ -296,7 +312,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
                     if ranked.is_empty() {
-                        ui.label(RichText::new("No matches").color(p.faint));
+                        ui.label(RichText::new(tr("No matches")).color(p.faint));
                     }
                     for (k, (_, i)) in ranked.iter().enumerate() {
                         let it = &all[*i];

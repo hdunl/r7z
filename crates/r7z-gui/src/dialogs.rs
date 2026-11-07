@@ -274,12 +274,19 @@ fn label(ui: &mut Ui, p: &Palette, text: &str) {
     ui.label(RichText::new(text).size(12.0).color(p.dim));
 }
 
+/// What a text field holds: `Secret` text is masked as it is typed.
+#[derive(Clone, Copy, PartialEq)]
+enum Input {
+    Plain,
+    Secret,
+}
+
 fn field(
     ui: &mut Ui,
     p: &Palette,
     value: &mut String,
     hint: &str,
-    password: bool,
+    input: Input,
     width: f32,
 ) -> egui::Response {
     egui::Frame::new()
@@ -292,7 +299,7 @@ fn field(
                 egui::TextEdit::singleline(value)
                     .frame(egui::Frame::NONE)
                     .align(egui::Align2::LEFT_CENTER)
-                    .password(password)
+                    .password(input == Input::Secret)
                     .hint_text(RichText::new(hint).color(p.faint))
                     .desired_width(width - 16.0)
                     .margin(Margin::symmetric(0, 5)),
@@ -621,7 +628,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     p,
                     &mut input,
                     tr("Password"),
-                    true,
+                    Input::Secret,
                     ui.available_width(),
                 );
                 r.request_focus();
@@ -723,7 +730,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     label(ui, p, tr("Destination"));
                     ui.horizontal(|ui| {
                         let w = ui.available_width() - 92.0;
-                        field(ui, p, &mut form.dest, tr("Folder"), false, w);
+                        field(ui, p, &mut form.dest, tr("Folder"), Input::Plain, w);
                         if button(ui, None, tr("Browse…"), false, true).clicked() {
                             if let Some(d) = rfd::FileDialog::new()
                                 .set_title(tr("Extract to"))
@@ -786,7 +793,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                             p,
                             &mut form.password,
                             tr("Password"),
-                            true,
+                            Input::Secret,
                             ui.available_width(),
                         );
                     }
@@ -920,7 +927,14 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 label(ui, p, tr("Save as"));
                 ui.horizontal(|ui| {
                     let w = ui.available_width() - 92.0;
-                    field(ui, p, &mut form.archive, tr("Archive file"), false, w);
+                    field(
+                        ui,
+                        p,
+                        &mut form.archive,
+                        tr("Archive file"),
+                        Input::Plain,
+                        w,
+                    );
                     if button(ui, None, tr("Browse…"), false, true).clicked() {
                         let cur = PathBuf::from(&form.archive);
                         let mut d = rfd::FileDialog::new().set_title(tr("Save archive as"));
@@ -949,8 +963,8 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     label(ui, p, tr("Password (optional, AES-256)"));
                     ui.horizontal(|ui| {
                         let w = (ui.available_width() - 8.0) / 2.0;
-                        field(ui, p, &mut form.password, tr("Password"), true, w);
-                        field(ui, p, &mut form.confirm, tr("Repeat it"), true, w);
+                        field(ui, p, &mut form.password, tr("Password"), Input::Secret, w);
+                        field(ui, p, &mut form.confirm, tr("Repeat it"), Input::Secret, w);
                     });
                     if form.format == Fmt::SevenZ && !form.password.is_empty() {
                         ui.checkbox(&mut form.encrypt_names, tr("Hide file names too"));
@@ -1056,7 +1070,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 } else {
                     ui.horizontal(|ui| {
                         let w = ui.available_width() - 92.0;
-                        field(ui, p, &mut form.dest, tr("Folder"), false, w);
+                        field(ui, p, &mut form.dest, tr("Folder"), Input::Plain, w);
                         if button(ui, None, tr("Browse…"), false, true).clicked() {
                             if let Some(d) = rfd::FileDialog::new().pick_folder() {
                                 form.dest = d.display().to_string();
@@ -1077,7 +1091,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                     p,
                     &mut form.password,
                     tr("Optional"),
-                    true,
+                    Input::Secret,
                     ui.available_width(),
                 );
                 footer(ui, tr("Extract"), true)
@@ -1123,7 +1137,14 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                 }
                 label(ui, p, tr("Save as"));
                 let w = ui.available_width();
-                field(ui, p, &mut form.archive, tr("Archive file"), false, w);
+                field(
+                    ui,
+                    p,
+                    &mut form.archive,
+                    tr("Archive file"),
+                    Input::Plain,
+                    w,
+                );
                 if let Some(e) = &form.error {
                     ui.label(RichText::new(e).size(12.0).color(p.danger));
                 }
@@ -1575,4 +1596,45 @@ fn overwrite_prompt(app: &mut App, ctx: &egui::Context, p: &Palette) {
             }
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the real widget paints for `text`: the words on screen, read back from egui.
+    fn painted(text: &str, input: Input) -> String {
+        let ctx = egui::Context::default();
+        crate::theme::install_fonts(&ctx, false);
+        let palette = crate::theme::palette(false);
+        let mut value = text.to_string();
+        let mut painted = String::new();
+        // The fonts arrive on the first pass, so read the second.
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                field(ui, &palette, &mut value, "hint", input, 300.0);
+            });
+            // Nothing draws these here, and egui insists on being told so.
+            output.textures_delta.clear();
+            painted.clear();
+            for clipped in output.shapes {
+                if let egui::Shape::Text(shape) = clipped.shape {
+                    painted.push_str(shape.galley.text());
+                }
+            }
+        }
+        painted
+    }
+
+    #[test]
+    fn a_secret_field_never_paints_its_text() {
+        let shown = painted("hunter2", Input::Secret);
+        assert!(!shown.is_empty(), "nothing was painted");
+        assert!(!shown.contains("hunter2"), "painted {shown:?}");
+    }
+
+    #[test]
+    fn a_plain_field_paints_its_text() {
+        assert!(painted("C:/Backups", Input::Plain).contains("C:/Backups"));
+    }
 }

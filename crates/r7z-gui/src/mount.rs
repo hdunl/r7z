@@ -318,6 +318,17 @@ impl Cache {
     }
 }
 
+/// Takes block `.1` out of `busy` when dropped, panic or not.
+struct Free<'a>(&'a Data, usize);
+
+impl Drop for Free<'_> {
+    fn drop(&mut self) {
+        let busy = self.0.busy.lock();
+        busy.unwrap_or_else(|e| e.into_inner()).remove(&self.1);
+        self.0.changed.notify_all();
+    }
+}
+
 enum Msg {
     Data(Vec<u8>),
     Done(Result<()>),
@@ -441,12 +452,23 @@ impl Data {
         std::thread::Builder::new()
             .name("mount-decode".into())
             .spawn(move || {
+                // Frees the block even if a decoder panics on corrupt data; left busy,
+                // every later read of it would wait forever.
+                let _free = Free(&me, unit);
                 me.walk(unit, target, tx);
-                me.busy.lock().unwrap().remove(&unit);
-                me.changed.notify_all();
             })
             .map_err(Error::Io)?;
-        for msg in rx {
+        loop {
+            // The decoder may take long to reach the entry (skipping a huge one before
+            // it) and checks for nothing meanwhile; a stopping mount doesn't wait for it.
+            let msg = match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(msg) => msg,
+                Err(mpsc::RecvTimeoutError::Timeout) if self.cancelled() => {
+                    return Err(Error::Cancelled)
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             match msg {
                 Msg::Data(b) => match sink(&b) {
                     Ok(()) => {}
@@ -1501,6 +1523,94 @@ mod tests {
         .unwrap();
         assert!(got > 0);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// A solid block of two small files whose decoder either panics or, before it reaches
+    /// them, spends a long time skipping (as on a huge entry) without checking for a stop.
+    struct Stubborn {
+        entries: Vec<Entry>,
+        units: Vec<r7z::format::Unit>,
+        panic: bool,
+        release: Arc<AtomicBool>,
+    }
+
+    impl Stubborn {
+        fn new(panic: bool) -> Stubborn {
+            Stubborn {
+                entries: vec![entry("a", false, 4), entry("b", false, 4)],
+                units: vec![r7z::format::Unit {
+                    entries: vec![0, 1],
+                    encrypted: false,
+                }],
+                panic,
+                release: Arc::new(AtomicBool::new(false)),
+            }
+        }
+    }
+
+    impl Archive for Stubborn {
+        fn format(&self) -> &'static r7z::format::Format {
+            r7z::format::FORMATS[0]
+        }
+        fn entries(&self) -> &[Entry] {
+            &self.entries
+        }
+        fn units(&self) -> &[r7z::format::Unit] {
+            &self.units
+        }
+        fn extract_unit(&self, _: usize, _: &Ctx, f: &mut r7z::format::EntryFn<'_>) -> Result<()> {
+            assert!(!self.panic, "a codec bug");
+            while !self.release.load(AO::Relaxed) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            for i in 0..2 {
+                f(i, &mut &b"data"[..])?;
+            }
+            Ok(())
+        }
+    }
+
+    fn stubborn_data(name: &str, panic: bool) -> (Arc<Data>, Arc<AtomicBool>) {
+        let a = Stubborn::new(panic);
+        let release = a.release.clone();
+        let cache = std::env::temp_dir().join(format!("r7z-mount-{name}-{}", std::process::id()));
+        let d = Arc::new(Data::new(Arc::new(a), None, cache));
+        assert!(d.solid[0]);
+        (d, release)
+    }
+
+    #[test]
+    fn a_panicking_decoder_frees_its_block() {
+        let (d, _) = stubborn_data("panic", true);
+        assert!(d.read(1, &mut |_| Ok(())).is_err());
+        for _ in 0..200 {
+            if d.busy.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // Left busy, every later read of the block would wait for it forever.
+        assert!(d.busy.lock().unwrap().is_empty(), "the block is still busy");
+    }
+
+    #[test]
+    fn stopping_ends_a_read_waiting_on_its_block() {
+        let (d, release) = stubborn_data("stop", false);
+        let (done, result) = mpsc::channel();
+        let reader = d.clone();
+        std::thread::spawn(move || {
+            let _ = done.send(reader.read(1, &mut |_| Ok(())));
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        d.stopping.store(true, AO::Relaxed);
+        d.changed.notify_all();
+        let r = result.recv_timeout(Duration::from_secs(3));
+        // Let the decoder finish either way.
+        release.store(true, AO::Relaxed);
+        assert!(
+            matches!(r, Ok(Err(Error::Cancelled))),
+            "the read didn't end when the mount stopped"
+        );
     }
 
     fn files_under(dir: &Path, base: &Path, out: &mut Vec<PathBuf>) {

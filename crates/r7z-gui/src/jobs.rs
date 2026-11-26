@@ -357,7 +357,8 @@ pub enum Outcome {
 
 pub struct Job {
     pub title: String,
-    pub verb: &'static str,
+    /// The title of the message when the job fails, such as "Extracting failed".
+    pub failed: &'static str,
     pub shared: Arc<Shared>,
     handle: Option<JoinHandle<Result<Outcome>>>,
 }
@@ -366,7 +367,7 @@ impl Job {
     fn spawn(
         ctx: &egui::Context,
         title: String,
-        verb: &'static str,
+        failed: &'static str,
         total: u64,
         f: impl FnOnce(Arc<Shared>) -> Result<Outcome> + Send + 'static,
     ) -> Job {
@@ -380,7 +381,7 @@ impl Job {
         });
         Job {
             title,
-            verb,
+            failed,
             shared,
             handle: Some(handle),
         }
@@ -412,7 +413,7 @@ pub struct ExtractRequest {
 
 pub fn extract(ctx: &egui::Context, name: String, req: ExtractRequest) -> Job {
     let title = tf!("Extracting {}", name);
-    Job::spawn(ctx, title, tr("Extracting"), req.total, move |s| {
+    Job::spawn(ctx, title, tr("Extracting failed"), req.total, move |s| {
         let label = tf!("{what} into {dest}", what = name, dest = req.dest.display());
         let rec = crate::undo::Recorder::new(crate::undo::Store::user(), &label, &req.dest);
         rec.note_dir(&req.dest);
@@ -466,7 +467,7 @@ pub fn stage(ctx: &egui::Context, title: String, req: StageRequest) -> Job {
         abort,
         ready,
     } = req;
-    Job::spawn(ctx, title, tr("Extracting"), x.total, move |s| {
+    Job::spawn(ctx, title, tr("Extracting failed"), x.total, move |s| {
         let aborted = Outcome::Staged {
             report: Report::default(),
             paths: Vec::new(),
@@ -539,7 +540,7 @@ pub fn test(
     password: Option<String>,
     total: u64,
 ) -> Job {
-    Job::spawn(ctx, title, tr("Testing"), total, move |s| {
+    Job::spawn(ctx, title, tr("Testing failed"), total, move |s| {
         let opts = ExtractOptions {
             base: None,
             password,
@@ -558,7 +559,7 @@ pub fn recover(ctx: &egui::Context, path: PathBuf, password: Option<String>, des
     let total = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
     let name = file_name(&path);
     let title = tf!("Recovering {name}", name = name);
-    Job::spawn(ctx, title, tr("Recovery"), total, move |s| {
+    Job::spawn(ctx, title, tr("Recovery failed"), total, move |s| {
         let opts = ExtractOptions {
             base: None,
             password: password.clone(),
@@ -638,7 +639,10 @@ pub fn batch_extract(
         _ => tf!("{} archives", archives.len()),
     };
     let (label, undo_dest) = match &dest {
-        BatchDest::Into(d) => (format!("{what} into {}", d.display()), d.clone()),
+        BatchDest::Into(d) => (
+            tf!("{what} into {dest}", what = what, dest = d.display()),
+            d.clone(),
+        ),
         BatchDest::Smart => {
             let parent = archives
                 .first()
@@ -651,7 +655,7 @@ pub fn batch_extract(
             )
         }
     };
-    Job::spawn(ctx, title, tr("Extracting"), total, move |s| {
+    Job::spawn(ctx, title, tr("Extracting failed"), total, move |s| {
         let rec = crate::undo::Recorder::new(crate::undo::Store::user(), &label, &undo_dest);
         let result = batch_run(&s, &rec, archives, &dest, overwrite, password);
         *s.undo.lock().unwrap() = rec.finish();
@@ -764,7 +768,7 @@ pub fn undo(ctx: &egui::Context, id: String) -> Job {
     Job::spawn(
         ctx,
         tr("Undoing extract").into(),
-        tr("Undo"),
+        tr("Undo failed"),
         0,
         move |_| {
             let store = crate::undo::Store::user().ok_or_else(|| {
@@ -855,7 +859,7 @@ fn write_archive(
 
 pub fn create(ctx: &egui::Context, req: CreateRequest) -> Job {
     let title = tf!("Creating {}", file_name(&req.archive));
-    Job::spawn(ctx, title, tr("Compressing"), 0, move |s| {
+    Job::spawn(ctx, title, tr("Compressing failed"), 0, move |s| {
         s.set_phase(tr("Scanning files").into());
         let names: Vec<String> = req
             .paths
@@ -888,41 +892,47 @@ pub fn convert(
 ) -> Job {
     let unpacked: u64 = archive.entries().iter().map(|e| e.size_or_zero()).sum();
     let title = tf!("Converting to {}", file_name(&req.archive));
-    Job::spawn(ctx, title, tr("Converting"), unpacked * 2, move |s| {
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch)?;
-        let result = (|| {
-            s.set_phase(tr("Unpacking").into());
-            let opts = ExtractOptions {
-                base: None,
-                password,
-                threads: threads(),
-                target: Target::Disk {
-                    dir: scratch.clone(),
-                    full_paths: true,
-                    overwrite: Overwrite::All,
-                },
-                selected: None,
-            };
-            let rep = extract::extract(&*archive, &opts, &Cb(s.clone()))?;
-            if let Some((n, e)) = rep.errors.into_iter().next() {
-                return Err(Error::Other(format!("{n}: {e}")));
-            }
-            s.set_phase(tr("Packing").into());
-            let names: Vec<String> = std::fs::read_dir(&scratch)?
-                .filter_map(|e| e.ok())
-                .map(|e| e.path().to_string_lossy().into_owned())
-                .collect();
-            let scan = r7z::ops::scan::scan(&names, false, &[], &req.archive);
-            let summary = write_archive(&s, &req, &scan.items)?;
-            Ok(Outcome::Created {
-                summary,
-                path: req.archive.clone(),
-            })
-        })();
-        let _ = std::fs::remove_dir_all(&scratch);
-        result
-    })
+    Job::spawn(
+        ctx,
+        title,
+        tr("Converting failed"),
+        unpacked * 2,
+        move |s| {
+            let _ = std::fs::remove_dir_all(&scratch);
+            std::fs::create_dir_all(&scratch)?;
+            let result = (|| {
+                s.set_phase(tr("Unpacking").into());
+                let opts = ExtractOptions {
+                    base: None,
+                    password,
+                    threads: threads(),
+                    target: Target::Disk {
+                        dir: scratch.clone(),
+                        full_paths: true,
+                        overwrite: Overwrite::All,
+                    },
+                    selected: None,
+                };
+                let rep = extract::extract(&*archive, &opts, &Cb(s.clone()))?;
+                if let Some((n, e)) = rep.errors.into_iter().next() {
+                    return Err(Error::Other(format!("{n}: {e}")));
+                }
+                s.set_phase(tr("Packing").into());
+                let names: Vec<String> = std::fs::read_dir(&scratch)?
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path().to_string_lossy().into_owned())
+                    .collect();
+                let scan = r7z::ops::scan::scan(&names, false, &[], &req.archive);
+                let summary = write_archive(&s, &req, &scan.items)?;
+                Ok(Outcome::Created {
+                    summary,
+                    path: req.archive.clone(),
+                })
+            })();
+            let _ = std::fs::remove_dir_all(&scratch);
+            result
+        },
+    )
 }
 
 pub fn file_name(p: &Path) -> String {

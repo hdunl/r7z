@@ -1,7 +1,8 @@
 //! Drawing the main window: sidebar, header, list or map, preview pane, status bar, the
 //! activity card and toasts. Interaction results are applied to `App` after drawing.
 
-use crate::i18n::{tf, tr};
+use crate::i18n::{fill, tf, tr, Lang};
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -25,31 +26,51 @@ use crate::shell::{self, Known};
 use crate::spacemap;
 use crate::theme::{self, Palette};
 
+/// "3 files, 1 folder (512 B)", in the current language.
 pub fn summary(files: u64, dirs: u64, bytes: u64) -> String {
-    let mut s = format!(
-        "{} {}",
-        group(files),
-        if files == 1 { "file" } else { "files" }
-    );
-    if dirs > 0 {
-        s.push_str(&format!(
-            ", {} {}",
-            group(dirs),
-            if dirs == 1 { "folder" } else { "folders" }
-        ));
-    }
-    s.push_str(&format!(" ({})", human_size(bytes)));
-    s
+    summary_in(crate::i18n::current(), files, dirs, bytes)
 }
 
+fn summary_in(lang: Lang, files: u64, dirs: u64, bytes: u64) -> String {
+    let tr = |english| crate::i18n::translate(lang, english);
+    let files = counted(files, tr("file"), tr("files"));
+    let size = human_size(bytes);
+    if dirs > 0 {
+        let folders = counted(dirs, tr("folder"), tr("folders"));
+        fill(
+            tr("{files}, {folders} ({size})"),
+            &[
+                ("files", &files as &dyn Display),
+                ("folders", &folders),
+                ("size", &size),
+            ],
+        )
+    } else {
+        fill(
+            tr("{files} ({size})"),
+            &[("files", &files as &dyn Display), ("size", &size)],
+        )
+    }
+}
+
+/// "250 ms", "1.2 s" or "2m 05s", in the current language.
 pub fn secs(d: Duration) -> String {
+    secs_in(crate::i18n::current(), d)
+}
+
+fn secs_in(lang: Lang, d: Duration) -> String {
+    let tr = |english| crate::i18n::translate(lang, english);
     let s = d.as_secs_f64();
     if s < 1.0 {
-        format!("{:.0} ms", s * 1000.0)
+        fill(
+            tr("{} ms"),
+            &[("", &format!("{:.0}", s * 1000.0) as &dyn Display)],
+        )
     } else if s < 90.0 {
-        format!("{s:.1} s")
+        fill(tr("{} s"), &[("", &format!("{s:.1}") as &dyn Display)])
     } else {
-        format!("{}m {:02}s", s as u64 / 60, s as u64 % 60)
+        let (m, s) = (s as u64 / 60, format!("{:02}", s as u64 % 60));
+        fill(tr("{m}m {s}s"), &[("m", &m as &dyn Display), ("s", &s)])
     }
 }
 
@@ -66,7 +87,11 @@ pub fn group(n: u64) -> String {
 }
 
 pub fn count(n: usize, one: &str, many: &str) -> String {
-    format!("{} {}", group(n as u64), if n == 1 { one } else { many })
+    counted(n as u64, one, many)
+}
+
+fn counted(n: u64, one: &str, many: &str) -> String {
+    format!("{} {}", group(n), if n == 1 { one } else { many })
 }
 
 pub fn fmt_time(ft: Option<u64>) -> String {
@@ -712,10 +737,10 @@ fn archive_card(app: &mut App, ui: &mut Ui, ctx: &egui::Context, p: &Palette) {
                 tags.push(m);
             }
             if solid {
-                tags.push("solid".into());
+                tags.push(tr("solid").into());
             }
             if enc {
-                tags.push("encrypted".into());
+                tags.push(tr("encrypted").into());
             }
             if !tags.is_empty() {
                 ui.add(
@@ -2311,7 +2336,8 @@ fn status(app: &mut App, root: &mut Ui, p: &Palette) {
                 let mut text = if app.search.trim().is_empty() {
                     tf!("{} items · {}", group(count), human_size(total))
                 } else {
-                    format!("{} matches", group(count))
+                    // Not "{} matches": that one is a checksum's name.
+                    tf!("{n} matches", n = group(count))
                 };
                 if !sel.is_empty() {
                     let size: u64 = sel.iter().filter_map(|r| r.size).sum();
@@ -2418,7 +2444,12 @@ fn activity(app: &mut App, ctx: &egui::Context, p: &Palette) {
                     let elapsed = s.started.elapsed().as_secs_f64().max(0.001);
                     let rate = done as f64 / elapsed;
                     let mut line = if total > 0 {
-                        format!("{} of {}", human_size(done), human_size(total))
+                        // Not "{} of {}": that one counts tour pages.
+                        tf!(
+                            "{done} of {total}",
+                            done = human_size(done),
+                            total = human_size(total)
+                        )
                     } else {
                         tr("Preparing…").into()
                     };
@@ -2666,5 +2697,42 @@ pub fn shortcuts(app: &mut App, ctx: &egui::Context) {
         app.selection.insert(t.clone());
         app.anchor = Some(t);
         app.scroll_to = Some(next);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_in_english_counts_files_and_folders() {
+        assert_eq!(summary(1, 0, 512), "1 file (512 B)");
+        assert_eq!(summary(1234, 1, 512), "1,234 files, 1 folder (512 B)");
+        assert_eq!(summary(3, 2, 0), "3 files, 2 folders (0 B)");
+    }
+
+    #[test]
+    fn summary_in_chinese() {
+        let zh = Lang::SimplifiedChinese;
+        assert_eq!(summary_in(zh, 1, 0, 512), "1 个文件，共 512 B");
+        assert_eq!(
+            summary_in(zh, 1234, 1, 512),
+            "1,234 个文件，1 个文件夹，共 512 B"
+        );
+    }
+
+    #[test]
+    fn secs_in_chinese() {
+        let zh = Lang::SimplifiedChinese;
+        assert_eq!(secs_in(zh, Duration::from_millis(250)), "250 毫秒");
+        assert_eq!(secs_in(zh, Duration::from_millis(1234)), "1.2 秒");
+        assert_eq!(secs_in(zh, Duration::from_secs(125)), "2 分 05 秒");
+    }
+
+    #[test]
+    fn secs_in_english() {
+        assert_eq!(secs(Duration::from_millis(250)), "250 ms");
+        assert_eq!(secs(Duration::from_millis(1234)), "1.2 s");
+        assert_eq!(secs(Duration::from_secs(125)), "2m 05s");
     }
 }

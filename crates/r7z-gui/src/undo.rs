@@ -706,33 +706,32 @@ pub fn prune(store: &Store) {
 
 /// Toast text for a finished undo.
 pub fn headline(r: &UndoReport) -> String {
-    let mut parts = Vec::new();
-    if r.removed > 0 {
-        parts.push(tf!(
-            "removed {}",
-            crate::ui::count(r.removed as usize, tr("file"), tr("files"))
-        ));
-    }
-    if r.restored > 0 {
-        parts.push(tf!(
-            "put back {}",
-            crate::ui::count(
-                r.restored as usize,
-                tr("replaced file"),
-                tr("replaced files")
-            )
-        ));
-    }
-    if parts.is_empty() && r.dirs > 0 {
-        parts.push(format!(
+    let removed =
+        (r.removed > 0).then(|| crate::ui::count(r.removed as usize, tr("file"), tr("files")));
+    let restored = (r.restored > 0).then(|| {
+        crate::ui::count(
+            r.restored as usize,
+            tr("replaced file"),
+            tr("replaced files"),
+        )
+    });
+    let done = match (removed, restored) {
+        (Some(removed), Some(restored)) => Some(tf!(
+            "removed {removed}, put back {restored}",
+            removed = removed,
+            restored = restored
+        )),
+        (Some(removed), None) => Some(tf!("removed {}", removed)),
+        (None, Some(restored)) => Some(tf!("put back {}", restored)),
+        (None, None) if r.dirs > 0 => Some(tf!(
             "removed {}",
             crate::ui::count(r.dirs as usize, tr("folder"), tr("folders"))
-        ));
-    }
-    let mut s = if parts.is_empty() {
-        tr("Nothing left to undo").to_string()
-    } else {
-        tf!("Undone: {}", parts.join(", "))
+        )),
+        (None, None) => None,
+    };
+    let mut s = match done {
+        Some(done) => tf!("Undone: {}", done),
+        None => tr("Nothing left to undo").to_string(),
     };
     if !r.kept.is_empty() {
         s.push_str(&tf!(
@@ -972,5 +971,30 @@ mod tests {
         let head = Manifest::parse("1", &m.to_text(), true).unwrap();
         assert!(head.finished && head.created.is_empty());
         assert!(Manifest::parse("1", "something else", false).is_none());
+    }
+
+    #[test]
+    fn headline_in_english() {
+        let r = |removed, restored, dirs| UndoReport {
+            removed,
+            restored,
+            dirs,
+            ..Default::default()
+        };
+        assert_eq!(headline(&r(0, 0, 0)), "Nothing left to undo");
+        assert_eq!(headline(&r(3, 0, 1)), "Undone: removed 3 files");
+        assert_eq!(headline(&r(0, 1, 0)), "Undone: put back 1 replaced file");
+        assert_eq!(
+            headline(&r(1, 2, 0)),
+            "Undone: removed 1 file, put back 2 replaced files"
+        );
+        assert_eq!(headline(&r(0, 0, 2)), "Undone: removed 2 folders");
+        let mut full = r(2, 0, 0);
+        full.kept = vec![PathBuf::from("a")];
+        full.beside = vec![PathBuf::from("b"), PathBuf::from("c")];
+        assert_eq!(
+            headline(&full),
+            "Undone: removed 2 files · left 1 file you changed · 2 originals put back under a new name"
+        );
     }
 }

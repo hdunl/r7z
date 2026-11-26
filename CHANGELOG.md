@@ -2,7 +2,7 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.1 - 2026-11-26
 
 - Security: an NSIS installer could make r7z use memory without limit while it was only
   being listed. Strings in the install script had no length limit, and every shell-folder

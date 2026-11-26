@@ -26,7 +26,7 @@ staying current takes one click.
   (`.intoto.jsonl`) and as a Sigstore bundle (`.sigstore.json`). To check a download:
 
   ```
-  gh attestation verify r7z-0.3.0-windows-x64.zip --repo hdunl/r7z
+  gh attestation verify r7z-0.3.1-windows-x64.zip --repo hdunl/r7z
   ```
 
 - `SHA256SUMS` lists the hash of the release zip and of the update and notes files

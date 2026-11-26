@@ -87,3 +87,45 @@ fn recover_inputs_run_without_panicking() {
         let _ = recover(&opened, &opts, RecoverOptions::default(), &Quiet);
     }
 }
+
+/// An NSIS 2 installer, not inside a PE image, with a stored header holding one `File`
+/// instruction named by a string of shell folder codes that each name the same string.
+fn nsis_shell_folder_bomb(codes: usize) -> Vec<u8> {
+    let fixed = 300;
+    let mut header = vec![0u8; fixed];
+    // Instruction table (2) and string table (3) descriptors.
+    for (i, o, n) in [(2usize, fixed, 1usize), (3, fixed + 28, 0)] {
+        header[4 + 8 * i..8 + 8 * i].copy_from_slice(&(o as u32).to_le_bytes());
+        header[8 + 8 * i..12 + 8 * i].copy_from_slice(&(n as u32).to_le_bytes());
+    }
+    for v in [20u32, 0, 0, 0, u32::MAX, u32::MAX, 0] {
+        header.extend_from_slice(&v.to_le_bytes());
+    }
+    // 0xFE is a shell folder in NSIS 2; 0x80 reads its registry value name from the string
+    // at offset 0, which is this one, without a NUL.
+    header.extend([0xFE, 0x80, 0x80].repeat(codes));
+    let mut file = b"MZ\0\0".to_vec();
+    file.extend_from_slice(&0xDEAD_BEEFu32.to_le_bytes());
+    file.extend_from_slice(b"NullsoftInst");
+    file.extend_from_slice(&(header.len() as u32).to_le_bytes());
+    file.extend_from_slice(&(28 + 4 + header.len() as u32).to_le_bytes());
+    file.extend_from_slice(&(header.len() as u32).to_le_bytes());
+    file.extend_from_slice(&header);
+    file
+}
+
+#[test]
+fn nsis_shell_folder_names_stay_bounded() {
+    // At full size (a MiB of codes) this decoded hundreds of GB of names; a few KiB already
+    // made one of megabytes.
+    let opened = format::open_bytes(
+        nsis_shell_folder_bomb(4 << 10),
+        "a.exe",
+        &OpenRequest::default(),
+    )
+    .unwrap();
+    let a = &opened.levels.last().unwrap().archive;
+    assert_eq!(a.format().name, "Nsis");
+    let longest = a.entries().iter().map(|e| e.name.len()).max().unwrap();
+    assert!(longest <= 64 << 10, "a name of {longest} bytes");
+}

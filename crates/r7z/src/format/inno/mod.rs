@@ -590,6 +590,15 @@ fn with_suffix(name: &str, suffix: &str) -> String {
     }
 }
 
+/// The file offsets of a chunk at `start` in the data at `data_at`: its ID, its `packed`
+/// bytes after the ID, and their end.
+fn chunk_span(data_at: u64, start: u64, packed: u64) -> Result<(u64, u64, u64)> {
+    let at = data_at.checked_add(start).ok_or_else(short)?;
+    let body = at.checked_add(4).ok_or_else(short)?;
+    let end = body.checked_add(packed).ok_or_else(short)?;
+    Ok((at, body, end))
+}
+
 impl Inno {
     /// A reader over the decoded bytes of `loc`'s chunk, from its start.
     fn open_chunk(&self, loc: &Location, chunk_len: u64) -> Result<Box<dyn Read + Send>> {
@@ -601,13 +610,12 @@ impl Inno {
         if loc.encrypted {
             return Err(Error::unsupported("encrypted Inno Setup files"));
         }
-        let at = self.data_at.checked_add(loc.start).ok_or_else(short)?;
-        let id = self.file.sub(at..at + 4)?;
+        let (at, body, end) = chunk_span(self.data_at, loc.start, loc.packed)?;
+        let id = self.file.sub(at..body)?;
         if id[..] != CHUNK_ID[..] {
             return Err(Error::corrupt("Inno Setup chunk has no zlb ID"));
         }
-        let end = (at + 4).checked_add(loc.packed).ok_or_else(short)?;
-        let packed = self.file.sub(at + 4..end)?;
+        let packed = self.file.sub(body..end)?;
         if !loc.compressed {
             return Ok(Box::new(packed.reader()));
         }
@@ -883,6 +891,14 @@ impl<R: Read> Read for Verify<'_, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chunk_offsets_that_overflow_are_damage() {
+        assert_eq!(chunk_span(100, 20, 5).unwrap(), (120, 124, 129));
+        // The chunk start fits, but its ID would end past the largest offset.
+        assert!(chunk_span(u64::MAX - 10, 8, 0).is_err());
+        assert!(chunk_span(100, 20, u64::MAX).is_err());
+    }
 
     #[test]
     fn destinations_become_folders() {

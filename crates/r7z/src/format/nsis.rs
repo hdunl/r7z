@@ -36,6 +36,7 @@
 //! known before decoding only for stored files. Times come from the script; the CRC32 is not
 //! checked.
 
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::io::{self, Read};
 
@@ -88,6 +89,21 @@ const MAX_WALK: u64 = 256 << 20;
 /// How far past the PE image the first header is looked for. It normally sits right at
 /// the end of the image; a signature or padding can come first.
 const MAX_SCAN: usize = 64 << 20;
+/// Characters read for one string. NSIS strings are at most 1024 characters (8192 in the
+/// large-strings build), and a registry value name at most 16383; past this is damage.
+const MAX_STRING: usize = 16 << 10;
+/// UTF-8 bytes one decoded string may grow to: variables and shell folders expand.
+const MAX_TEXT: usize = 64 << 10;
+/// Text decoded for one script, per header byte and within bounds, so that many
+/// instructions naming one long string cannot decode more than the header warrants.
+const TEXT_PER_BYTE: usize = 16;
+const TEXT_MIN: usize = 16 << 20;
+const TEXT_MAX: usize = 256 << 20;
+/// Passes over a solid stream, each of which decodes it again; more files sharing one
+/// offset than this are listed but not extracted. NSIS stores identical files once, so a
+/// real installer with hundreds of empty or duplicate files needs that many passes; the
+/// limit only has to stop a crafted script from asking for millions.
+const MAX_PASSES: usize = 4096;
 /// LZMA properties NSIS always writes: lc=3, lp=0, pb=2.
 const LZMA_PROPS: u8 = 0x5D;
 
@@ -989,12 +1005,13 @@ enum Raw {
 }
 
 /// The string table.
-#[derive(Clone, Copy)]
 struct Strings<'a> {
     table: &'a [u8],
     unicode: bool,
     codes: Codes,
     page: Option<CodePage>,
+    /// Text still to be decoded, in characters read plus bytes written (see `TEXT_MIN`).
+    left: Cell<usize>,
 }
 
 impl<'a> Strings<'a> {
@@ -1010,7 +1027,23 @@ impl<'a> Strings<'a> {
             unicode,
             codes: detect_codes(table, unicode),
             page,
+            left: Cell::new(TEXT_MAX),
         }
+    }
+
+    /// Counts `n` against the text left to decode.
+    fn charge(&self, n: usize) {
+        self.left.set(self.left.get().saturating_sub(n));
+    }
+
+    /// `s`, counted against the text left to decode.
+    fn charged(&self, s: String) -> String {
+        self.charge(s.len());
+        s
+    }
+
+    fn exhausted(&self) -> bool {
+        self.left.get() == 0
     }
 
     fn unit(&self, i: usize) -> Option<u32> {
@@ -1051,12 +1084,17 @@ impl<'a> Strings<'a> {
 
     /// The string at `off` (in characters), with variables written as `$NAME` and
     /// `$OUTDIR` replaced by `outdir`, and what it starts with. None when `off` is outside
-    /// the table; a negative offset names a language string.
+    /// the table or the script's text is used up; a negative offset names a language
+    /// string. A string longer than real ones is cut.
     fn get(&self, off: i32, outdir: &str) -> Option<(String, Lead)> {
         if off < 0 {
             return Some((format!("$(LSTR_{})", -(off as i64 + 1)), Lead::Lang));
         }
-        let mut i = off as usize;
+        if self.exhausted() {
+            return None;
+        }
+        let start = off as usize;
+        let mut i = start;
         self.unit(i)?;
         let mut lead = None;
         let mut raw = if self.unicode {
@@ -1066,6 +1104,9 @@ impl<'a> Strings<'a> {
         };
         let mut out = String::new();
         while let Some(c) = self.unit(i) {
+            if i - start >= MAX_STRING || out.len() >= MAX_TEXT {
+                break;
+            }
             i += 1;
             if c == 0 {
                 break;
@@ -1121,6 +1162,13 @@ impl<'a> Strings<'a> {
             }
         }
         self.flush(&mut raw, &mut out);
+        // The last variable or folder may have gone past the limit.
+        let mut end = out.len().min(MAX_TEXT);
+        while !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+        self.charge(i - start + out.len());
         Some((out, lead.unwrap_or(Lead::Text)))
     }
 
@@ -1143,14 +1191,15 @@ impl<'a> Strings<'a> {
         }
     }
 
-    /// The characters at `i` up to the next NUL, without decoding codes.
+    /// The characters at `i` up to the next NUL, without decoding codes, cut like a string.
     fn plain(&self, mut i: usize) -> String {
         let mut raw = if self.unicode {
             Raw::Wide(Vec::new())
         } else {
             Raw::Ansi(Vec::new())
         };
-        while let Some(c) = self.unit(i).filter(|&c| c != 0) {
+        let stop = i.saturating_add(MAX_STRING);
+        while let Some(c) = self.unit(i).filter(|&c| c != 0 && i < stop) {
             match &mut raw {
                 Raw::Ansi(b) => b.push(c as u8),
                 Raw::Wide(w) => w.push(c as u16),
@@ -1229,6 +1278,11 @@ impl Script {
             .get(strings_at..strings_end)
             .ok_or_else(|| Error::corrupt("NSIS string table is outside the header"))?;
         let strings = Strings::new(text, page);
+        strings.left.set(
+            TEXT_PER_BYTE
+                .saturating_mul(header.len())
+                .clamp(TEXT_MIN, TEXT_MAX),
+        );
         let (entries_at, count) = table(header, NB_ENTRIES);
         let avail = header.len().saturating_sub(entries_at) / ENTRY_LEN;
         if entries_at > header.len() || count == 0 {
@@ -1255,7 +1309,7 @@ impl Script {
                 EW_EXTRACTFILE => items.push(Item {
                     path: s(1, &outdir)
                         .filter(|(n, _)| !n.is_empty())
-                        .map(|n| join(&outdir, n)),
+                        .map(|n| strings.charged(join(&outdir, n))),
                     offset: p(2),
                     uninstaller: false,
                     mtime: filetime(p(3), p(4)),
@@ -1265,7 +1319,7 @@ impl Script {
                         .filter(|(n, _)| !n.is_empty())
                         .or_else(|| s(3, &outdir).filter(|(n, _)| !n.is_empty()));
                     items.push(Item {
-                        path: name.map(|n| join(&outdir, n)),
+                        path: name.map(|n| strings.charged(join(&outdir, n))),
                         offset: p(1),
                         uninstaller: true,
                         mtime: None,
@@ -1273,6 +1327,9 @@ impl Script {
                 }
                 _ => {}
             }
+        }
+        if strings.exhausted() {
+            notes.push("the script's names decode to far more text than its header holds; later names are not read".into());
         }
         let unnamed = items.iter().filter(|it| it.path.is_none()).count();
         if unnamed > 0 {
@@ -1575,23 +1632,19 @@ impl Nsis {
             for e in &mut self.entries {
                 e.method = Some(self.method.clone());
             }
-            // One pass over the stream reads each block once, so files sharing data with an
-            // earlier one (under another name) go to passes of their own.
-            let mut passes: Vec<(u32, Vec<usize>)> = Vec::new();
-            for (i, it) in self.items.iter().enumerate() {
-                match passes.iter_mut().find(|(last, _)| *last < it.offset) {
-                    Some((last, entries)) => {
-                        *last = it.offset;
-                        entries.push(i);
-                    }
-                    None => passes.push((it.offset, vec![i])),
-                }
+            let offsets: Vec<u32> = self.items.iter().map(|it| it.offset).collect();
+            let passes = solid_passes(&offsets);
+            let left_out = offsets.len() - passes.iter().map(Vec::len).sum::<usize>();
+            if left_out > 0 {
+                self.notes.push(format!(
+                    "{left_out} files share their data with {MAX_PASSES} or more others and \
+                     are not extracted"
+                ));
             }
-            self.units
-                .extend(passes.into_iter().map(|(_, entries)| Unit {
-                    entries,
-                    encrypted: false,
-                }));
+            self.units.extend(passes.into_iter().map(|entries| Unit {
+                entries,
+                encrypted: false,
+            }));
         }
     }
 
@@ -1656,6 +1709,29 @@ impl Nsis {
         }
         Ok(())
     }
+}
+
+/// The passes over a solid stream that extract the files at `offsets` (sorted), as indexes.
+/// One pass reads each block once, so files sharing data with an earlier one (under another
+/// name) go to passes of their own: the k-th file at an offset to pass k. Files past
+/// `MAX_PASSES` at one offset are left out, since each pass decodes the stream again.
+fn solid_passes(offsets: &[u32]) -> Vec<Vec<usize>> {
+    let mut passes: Vec<Vec<usize>> = Vec::new();
+    let mut k = 0;
+    for (i, &offset) in offsets.iter().enumerate() {
+        k = if i > 0 && offsets[i - 1] == offset {
+            k + 1
+        } else {
+            0
+        };
+        if k == passes.len() && k < MAX_PASSES {
+            passes.push(Vec::new());
+        }
+        if let Some(pass) = passes.get_mut(k) {
+            pass.push(i);
+        }
+    }
+    passes
 }
 
 /// A file length in a solid stream, which never has the compressed bit.
@@ -1730,5 +1806,113 @@ impl Archive for Nsis {
 
     fn damage(&self) -> Vec<String> {
         self.notes.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_string_without_its_nul_is_cut() {
+        let table = vec![b'a'; MAX_STRING + 4096];
+        let (s, _) = Strings::new(&table, None).get(0, "").unwrap();
+        assert!(s.len() <= MAX_STRING, "decoded {} bytes", s.len());
+    }
+
+    #[test]
+    fn shell_folders_naming_a_long_string_stay_bounded() {
+        // NSIS 2 code 0xFE with 0x80: a folder whose registry value name is the string at
+        // offset 0, here the whole table, which has no NUL. Every code appended all of it.
+        let table = [0xFE, 0x80, 0x80].repeat((4 << 10) / 3);
+        let strings = Strings::new(&table, None);
+        assert!(strings.codes == Codes::Nsis2);
+        let (s, lead) = strings.get(0, "").unwrap();
+        assert!(lead == Lead::Shell);
+        assert!(s.len() <= MAX_TEXT, "decoded {} bytes", s.len());
+    }
+
+    /// A header whose `count` extract instructions all name one string of `len` characters.
+    fn header_naming_one_string(count: usize, len: usize) -> Vec<u8> {
+        let fixed = 300;
+        let entries_at = fixed;
+        let strings_at = entries_at + ENTRY_LEN * count;
+        let mut header = vec![0u8; fixed];
+        for (i, (o, n)) in [
+            (NB_ENTRIES, (entries_at, count)),
+            (NB_STRINGS, (strings_at, 0)),
+        ] {
+            header[4 + 8 * i..8 + 8 * i].copy_from_slice(&(o as u32).to_le_bytes());
+            header[8 + 8 * i..12 + 8 * i].copy_from_slice(&(n as u32).to_le_bytes());
+        }
+        for k in 0..count as u32 {
+            for v in [EW_EXTRACTFILE, 0, 0, k, u32::MAX, u32::MAX, 0] {
+                header.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        header.resize(header.len() + len, b'a');
+        header.push(0);
+        header
+    }
+
+    #[test]
+    fn many_instructions_naming_one_long_string_stay_bounded() {
+        let header = header_naming_one_string(2048, 16_000);
+        let script = Script::parse(&header, None).unwrap();
+        let total: usize = script
+            .items
+            .iter()
+            .filter_map(|it| it.path.as_ref())
+            .map(String::len)
+            .sum();
+        assert!(
+            total <= TEXT_MIN + MAX_TEXT,
+            "decoded {total} bytes of names"
+        );
+        assert!(!script.notes.is_empty(), "the unread names are reported");
+    }
+
+    /// The assignment `solid_passes` made before it was linear: each file to the first pass
+    /// that has not reached its offset.
+    fn greedy(offsets: &[u32]) -> Vec<Vec<usize>> {
+        let mut passes: Vec<(u32, Vec<usize>)> = Vec::new();
+        for (i, &offset) in offsets.iter().enumerate() {
+            match passes.iter_mut().find(|(last, _)| *last < offset) {
+                Some((last, entries)) => {
+                    *last = offset;
+                    entries.push(i);
+                }
+                None => passes.push((offset, vec![i])),
+            }
+        }
+        passes.into_iter().map(|(_, entries)| entries).collect()
+    }
+
+    #[test]
+    fn passes_match_the_greedy_assignment() {
+        let cases: [&[u32]; 6] = [
+            &[],
+            &[0],
+            &[0, 1, 2],
+            &[0, 0, 1, 1, 1, 5],
+            &[0, 0, 0, 3, 3, 7, 7, 7, 7],
+            &[4, 9, 9, 9, 12, 12, 30],
+        ];
+        for offsets in cases {
+            assert_eq!(solid_passes(offsets), greedy(offsets), "{offsets:?}");
+        }
+    }
+
+    #[test]
+    fn many_files_at_one_offset_stay_within_the_pass_limit() {
+        let mut offsets = vec![7u32; 20_000];
+        offsets.extend(8..1000);
+        let passes = solid_passes(&offsets);
+        assert!(passes.len() <= MAX_PASSES, "{} passes", passes.len());
+        for p in &passes {
+            assert!(p.windows(2).all(|w| offsets[w[0]] < offsets[w[1]]));
+        }
+        // The files after the shared offset are still read, in the first pass.
+        assert!(passes[0].ends_with(&(20_000..offsets.len()).collect::<Vec<_>>()));
     }
 }

@@ -37,13 +37,13 @@
  · 剩余 {}
 
  · {} lost
- · {} 个丢失
+ · 丢失 {} 个
 
  · {} partial
- · {} 个不完整
+ · 不完整 {} 个
 
  · {} put back under a new name
- · {} 已用新名称放回
+ · {}已用新名称放回
 
 (unnamed)
 （未命名）
@@ -70,7 +70,7 @@ Add to menu
 添加到菜单
 
 Add to the Windows 11 menu
-添加到 Windows 11 菜单
+添加到 Windows 11 右键菜单
 
 Add to the new archive
 添加到新压缩包
@@ -106,7 +106,7 @@ Back
 上一步
 
 Back (Alt+Left)
-后退 (Alt+Left)
+后退（Alt+向左键）
 
 Backspace
 退格键
@@ -151,7 +151,7 @@ Checking…
 正在检查…
 
 Choose where to extract (Ctrl+E)
-选择解压位置 (Ctrl+E)
+选择解压位置（Ctrl+E）
 
 Choose where to put the files.
 请选择文件的存放位置。
@@ -171,8 +171,8 @@ Comment
 Compress
 压缩
 
-Compressing
-正在压缩
+Compressing failed
+压缩失败
 
 Compression
 压缩级别
@@ -198,8 +198,8 @@ Convert to another format
 Convert to another format…
 转换为其他格式…
 
-Converting
-正在转换
+Converting failed
+转换失败
 
 Converting to {}
 正在转换为 {}
@@ -235,7 +235,7 @@ Couldn't check: {e}
 无法检查：{e}
 
 Couldn't get the Windows 11 menu: {e}
-无法获取 Windows 11 菜单：{e}
+无法获取 Windows 11 右键菜单：{e}
 
 Couldn't hash: {e}
 无法计算哈希值：{e}
@@ -295,7 +295,7 @@ Downloads
 下载
 
 Drive ({letter})
-驱动器 ({letter})
+本地磁盘 ({letter})
 
 Drives
 驱动器
@@ -367,7 +367,7 @@ Extract to…
 解压到…
 
 Extract {}
-解压 {}
+解压 {} 个压缩包
 
 Extracted {} archives · {}
 已解压 {} 个压缩包 · {}
@@ -375,8 +375,8 @@ Extracted {} archives · {}
 Extracted {} in {}
 已解压 {}，用时 {}
 
-Extracting
-正在解压
+Extracting failed
+解压失败
 
 Extracting {what} to copy
 正在解压 {what} 以便复制
@@ -427,13 +427,13 @@ Format
 格式
 
 Forward (Alt+Right)
-前进 (Alt+Right)
+前进（Alt+向右键）
 
 Get started
 开始使用
 
 Get the Windows 11 menu
-获取 Windows 11 菜单
+获取 Windows 11 右键菜单
 
 GitHub answered with HTTP {code}
 GitHub 返回了 HTTP {code}
@@ -445,7 +445,7 @@ Hashing…
 正在计算哈希值…
 
 Hide file names too
-同时隐藏文件名
+同时加密文件名
 
 Hide hidden files
 不显示隐藏文件
@@ -541,10 +541,10 @@ Name
 名称
 
 Names
-文件名
+文件名编码
 
 Names (detected)
-文件名（已检测）
+文件名编码（自动检测）
 
 New archive
 新建压缩包
@@ -598,7 +598,7 @@ Nothing new to extract
 没有需要解压的新内容
 
 Nothing unusual: no paths that escape the destination, no disguised programs, no decompression bombs.
-未发现异常：没有逃出目标位置的路径，没有伪装的程序，也没有解压炸弹。
+未发现异常：没有超出目标文件夹的路径，没有伪装的程序，也没有压缩炸弹。
 
 OK
 确定
@@ -613,7 +613,7 @@ Only on Windows 11.
 仅适用于 Windows 11。
 
 Only {}
-仅 {}
+仅{}
 
 Open
 打开
@@ -634,7 +634,7 @@ Open as folder isn't available
 “作为文件夹打开”不可用
 
 Open as folder uses Windows Projected File System (ProjFS), an optional Windows feature that is turned off on this PC.\n\nTo turn it on, open PowerShell as administrator and run:\n\nEnable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS\n\nWindows may ask to restart. r7z never changes this setting itself.
-“作为文件夹打开”需要 Windows 投影文件系统 (ProjFS)，这是一项可选的 Windows 功能，此电脑尚未启用。\n\n要启用此功能，请以管理员身份打开 PowerShell 并运行：\n\nEnable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS\n\nWindows 可能会要求重新启动。r7z 绝不会自行更改此设置。
+“作为文件夹打开”需要 Windows 投影文件系统（ProjFS），这是一项可选的 Windows 功能，此电脑尚未启用。\n\n要启用此功能，请以管理员身份打开 PowerShell 并运行：\n\nEnable-WindowsOptionalFeature -Online -FeatureName Client-ProjFS\n\nWindows 可能会要求重新启动。r7z 绝不会自行更改此设置。
 
 Open as folders
 作为文件夹打开
@@ -649,7 +649,7 @@ Opening {}
 正在打开 {}
 
 Opens everywhere, including Windows and macOS without extra tools.
-到处都能打开，Windows 和 macOS 无需额外工具。
+兼容性最好，Windows 和 macOS 无需额外工具即可打开。
 
 Optional
 可选
@@ -658,10 +658,10 @@ Other
 其他
 
 Pack files into an archive (Ctrl+N)
-将文件打包为压缩包 (Ctrl+N)
+将文件打包为压缩包（Ctrl+N）
 
 Packed
-压缩后
+压缩后大小
 
 Packing
 正在打包
@@ -715,7 +715,7 @@ ProjFS can't run here (it needs an NTFS drive and its driver loaded)
 ProjFS 无法在此运行（需要 NTFS 驱动器并已加载其驱动程序）
 
 ProjFS refused to start ({code})
-ProjFS 拒绝启动 ({code})
+ProjFS 拒绝启动（{code}）
 
 ProjectedFSLib.dll has no {n}; Windows 10 1809 or later is needed
 ProjectedFSLib.dll 中没有 {n}；需要 Windows 10 1809 或更高版本
@@ -738,8 +738,8 @@ Recovered {} of {} files
 Recovering {name}
 正在恢复 {name}
 
-Recovery
-恢复
+Recovery failed
+恢复失败
 
 Refresh
 刷新
@@ -778,7 +778,7 @@ Safety check
 安全检查
 
 Same folder
-同一文件夹
+压缩包所在文件夹
 
 Save archive as
 压缩包另存为
@@ -799,7 +799,7 @@ Select a file to preview it. Drop files on the window to compress them.
 选择文件即可预览。将文件拖到窗口中即可压缩。
 
 Selected ({n_sel})
-已选择（{n_sel}）
+所选项（{n_sel}）
 
 Settings
 设置
@@ -874,7 +874,7 @@ Space
 空格键
 
 Space map
-空间图
+空间占用图
 
 Stop
 停止
@@ -897,8 +897,8 @@ Test archive
 Test: check every file against its checksum
 测试：根据校验和检查每个文件
 
-Testing
-正在测试
+Testing failed
+测试失败
 
 Testing {}
 正在测试 {}
@@ -966,6 +966,9 @@ Ultra
 Undo
 撤销
 
+Undo failed
+撤销失败
+
 Undo last extract
 撤销上次解压
 
@@ -1024,7 +1027,7 @@ Update…
 更新…
 
 Updating the Windows 11 menu…
-正在更新 Windows 11 菜单…
+正在更新 Windows 11 右键菜单…
 
 Welcome tour
 欢迎导览
@@ -1042,7 +1045,7 @@ Where
 位置
 
 Windows 10 has only the classic menu.
-Windows 10 只有经典菜单。
+Windows 10 只有经典右键菜单。
 
 Windows refused the menu package: {e}
 Windows 拒绝了菜单包：{e}
@@ -1084,13 +1087,13 @@ cannot tell where r7z is running from
 无法确定 r7z 的运行位置
 
 cannot write to {path} ({e})
-无法写入 {path} ({e})
+无法写入 {path}（{e}）
 
 close the folder in Explorer
 在资源管理器中关闭此文件夹
 
 could not reach GitHub ({other})
-无法连接到 GitHub ({other})
+无法连接到 GitHub（{other}）
 
 could not replace {}; nothing was changed
 无法替换 {}，未做任何更改
@@ -1106,6 +1109,9 @@ couldn't remove r7z's registration: {e}
 
 couldn't set the existing file aside, so it was left as is: {e}
 无法移开现有文件，因此保持原样：{e}
+
+encrypted
+已加密
 
 file
 个文件
@@ -1215,11 +1221,17 @@ recent archive
 removed {}
 已删除 {}
 
+removed {removed}, put back {restored}
+已删除 {removed}，已放回 {restored}
+
 replaced file
 个被替换的文件
 
 replaced files
 个被替换的文件
+
+solid
+固实
 
 that extract is still running
 该解压任务仍在运行
@@ -1237,7 +1249,7 @@ the mount folder does not exist
 挂载文件夹不存在
 
 the release notes are invalid ({what})
-版本说明无效 ({what})
+版本说明无效（{what}）
 
 the release notes' signature is not valid
 版本说明的签名无效
@@ -1249,7 +1261,7 @@ the update has no {name}
 更新中没有 {name}
 
 the update manifest is invalid ({what})
-更新清单无效 ({what})
+更新清单无效（{what}）
 
 the update's signature is not valid
 更新的签名无效
@@ -1279,7 +1291,7 @@ unknown format
 未知格式
 
 verify checksums
-校验校验和
+验证校验和
 
 warning
 条警告
@@ -1292,6 +1304,18 @@ what r7z can do
 
 {archives} archives here. Double-click one to look inside.
 这里有 {archives} 个压缩包。双击即可查看内容。
+
+{done} of {total}
+已处理 {done}，共 {total}
+
+{files} ({size})
+{files}，共 {size}
+
+{files}, {folders} ({size})
+{files}，{folders}，共 {size}
+
+{m}m {s}s
+{m} 分 {s} 秒
 
 {label} isn't supported here. {SUPPORTED}
 此处不支持 {label}。{SUPPORTED}
@@ -1308,6 +1332,9 @@ what r7z can do
 {name} is encrypted.
 {name} 已加密。
 
+{n} matches
+{n} 个匹配项
+
 {n} errors, first: {first}
 {n} 个错误，第一个：{first}
 
@@ -1315,7 +1342,7 @@ what r7z can do
 第 {n} 个，共 {count} 个 · {name}
 
 {size}  ·  packed {packed} ({percent}%)
-{size}  ·  压缩后 {packed} ({percent}%)
+{size}  ·  压缩后 {packed}（{percent}%）
 
 {size} readable · {reason}
 可读取 {size} · {reason}
@@ -1346,9 +1373,6 @@ what r7z can do
 
 {} document
 {} 文档
-
-{} failed
-{} 失败
 
 {} file
 {} 文件
@@ -1389,8 +1413,11 @@ what r7z can do
 {} items · {}
 {} 项 · {}
 
+{} ms
+{} 毫秒
+
 {} matches
-{} 个匹配项
+{} 匹配
 
 {} media
 {} 媒体文件
@@ -1402,7 +1429,10 @@ what r7z can do
 {} 程序
 
 {} queued
-{} 个排队中
+{} 个任务排队中
+
+{} s
+{} 秒
 
 {} source
 {} 源代码
@@ -1431,7 +1461,7 @@ See what takes up space
 查看空间占用
 
 The space map shows an archive by size, down to single files, colored by type. Point at a block for details, and double-click a folder to go in.
-空间图按大小显示压缩包的内容，精确到单个文件，并按类型着色。将鼠标指向色块可查看详细信息，双击文件夹可进入。
+空间占用图按大小显示压缩包的内容，精确到单个文件，并按类型着色。将鼠标指向色块可查看详细信息，双击文件夹可进入。
 
 Know what you're opening
 了解您打开的内容

@@ -192,7 +192,8 @@ fn items(app: &App) -> Vec<Item> {
             label: row.name.clone(),
             hint: row.detail.clone().unwrap_or_else(|| {
                 if row.is_dir {
-                    "folder".into()
+                    // `tr("folder")` is the noun after a count.
+                    tr("Folder").to_lowercase()
                 } else {
                     String::new()
                 }

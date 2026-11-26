@@ -92,7 +92,8 @@ pub fn tr(english: &'static str) -> &'static str {
     translate(current(), english)
 }
 
-fn translate(lang: Lang, english: &'static str) -> &'static str {
+/// `english` in `lang`, for text that tests check in a given language.
+pub(crate) fn translate(lang: Lang, english: &'static str) -> &'static str {
     match lang {
         Lang::English => english,
         Lang::SimplifiedChinese => zh_cn().get(english).copied().unwrap_or(english),

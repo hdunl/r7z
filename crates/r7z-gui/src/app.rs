@@ -1607,7 +1607,7 @@ impl App {
             Err(Error::WrongPassword) => self.retry_with_password(),
             Err(e) => {
                 self.exit_when_done = false;
-                self.message(&tf!("{} failed", job.verb), &e.to_string(), true);
+                self.message(job.failed, &e.to_string(), true);
             }
         }
         // Stopped or partly failed extracts can still be undone.

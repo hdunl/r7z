@@ -753,7 +753,7 @@ fn show_rest(app: &mut App, ctx: &egui::Context, p: &Palette, dialog: Dialog) ->
                         ];
                         for k in [shell::Known::Desktop, shell::Known::Downloads] {
                             if let Some(d) = shell::known_folder(k) {
-                                chips.push((format!("{k:?}"), d.join(&stem)));
+                                chips.push((crate::ui::place_label(k).into(), d.join(&stem)));
                             }
                         }
                         for (l, path) in chips {

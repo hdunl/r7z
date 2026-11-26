@@ -23,7 +23,7 @@ use crate::codec::pkware;
 use crate::codec::zipcrypt::{wz_aes_encrypt, WzAesReader, ZipCryptoReader};
 use crate::codec::zstdwrite::{Level as ZstdLevel, ZstdWriter};
 use crate::error::{Error, Result};
-use crate::ops::create::{temp_path, Item, Progress, Summary};
+use crate::ops::create::{replace, temp_path, Item, Progress, Summary};
 use crate::sevenz::attr;
 use crate::util::codepage;
 use crate::util::time::{dos_to_filetime, filetime_to_dos, unix_to_filetime};
@@ -733,10 +733,7 @@ pub fn write(
             s.archive_bytes = file.metadata()?.len();
             let _ = file.sync_all();
             drop(file);
-            if archive.exists() {
-                std::fs::remove_file(archive)?;
-            }
-            std::fs::rename(&tmp, archive)?;
+            replace(&tmp, archive)?;
             Ok(s)
         }
         Err(e) => {

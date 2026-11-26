@@ -11,7 +11,7 @@ use crate::codec::lzw::LzwWriter;
 use crate::codec::pcompress::{Bzip2Writer, GzipWriter, XzWriter};
 use crate::codec::zstdwrite::{Level as ZstdLevel, ZstdWriter};
 use crate::error::{Error, Result};
-use crate::ops::create::{temp_path, Item, Progress, Summary};
+use crate::ops::create::{replace, temp_path, Item, Progress, Summary};
 use crate::util::time::filetime_to_unix;
 
 /// What `a` writes.
@@ -255,10 +255,7 @@ fn atomically(
             s.archive_bytes = file.metadata()?.len();
             let _ = file.sync_all();
             drop(file);
-            if archive.exists() {
-                std::fs::remove_file(archive)?;
-            }
-            std::fs::rename(&tmp, archive)?;
+            replace(&tmp, archive)?;
             Ok(s)
         }
         Err(e) => {

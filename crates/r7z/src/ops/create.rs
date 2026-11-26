@@ -858,10 +858,7 @@ pub fn create(
 
     match result {
         Ok(s) => {
-            if archive.exists() {
-                std::fs::remove_file(archive)?;
-            }
-            std::fs::rename(&tmp_path, archive)?;
+            replace(&tmp_path, archive)?;
             Ok(s)
         }
         Err(e) => {
@@ -968,6 +965,39 @@ pub(crate) fn make_entry(
         attrib: it.attrib,
         folder: None,
     }
+}
+
+/// Moves the finished temporary file `tmp` over `archive`. A rename replaces the old archive
+/// in one step, so it is never missing; when the rename fails the archive is left as it was
+/// and `tmp` is removed.
+pub(crate) fn replace(tmp: &Path, archive: &Path) -> Result<()> {
+    let renamed = std::fs::rename(tmp, archive);
+    #[cfg(windows)]
+    let renamed = renamed.or_else(|e| replace_read_only(tmp, archive).ok_or(e));
+    renamed.map_err(|e| {
+        let _ = std::fs::remove_file(tmp);
+        Error::Other(format!("cannot replace {}: {e}", archive.display()))
+    })
+}
+
+/// Windows will not rename over a read-only file, which deleting it first used to replace:
+/// clears the attribute and renames again, restoring it if that fails too. None when the
+/// archive is not read-only or the second rename fails.
+#[cfg(windows)]
+#[allow(clippy::permissions_set_readonly_false)] // Windows only: clears the attribute.
+fn replace_read_only(tmp: &Path, archive: &Path) -> Option<()> {
+    let perms = std::fs::metadata(archive).ok()?.permissions();
+    if !perms.readonly() {
+        return None;
+    }
+    let mut writable = perms.clone();
+    writable.set_readonly(false);
+    std::fs::set_permissions(archive, writable).ok()?;
+    if std::fs::rename(tmp, archive).is_ok() {
+        return Some(());
+    }
+    let _ = std::fs::set_permissions(archive, perms);
+    None
 }
 
 /// The temporary file `archive` is written to before it is renamed into place. It is

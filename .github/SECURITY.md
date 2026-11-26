@@ -29,13 +29,16 @@ staying current takes one click.
   gh attestation verify r7z-0.3.0-windows-x64.zip --repo hdunl/r7z
   ```
 
-- `SHA256SUMS` lists the hash of every file in the release.
+- `SHA256SUMS` lists the hash of the release zip and of the update and notes files
+  (`r7z-update.*`, `r7z-notes.*`). The provenance files are attached after it is made and
+  are not in it.
 - Dependencies are locked in `Cargo.lock` and checked weekly against the RustSec advisory
   database; Dependabot proposes updates. The workflows pin third-party actions to exact
   commits.
 - Archive parsing and recovery are fuzzed continuously with ClusterFuzzLite, and CodeQL
   scans every change. The ar, deb, lib and rpm test archives are built by the test code
-  instead of being checked in, so no program-like binaries live in the repository.
+  instead of being checked in. A few small sample executables and installers are kept as
+  test inputs for the readers. They are never run, and the build takes nothing from them.
 
 ## How updates work
 

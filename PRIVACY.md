@@ -20,9 +20,10 @@ folder to remove your settings.
 - **Microsoft Store version:** r7z makes no network connections. The Store handles
   updates.
 - **Version downloaded from GitHub:** once a day the desktop app downloads a small,
-  signed update manifest from `github.com/hdunl/r7z`, and downloads a new release when you
-  choose to update. These are ordinary HTTPS requests to GitHub. They carry no identifier
-  for you or your PC, and GitHub's own
+  signed update manifest from `github.com/hdunl/r7z`. When a newer release exists it also
+  downloads that release's signed "What's new" notes, and it downloads the release itself
+  when you choose to update. These are ordinary HTTPS requests to GitHub. They carry no
+  identifier for you or your PC, and GitHub's own
   [privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)
   applies to them. Settings → Updates turns the check off.
 

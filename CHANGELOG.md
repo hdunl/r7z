@@ -2,6 +2,40 @@
 
 Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Security: an NSIS installer could make r7z use memory without limit while it was only
+  being listed. Strings in the install script had no length limit, and every shell-folder
+  code in one copied the rest of it. A string is now read up to 16,384 characters, and the
+  text a script may decode is bounded by its size. Files that share one data block are
+  grouped in a single step instead of a search per file, and a solid installer gets at
+  most 4,096 passes.
+- Security: the portable installer pasted folder names into PowerShell and cmd scripts. A
+  name with a typographic apostrophe (`O’Brien`) broke installing and the Windows 11 menu,
+  a crafted name could run commands, and a name containing `%NAME%` made uninstalling
+  delete another folder. Paths now reach those scripts through environment variables.
+- Creating an archive over an existing one replaces it in one step. Before, the old
+  archive was deleted first and was lost if the rename then failed. A read-only archive
+  is still replaced, and the temporary file is removed whenever replacing fails.
+- The Explorer menu looks at a selection once, not once per menu entry, and reads at
+  most 1.25 MiB of a program with plain reads. Right-clicking a large `.exe` scanned the
+  whole file up to ten times and could freeze the menu. A self-extractor whose archive
+  starts more than 256 KiB after its program is no longer offered "Extract here" in the
+  menu; the app still opens it. A panic in the menu extension is now a failed call
+  rather than the end of Explorer.
+- Simplified Chinese: English no longer shows through in the toasts after extracting and
+  testing, the status bar, the progress line, the undo result and the destination chips.
+  Several lines are corrected, among them the 7z "encrypt file names" option, which read
+  as "hide". The classic right-click menu follows a language change.
+- "Open with" offers r7z for `.rar`, `.iso` and `.dmg`, in the installed portable copy and
+  in the Store version, and the Store package declares Simplified Chinese.
+- Installing over an existing copy stages the new files first and puts the old ones back
+  if copying fails, instead of leaving a mixed install.
+- Open as folder: closing r7z or ejecting no longer waits for the decoder to skip a long
+  entry in a solid block, and a decoder failure no longer leaves later reads of that
+  block waiting forever.
+- RAR and Inno Setup: sizes that overflow when added are refused instead of wrapping.
+
 ## 0.3.0 - 2026-11-07
 
 - Security: a crafted archive could create a symbolic link pointing outside the extraction

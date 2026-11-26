@@ -5,14 +5,19 @@
 #![cfg(windows)]
 
 use std::ffi::c_void;
+use std::fs::File;
 use std::os::windows::ffi::OsStringExt;
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+#[cfg(not(test))]
+use std::sync::{Mutex, PoisonError};
+use std::time::SystemTime;
 
 use windows::Win32::Foundation::{
-    CLASS_E_CLASSNOTAVAILABLE, CLASS_E_NOAGGREGATION, E_FAIL, E_NOTIMPL, E_POINTER, HINSTANCE,
-    HMODULE, S_FALSE, S_OK,
+    CLASS_E_CLASSNOTAVAILABLE, CLASS_E_NOAGGREGATION, E_FAIL, E_NOTIMPL, E_POINTER, E_UNEXPECTED,
+    HINSTANCE, HMODULE, S_FALSE, S_OK,
 };
 use windows::Win32::System::Com::{CoTaskMemFree, IBindCtx, IClassFactory, IClassFactory_Impl};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
@@ -113,7 +118,77 @@ fn is_archive(path: &Path) -> bool {
             .any(|e| name.ends_with(&format!(".{}", e.trim_start_matches('.').to_lowercase())))
     });
     // A program is an archive only when it carries an installer or self-extractor payload.
-    by_name || (name.ends_with(".exe") && r7z::format::exe_may_have_payload(path))
+    by_name || (name.ends_with(".exe") && exe_payload(path))
+}
+
+/// Plain reads of a bounded part of the file: a full scan of a large program would freeze
+/// the menu, and a mapped file that vanishes from a share or USB drive would crash Explorer.
+fn exe_payload(path: &Path) -> bool {
+    let Ok(file) = File::open(path) else {
+        return false;
+    };
+    #[cfg(test)]
+    tests::SNIFFS.with(|n| n.set(n.get() + 1));
+    #[cfg(test)]
+    let file = tests::Counted(file);
+    let mut file = file;
+    r7z::format::exe_may_have_payload_bounded(&mut file).unwrap_or(false)
+}
+
+/// A selection with each item's size and modified time, so a file changed since is looked
+/// at again.
+type Selection = Vec<(PathBuf, Option<(u64, Option<SystemTime>)>)>;
+
+fn selection(paths: &[PathBuf]) -> Selection {
+    paths
+        .iter()
+        .map(|p| {
+            let meta = std::fs::metadata(p).ok();
+            (p.clone(), meta.map(|m| (m.len(), m.modified().ok())))
+        })
+        .collect()
+}
+
+/// The last selection asked about and whether it is all archives: Explorer asks the root
+/// and then each entry about the same selection.
+fn with_last<T>(f: impl FnOnce(&mut Option<(Selection, bool)>) -> T) -> T {
+    #[cfg(not(test))]
+    {
+        static LAST: Mutex<Option<(Selection, bool)>> = Mutex::new(None);
+        f(&mut LAST.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+    // Tests run in parallel, each with its own last selection.
+    #[cfg(test)]
+    {
+        thread_local!(static LAST: std::cell::RefCell<Option<(Selection, bool)>> =
+            const { std::cell::RefCell::new(None) });
+        LAST.with_borrow_mut(f)
+    }
+}
+
+/// Whether every selected item is an archive r7z opens, worked out once per selection.
+fn archives(paths: &[PathBuf]) -> bool {
+    if paths.is_empty() {
+        return false;
+    }
+    let key = selection(paths);
+    if let Some(known) = with_last(|last| last.as_ref().filter(|l| l.0 == key).map(|l| l.1)) {
+        return known;
+    }
+    // Not under the lock, so another thread's menu does not wait for these reads.
+    let answer = paths.iter().all(|p| is_archive(p));
+    with_last(|last| *last = Some((key, answer)));
+    answer
+}
+
+/// Runs a COM method's body and turns a panic into a failed call: a panic that unwound into
+/// Explorer's frames would abort Explorer.
+fn guard<T>(body: impl FnOnce() -> windows_core::Result<T>) -> windows_core::Result<T> {
+    std::panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or_else(|_| Err(E_UNEXPECTED.into()))
+}
+
+fn guard_hr(body: impl FnOnce() -> HRESULT) -> HRESULT {
+    std::panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or(E_UNEXPECTED)
 }
 
 fn is_7z(path: &Path) -> bool {
@@ -197,29 +272,31 @@ impl Command {
     }
 
     fn visible(&self, paths: &[PathBuf]) -> bool {
-        let archives = !paths.is_empty() && paths.iter().all(|p| is_archive(p));
-        let one_archive = paths.len() == 1 && archives;
-        let one_folder = paths.len() == 1 && paths[0].is_dir();
+        // Asked only by the entries that depend on it, since it may read the files.
+        let one_archive = || paths.len() == 1 && archives(paths);
+        let one_folder = || paths.len() == 1 && paths[0].is_dir();
         match self.kind {
             Kind::Root | Kind::Add7z | Kind::AddZip | Kind::Add => !paths.is_empty(),
-            Kind::Open => one_archive || one_folder,
-            Kind::ExtractHere | Kind::ExtractTo => archives,
-            Kind::Test => one_archive,
-            Kind::Convert => one_archive && !is_7z(&paths[0]),
+            Kind::Open => one_folder() || one_archive(),
+            Kind::ExtractHere | Kind::ExtractTo => archives(paths),
+            Kind::Test => one_archive(),
+            Kind::Convert => one_archive() && !is_7z(&paths[0]),
             // Splits the entries for what is selected from the ones that make an archive.
-            Kind::Separator => archives || one_folder,
+            Kind::Separator => one_folder() || archives(paths),
         }
     }
 }
 
 impl IExplorerCommand_Impl for Command_Impl {
     fn GetTitle(&self, items: Ref<IShellItemArray>) -> windows_core::Result<PWSTR> {
-        dup(&self.title(&selected(items)))
+        guard(|| dup(&self.title(&selected(items))))
     }
 
     fn GetIcon(&self, _items: Ref<IShellItemArray>) -> windows_core::Result<PWSTR> {
-        let exe = gui_exe().ok_or_else(|| windows_core::Error::from(E_FAIL))?;
-        dup(&format!("{},0", exe.display()))
+        guard(|| {
+            let exe = gui_exe().ok_or_else(|| windows_core::Error::from(E_FAIL))?;
+            dup(&format!("{},0", exe.display()))
+        })
     }
 
     fn GetToolTip(&self, _items: Ref<IShellItemArray>) -> windows_core::Result<PWSTR> {
@@ -231,12 +308,14 @@ impl IExplorerCommand_Impl for Command_Impl {
     }
 
     fn GetState(&self, items: Ref<IShellItemArray>, _slow: BOOL) -> windows_core::Result<u32> {
-        let state = if self.visible(&selected(items)) {
-            ECS_ENABLED
-        } else {
-            ECS_HIDDEN
-        };
-        Ok(state.0 as u32)
+        guard(|| {
+            let state = if self.visible(&selected(items)) {
+                ECS_ENABLED
+            } else {
+                ECS_HIDDEN
+            };
+            Ok(state.0 as u32)
+        })
     }
 
     fn Invoke(
@@ -244,47 +323,53 @@ impl IExplorerCommand_Impl for Command_Impl {
         items: Ref<IShellItemArray>,
         _bind: Ref<IBindCtx>,
     ) -> windows_core::Result<()> {
-        let paths = selected(items);
-        let exe = gui_exe().ok_or_else(|| windows_core::Error::from(E_FAIL))?;
-        let flag = match self.kind {
-            Kind::Root | Kind::Separator => return Ok(()),
-            Kind::Open => None,
-            Kind::ExtractHere => Some("--extract-here"),
-            Kind::ExtractTo => Some("--extract-to"),
-            Kind::Test => Some("--test"),
-            Kind::Convert => Some("--convert"),
-            Kind::Add7z => Some("--add-7z"),
-            Kind::AddZip => Some("--add-zip"),
-            Kind::Add => Some("--add"),
-        };
-        let mut cmd = std::process::Command::new(exe);
-        cmd.args(flag).args(&paths);
-        cmd.spawn()
-            .map(drop)
-            .map_err(|_| windows_core::Error::from(E_FAIL))
+        guard(|| {
+            let paths = selected(items);
+            let exe = gui_exe().ok_or_else(|| windows_core::Error::from(E_FAIL))?;
+            let flag = match self.kind {
+                Kind::Root | Kind::Separator => return Ok(()),
+                Kind::Open => None,
+                Kind::ExtractHere => Some("--extract-here"),
+                Kind::ExtractTo => Some("--extract-to"),
+                Kind::Test => Some("--test"),
+                Kind::Convert => Some("--convert"),
+                Kind::Add7z => Some("--add-7z"),
+                Kind::AddZip => Some("--add-zip"),
+                Kind::Add => Some("--add"),
+            };
+            let mut cmd = std::process::Command::new(exe);
+            cmd.args(flag).args(&paths);
+            cmd.spawn()
+                .map(drop)
+                .map_err(|_| windows_core::Error::from(E_FAIL))
+        })
     }
 
     fn GetFlags(&self) -> windows_core::Result<u32> {
-        let flags = match self.kind {
-            Kind::Root => ECF_HASSUBCOMMANDS,
-            Kind::Separator => ECF_ISSEPARATOR,
-            _ => ECF_DEFAULT,
-        };
-        Ok(flags.0 as u32)
+        guard(|| {
+            let flags = match self.kind {
+                Kind::Root => ECF_HASSUBCOMMANDS,
+                Kind::Separator => ECF_ISSEPARATOR,
+                _ => ECF_DEFAULT,
+            };
+            Ok(flags.0 as u32)
+        })
     }
 
     fn EnumSubCommands(&self) -> windows_core::Result<IEnumExplorerCommand> {
-        if self.kind != Kind::Root {
-            return Err(E_NOTIMPL.into());
-        }
-        Ok(SubCommands {
-            items: SUBMENU
-                .into_iter()
-                .map(|kind| Command { kind }.into())
-                .collect(),
-            pos: AtomicUsize::new(0),
-        }
-        .into())
+        guard(|| {
+            if self.kind != Kind::Root {
+                return Err(E_NOTIMPL.into());
+            }
+            Ok(SubCommands {
+                items: SUBMENU
+                    .into_iter()
+                    .map(|kind| Command { kind }.into())
+                    .collect(),
+                pos: AtomicUsize::new(0),
+            }
+            .into())
+        })
     }
 }
 
@@ -296,48 +381,56 @@ struct SubCommands {
 
 impl IEnumExplorerCommand_Impl for SubCommands_Impl {
     fn Next(&self, count: u32, out: *mut Option<IExplorerCommand>, fetched: *mut u32) -> HRESULT {
-        if out.is_null() {
-            return E_POINTER;
-        }
-        let mut n = 0usize;
-        while n < count as usize {
-            let at = self.pos.load(Ordering::Relaxed);
-            let Some(item) = self.items.get(at) else {
-                break;
-            };
-            // SAFETY: Explorer passes room for `count` interface pointers.
-            unsafe { out.add(n).write(Some(item.clone())) };
-            self.pos.store(at + 1, Ordering::Relaxed);
-            n += 1;
-        }
-        if !fetched.is_null() {
-            // SAFETY: checked for null above; Explorer owns the location.
-            unsafe { fetched.write(n as u32) };
-        }
-        if n == count as usize {
-            S_OK
-        } else {
-            S_FALSE
-        }
+        guard_hr(|| {
+            if out.is_null() {
+                return E_POINTER;
+            }
+            let mut n = 0usize;
+            while n < count as usize {
+                let at = self.pos.load(Ordering::Relaxed);
+                let Some(item) = self.items.get(at) else {
+                    break;
+                };
+                // SAFETY: Explorer passes room for `count` interface pointers.
+                unsafe { out.add(n).write(Some(item.clone())) };
+                self.pos.store(at + 1, Ordering::Relaxed);
+                n += 1;
+            }
+            if !fetched.is_null() {
+                // SAFETY: checked for null above; Explorer owns the location.
+                unsafe { fetched.write(n as u32) };
+            }
+            if n == count as usize {
+                S_OK
+            } else {
+                S_FALSE
+            }
+        })
     }
 
     fn Skip(&self, count: u32) -> windows_core::Result<()> {
-        let at = self.pos.load(Ordering::Relaxed) + count as usize;
-        self.pos.store(at.min(self.items.len()), Ordering::Relaxed);
-        Ok(())
+        guard(|| {
+            let at = self.pos.load(Ordering::Relaxed) + count as usize;
+            self.pos.store(at.min(self.items.len()), Ordering::Relaxed);
+            Ok(())
+        })
     }
 
     fn Reset(&self) -> windows_core::Result<()> {
-        self.pos.store(0, Ordering::Relaxed);
-        Ok(())
+        guard(|| {
+            self.pos.store(0, Ordering::Relaxed);
+            Ok(())
+        })
     }
 
     fn Clone(&self) -> windows_core::Result<IEnumExplorerCommand> {
-        Ok(SubCommands {
-            items: self.items.clone(),
-            pos: AtomicUsize::new(self.pos.load(Ordering::Relaxed)),
-        }
-        .into())
+        guard(|| {
+            Ok(SubCommands {
+                items: self.items.clone(),
+                pos: AtomicUsize::new(self.pos.load(Ordering::Relaxed)),
+            }
+            .into())
+        })
     }
 }
 
@@ -351,17 +444,19 @@ impl IClassFactory_Impl for Factory_Impl {
         iid: *const GUID,
         object: *mut *mut c_void,
     ) -> windows_core::Result<()> {
-        if object.is_null() || iid.is_null() {
-            return Err(E_POINTER.into());
-        }
-        // SAFETY: checked for null above.
-        unsafe { object.write(std::ptr::null_mut()) };
-        if outer.is_some() {
-            return Err(CLASS_E_NOAGGREGATION.into());
-        }
-        let command: IExplorerCommand = Command { kind: Kind::Root }.into();
-        // SAFETY: `iid` and `object` are valid per the IClassFactory contract.
-        unsafe { command.query(iid, object).ok() }
+        guard(|| {
+            if object.is_null() || iid.is_null() {
+                return Err(E_POINTER.into());
+            }
+            // SAFETY: checked for null above.
+            unsafe { object.write(std::ptr::null_mut()) };
+            if outer.is_some() {
+                return Err(CLASS_E_NOAGGREGATION.into());
+            }
+            let command: IExplorerCommand = Command { kind: Kind::Root }.into();
+            // SAFETY: `iid` and `object` are valid per the IClassFactory contract.
+            unsafe { command.query(iid, object).ok() }
+        })
     }
 
     fn LockServer(&self, _lock: BOOL) -> windows_core::Result<()> {
@@ -379,15 +474,17 @@ pub unsafe extern "system" fn DllGetClassObject(
     iid: *const GUID,
     object: *mut *mut c_void,
 ) -> HRESULT {
-    if clsid.is_null() || iid.is_null() || object.is_null() {
-        return E_POINTER;
-    }
-    unsafe { object.write(std::ptr::null_mut()) };
-    if unsafe { *clsid } != CLSID_R7Z_MENU {
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-    let factory: IClassFactory = Factory.into();
-    unsafe { factory.query(iid, object) }
+    guard_hr(|| {
+        if clsid.is_null() || iid.is_null() || object.is_null() {
+            return E_POINTER;
+        }
+        unsafe { object.write(std::ptr::null_mut()) };
+        if unsafe { *clsid } != CLSID_R7Z_MENU {
+            return CLASS_E_CLASSNOTAVAILABLE;
+        }
+        let factory: IClassFactory = Factory.into();
+        unsafe { factory.query(iid, object) }
+    })
 }
 
 /// The DLL stays loaded for the life of the host process; Explorer's surrogate is cheap to
@@ -399,15 +496,19 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 
 #[no_mangle]
 pub extern "system" fn DllMain(module: HINSTANCE, reason: u32, _reserved: *mut c_void) -> BOOL {
-    if reason == DLL_PROCESS_ATTACH {
-        let _ = MODULE.set(module.0 as usize);
-    }
-    BOOL::from(true)
+    let attached = std::panic::catch_unwind(|| {
+        if reason == DLL_PROCESS_ATTACH {
+            let _ = MODULE.set(module.0 as usize);
+        }
+    });
+    BOOL::from(attached.is_ok())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::io::{Read, Seek, SeekFrom, Write};
     use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::Common::ITEMIDLIST;
     use windows::Win32::UI::Shell::{SHCreateShellItemArrayFromIDLists, SHParseDisplayName};
@@ -455,6 +556,152 @@ mod tests {
             }
             out
         }
+    }
+
+    thread_local! {
+        /// Files sniffed and bytes read on this thread, for the tests that pin the bounds.
+        pub(super) static SNIFFS: Cell<u32> = const { Cell::new(0) };
+        pub(super) static READ: Cell<u64> = const { Cell::new(0) };
+    }
+
+    /// Counts the bytes read through it into `READ`.
+    pub(super) struct Counted<R>(pub R);
+
+    impl<R: Read> Read for Counted<R> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.0.read(buf)?;
+            READ.with(|r| r.set(r.get() + n as u64));
+            Ok(n)
+        }
+    }
+
+    impl<R: Seek> Seek for Counted<R> {
+        fn seek(&mut self, to: SeekFrom) -> std::io::Result<u64> {
+            self.0.seek(to)
+        }
+    }
+
+    fn counts() -> (u32, u64) {
+        (SNIFFS.get(), READ.get())
+    }
+
+    fn fixture(rel: &str) -> Vec<u8> {
+        std::fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../r7z/tests/fixtures")
+                .join(rel),
+        )
+        .unwrap()
+    }
+
+    fn scratch(test: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("r7z-shell-{test}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Writes `data` to `path`, then grows it with zeros (sparse on most volumes) to `len`
+    /// bytes and puts `trailer` at the end.
+    fn write_padded(path: &Path, data: &[u8], len: u64, trailer: &[u8]) {
+        let mut f = std::fs::File::create(path).unwrap();
+        f.write_all(data).unwrap();
+        f.set_len(len - trailer.len() as u64).unwrap();
+        f.seek(SeekFrom::End(0)).unwrap();
+        f.write_all(trailer).unwrap();
+    }
+
+    const BOUND: u64 = r7z::format::PAYLOAD_HEAD + r7z::format::PAYLOAD_OVERLAY;
+
+    /// The root and every entry ask about the same selection: one look at the file answers
+    /// them all, in a bounded read, and asking again reads nothing.
+    #[test]
+    fn a_program_is_sniffed_once_per_selection_within_the_bound() {
+        let dir = scratch("once");
+        let exe = dir.join("big.exe");
+        write_padded(&exe, &fixture("pe/resources.exe"), 4 << 20, b"");
+        let adds = ["Add to \"big.7z\"", "Add to \"big.zip\"", "Add to archive…"];
+        assert_eq!(menu(std::slice::from_ref(&exe)), adds);
+        let (sniffs, read) = counts();
+        assert_eq!(sniffs, 1, "files sniffed for one menu");
+        assert!(
+            read > 0 && read <= BOUND,
+            "read {read} bytes, bound {BOUND}"
+        );
+        assert_eq!(menu(std::slice::from_ref(&exe)), adds);
+        assert_eq!(
+            counts(),
+            (sniffs, read),
+            "the second menu read the file again"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A payload marker past the bound is not searched for, however large the overlay.
+    #[test]
+    fn the_overlay_is_searched_only_up_to_the_bound() {
+        let dir = scratch("bound");
+        let exe = dir.join("late.exe");
+        write_padded(&exe, &fixture("pe/resources.exe"), 4 << 20, b"PK");
+        assert!(!archives(std::slice::from_ref(&exe)));
+        let (_, read) = counts();
+        assert!(
+            read > 0 && read <= BOUND,
+            "read {read} bytes, bound {BOUND}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Installers and self-extractors keep their payload right after the stub, so a long
+    /// file is still recognized from its first bytes.
+    #[test]
+    fn payloads_after_the_stub_are_seen_in_long_files() {
+        let dir = scratch("payloads");
+        let long = BOUND + (1 << 20);
+        for (name, data, expect) in [
+            ("sfx.exe", fixture("pe/sfx-zip.exe"), true),
+            (
+                "nsis.exe",
+                fixture("nsis/nsis3-unicode-solid-lzma.bin"),
+                true,
+            ),
+            ("plain.exe", fixture("pe/resources.exe"), false),
+        ] {
+            for len in [data.len() as u64, long] {
+                let path = dir.join(format!("{len}-{name}"));
+                write_padded(&path, &data, len, b"");
+                assert_eq!(
+                    archives(std::slice::from_ref(&path)),
+                    expect,
+                    "{name}, {len} bytes"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The answer is kept per selection and per file state: a file rewritten since is
+    /// looked at again.
+    #[test]
+    fn a_changed_file_is_sniffed_again() {
+        let dir = scratch("changed");
+        let exe = dir.join("setup.exe");
+        let one = std::slice::from_ref(&exe);
+        std::fs::write(&exe, fixture("pe/resources.exe")).unwrap();
+        assert!(!archives(one));
+        assert!(!archives(one));
+        let (sniffs, _) = counts();
+        std::fs::write(&exe, fixture("pe/sfx-zip.exe")).unwrap();
+        assert!(archives(one));
+        assert_eq!(counts().0, sniffs + 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A panic in a method comes back to Explorer as a failed call, not an abort.
+    #[test]
+    fn a_panic_is_a_failed_call() {
+        let r: windows_core::Result<u32> = guard(|| panic!("a bug in a menu method"));
+        assert_eq!(r.unwrap_err().code(), E_UNEXPECTED);
+        assert_eq!(guard_hr(|| panic!("a bug in an export")), E_UNEXPECTED);
     }
 
     #[test]

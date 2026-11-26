@@ -2031,8 +2031,12 @@ impl App {
 
     pub fn set_language(&mut self, pref: crate::i18n::Preference) {
         self.language = pref;
+        let changed = crate::i18n::current() != pref.lang();
         crate::i18n::set(pref.lang());
         shell::save_setting("language", pref.key());
+        if changed {
+            std::thread::spawn(shell::relabel_explorer);
+        }
     }
 
     /// Loads the CJK font on the next frame, if it isn't in yet.

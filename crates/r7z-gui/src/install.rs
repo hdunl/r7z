@@ -29,7 +29,7 @@ const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstal
 const EXTENSIONS: &[&str] = &[
     "7z", "zip", "tar", "gz", "tgz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "lz4",
     "lzma", "z", "taz", "cab", "cpio", "arj", "lzh", "lha", "rpm", "deb", "xar", "wim", "swm",
-    "esd", "001", "msi", "msp", "chm",
+    "esd", "001", "rar", "iso", "dmg", "msi", "msp", "chm",
 ];
 
 /// The folder installing copies r7z into.
@@ -82,31 +82,70 @@ pub fn install() -> Result<PathBuf, String> {
     Ok(exe)
 }
 
-/// Files of a release that belong in the install folder. Programs that are running can't
-/// be overwritten but can be renamed, so an existing file moves aside to `name.old` (the
-/// updater's cleanup removes those on the next start) before the new one is copied in.
+/// Files of a release that belong in the install folder. Each is copied in as `name.new`
+/// first, so a copy that fails (a full disk, a locked file) changes nothing. Programs that
+/// are running can't be overwritten but can be renamed, so an existing file then moves
+/// aside to `name.old` (the updater's cleanup removes those on the next start) and the new
+/// one takes its name; a failure there puts the old files back.
 #[cfg(windows)]
 fn copy_files(from: &Path, dir: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dir)
+    use crate::update::sibling;
+    use std::fs;
+    fs::create_dir_all(dir)
         .map_err(|e| tf!("can't create {path}: {e}", path = dir.display(), e = e))?;
     let mut names: Vec<String> = crate::update::release_files()
         .iter()
         .map(|s| s.to_string())
         .collect();
     names.extend(["README.md".to_string(), "LICENSE".to_string()]);
-    for name in names {
-        let src = from.join(&name);
-        if !src.is_file() {
-            continue;
+    names.retain(|name| from.join(name).is_file());
+    let new_of = |name: &String| sibling(&dir.join(name), ".new");
+    let unstage = || {
+        for name in &names {
+            let _ = fs::remove_file(new_of(name));
         }
-        let dst = dir.join(&name);
-        if dst.exists() {
-            let old = crate::update::sibling(&dst, ".old");
-            let _ = std::fs::remove_file(&old);
-            std::fs::rename(&dst, &old)
-                .map_err(|e| tf!("can't replace {path}: {e}", path = dst.display(), e = e))?;
+    };
+    for name in &names {
+        if let Err(e) = fs::copy(from.join(name), new_of(name)) {
+            unstage();
+            return Err(tf!("can't copy {name}: {e}", name = name, e = e));
         }
-        std::fs::copy(&src, &dst).map_err(|e| tf!("can't copy {name}: {e}", name = name, e = e))?;
+    }
+    let mut swapped: Vec<(PathBuf, bool)> = Vec::new();
+    for name in &names {
+        let dst = dir.join(name);
+        let old = sibling(&dst, ".old");
+        let existed = dst.exists();
+        if existed {
+            let _ = fs::remove_file(&old);
+        }
+        let moved = if existed {
+            fs::rename(&dst, &old)
+        } else {
+            Ok(())
+        };
+        let result = moved.and_then(|()| {
+            fs::rename(new_of(name), &dst).inspect_err(|_| {
+                if existed {
+                    let _ = fs::rename(&old, &dst);
+                }
+            })
+        });
+        if let Err(e) = result {
+            for (t, existed) in swapped.iter().rev() {
+                let _ = fs::remove_file(t);
+                if *existed {
+                    let _ = fs::rename(sibling(t, ".old"), t);
+                }
+            }
+            unstage();
+            return Err(tf!(
+                "can't replace {path}: {e}",
+                path = dst.display(),
+                e = e
+            ));
+        }
+        swapped.push((dst, existed));
     }
     // Development builds carry the Windows 11 menu as a loose package folder.
     let package = from.join("package");
@@ -126,7 +165,6 @@ fn copy_files(from: &Path, dir: &Path) -> Result<(), String> {
 
 #[cfg(windows)]
 fn register(exe: &Path, dir: &Path) -> Result<(), String> {
-    use crate::shell::ps_path;
     let size_kb: u64 = std::fs::read_dir(dir)
         .map(|it| {
             it.filter_map(|e| e.ok()?.metadata().ok())
@@ -143,7 +181,7 @@ fn register(exe: &Path, dir: &Path) -> Result<(), String> {
         .join(",");
     let script = format!(
         r#"$ErrorActionPreference = 'Stop'
-$exe = {exe}; $dir = {dir}; $open = '"' + $exe + '" "%1"'
+$exe = $env:R7Z_EXE; $dir = $env:R7Z_DIR; $open = '"' + $exe + '" "%1"'
 function Key($path) {{ New-Item -Path $path -Force | Out-Null; $path }}
 function Default($path, $value) {{ Set-ItemProperty -LiteralPath (Key $path) -Name '(default)' -Value $value }}
 
@@ -184,12 +222,11 @@ foreach ($e in @({exts})) {{
 }}
 Set-ItemProperty -LiteralPath (Key 'HKCU:\Software\RegisteredApplications') -Name 'r7z' -Value 'Software\r7z\Capabilities'
 "#,
-        exe = ps_path(exe),
-        dir = ps_path(dir),
         uninstall = UNINSTALL_KEY,
         version = crate::update::CURRENT,
     );
-    crate::shell::powershell(&script)
+    // The paths go in as environment variables, never as script text.
+    crate::shell::powershell(&script, &[("R7Z_EXE", exe), ("R7Z_DIR", dir)])
         .map(drop)
         .map_err(|e| tf!("couldn't register r7z with Windows: {e}", e = e))
 }
@@ -222,7 +259,7 @@ foreach ($e in @({exts})) {{
 "#,
         uninstall = UNINSTALL_KEY,
     );
-    crate::shell::powershell(&script)
+    crate::shell::powershell(&script, &[])
         .map_err(|e| tf!("couldn't remove r7z's registration: {e}", e = e))?;
     changed_associations();
     if let State::Installed { dir, here } = state {
@@ -230,7 +267,7 @@ foreach ($e in @({exts})) {{
         // run from.
         if target_dir().is_some_and(|t| same_dir(&t, &dir)) {
             if here {
-                delete_after_exit(&dir);
+                let _ = delete_after_exit(&dir);
             } else {
                 let _ = std::fs::remove_dir_all(&dir);
             }
@@ -251,23 +288,23 @@ pub fn refresh() {
     }
 }
 
-/// A program can't delete the folder it runs from, so a hidden `cmd` waits for this one
-/// to exit and removes it.
+/// A program can't delete the folder it runs from, so a hidden `cmd` gives this one three
+/// seconds to exit and then removes it. (cmd alone has no simple, reliable way to wait for
+/// a process, so this is a delay, not a wait.)
 #[cfg(windows)]
-fn delete_after_exit(dir: &Path) {
+fn delete_after_exit(dir: &Path) -> std::io::Result<std::process::Child> {
     use std::os::windows::process::CommandExt;
-    // cmd has its own quoting: with /c, the outer pair of quotes is removed and the rest
+    // The folder goes in as a variable: cmd expands `%NAME%` in its command line, even in
+    // quotes, but never re-expands what a variable holds. /d skips AutoRun commands and
+    // /v:off keeps `!` literal. With /c the outer pair of quotes is removed and the rest
     // runs as typed, so the line is passed raw rather than escaped the C way.
-    let script = format!(
-        "\"ping -n 4 127.0.0.1 >nul & rd /s /q \"{}\"\"",
-        dir.display()
-    );
-    let _ = std::process::Command::new("cmd")
-        .arg("/c")
-        .raw_arg(script)
+    std::process::Command::new("cmd")
+        .args(["/d", "/v:off", "/c"])
+        .raw_arg("\"ping -n 4 127.0.0.1 >nul & rd /s /q \"%R7Z_DIR%\"\"")
+        .env("R7Z_DIR", dir)
         .current_dir(std::env::temp_dir())
         .creation_flags(0x0800_0000)
-        .spawn();
+        .spawn()
 }
 
 /// Tells Explorer that "Open with" and file type icons changed.
@@ -337,3 +374,121 @@ pub fn uninstall() -> Result<(), String> {
 }
 #[cfg(not(windows))]
 pub fn refresh() {}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    /// A fresh, empty folder under the system temp folder.
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("r7z-install-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn store_package_offers_the_same_types() {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../r7z-shell/package/store/AppxManifest.xml");
+        let text = std::fs::read_to_string(&manifest).unwrap();
+        let mut store: Vec<&str> = text
+            .split("<uap:FileType>")
+            .skip(1)
+            .map(|rest| rest.split('<').next().unwrap().trim())
+            .collect();
+        // Windows reserves these, and packaged apps may not register them.
+        let mut ours: Vec<String> = EXTENSIONS
+            .iter()
+            .filter(|e| !["msi", "msp", "chm"].contains(e))
+            .map(|e| format!(".{e}"))
+            .collect();
+        store.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(store, ours);
+    }
+
+    #[test]
+    fn delete_after_exit_takes_the_folder_name_literally() {
+        let base = scratch("delete");
+        // cmd would expand %USERNAME%, so the folder named by its value is the decoy.
+        let user = std::env::var("USERNAME").unwrap();
+        let decoy = base.join(format!("a & b ^ {user}"));
+        let target = base.join("a & b ^ %USERNAME%");
+        for d in [&decoy, &target] {
+            std::fs::create_dir_all(d).unwrap();
+            std::fs::write(d.join("f.txt"), b"x").unwrap();
+        }
+        let status = delete_after_exit(&target).unwrap().wait().unwrap();
+        assert!(status.success());
+        assert!(decoy.join("f.txt").exists(), "the wrong folder was deleted");
+        assert!(!target.exists(), "the folder was not deleted");
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    /// A release folder and an install folder, each with `r7z-gui.exe` and `r7z.exe`
+    /// holding `new` and `old`.
+    fn release_and_install(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+        let base = scratch(name);
+        let (from, to) = (base.join("release"), base.join("installed"));
+        for (dir, text) in [(&from, "new"), (&to, "old")] {
+            std::fs::create_dir_all(dir).unwrap();
+            for f in ["r7z-gui.exe", "r7z.exe"] {
+                std::fs::write(dir.join(f), text).unwrap();
+            }
+        }
+        std::fs::write(from.join("README.md"), "readme").unwrap();
+        (base, from, to)
+    }
+
+    fn read(p: &Path) -> String {
+        std::fs::read_to_string(p).unwrap_or_else(|e| format!("{}: {e}", p.display()))
+    }
+
+    #[test]
+    fn copy_files_replaces_the_install() {
+        let (base, from, to) = release_and_install("copy");
+        copy_files(&from, &to).unwrap();
+        assert_eq!(read(&to.join("r7z-gui.exe")), "new");
+        assert_eq!(read(&to.join("r7z.exe")), "new");
+        assert_eq!(read(&to.join("README.md")), "readme");
+        assert!(!to.join("r7z-gui.exe.new").exists());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn copy_files_failing_leaves_the_old_install() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (base, from, to) = release_and_install("copyfail");
+        // Opened with no sharing, the new program can't be read: a copy that fails partway.
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(from.join("r7z.exe"))
+            .unwrap();
+        assert!(copy_files(&from, &to).is_err());
+        drop(lock);
+        assert_eq!(read(&to.join("r7z-gui.exe")), "old");
+        assert_eq!(read(&to.join("r7z.exe")), "old");
+        for f in ["r7z-gui.exe.new", "r7z.exe.new", "README.md"] {
+            assert!(!to.join(f).exists(), "{f} was left behind");
+        }
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn copy_files_failing_to_swap_puts_the_old_files_back() {
+        let (base, from, to) = release_and_install("swapfail");
+        // README.md comes after the programs and can't move aside: a folder holds its `.old`.
+        std::fs::write(to.join("README.md"), "old readme").unwrap();
+        std::fs::create_dir_all(to.join("README.md.old").join("x")).unwrap();
+        assert!(copy_files(&from, &to).is_err());
+        assert_eq!(read(&to.join("r7z-gui.exe")), "old");
+        assert_eq!(read(&to.join("r7z.exe")), "old");
+        assert_eq!(read(&to.join("README.md")), "old readme");
+        for f in ["r7z-gui.exe.new", "r7z.exe.new", "README.md.new"] {
+            assert!(!to.join(f).exists(), "{f} was left behind");
+        }
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+}

@@ -198,6 +198,24 @@ pub fn install_explorer_for(exe: &Path) -> bool {
     ok
 }
 
+/// Rewrites the classic menu's labels, if it is installed, in the current language: they
+/// were written in the language of the day it was added. Runs `reg` several times, so it
+/// belongs off the UI thread.
+#[cfg(all(windows, not(feature = "store")))]
+pub fn relabel_explorer() {
+    // One at a time, each reading the language when its turn comes, so after quick
+    // switches the last one to write uses the language the app ended up in.
+    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _turn = ONE.lock().unwrap_or_else(|e| e.into_inner());
+    if !explorer_installed() {
+        return;
+    }
+    for (class, key, label, _) in VERBS {
+        let base = format!(r"HKCU\Software\Classes\{class}\shell\{key}");
+        reg(&["add", &base, "/v", "MUIVerb", "/d", tr(label), "/f"]);
+    }
+}
+
 #[cfg(all(windows, not(feature = "store")))]
 pub fn uninstall_explorer() -> bool {
     let mut ok = true;
@@ -222,6 +240,8 @@ pub fn install_explorer() -> bool {
 pub fn uninstall_explorer() -> bool {
     false
 }
+#[cfg(any(not(windows), feature = "store"))]
+pub fn relabel_explorer() {}
 
 /// Whether r7z is in Windows 11's main context menu, which (unlike the classic menu)
 /// only shows commands from packaged apps: r7z registers a sparse package that points at
@@ -238,12 +258,16 @@ pub enum ModernMenu {
     Unavailable(String),
 }
 
+/// Runs `script`. Paths go in through `vars`, environment variables the script reads as
+/// `$env:NAME`: pasted into the script text, a folder name could end a string early
+/// (PowerShell takes the typographic quotes ‘ ’ ‚ ‛ as `'` too) and run the rest as code.
 #[cfg(all(windows, not(feature = "store")))]
-pub fn powershell(script: &str) -> Result<String, String> {
+pub fn powershell(script: &str, vars: &[(&str, &Path)]) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let out = Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .envs(vars.iter().map(|(k, v)| (k, v.as_os_str())))
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| e.to_string())?;
@@ -258,12 +282,6 @@ pub fn powershell(script: &str) -> Result<String, String> {
             .unwrap_or("PowerShell failed")
             .to_string())
     }
-}
-
-/// A path as a single-quoted PowerShell string.
-#[cfg(all(windows, not(feature = "store")))]
-pub fn ps_path(p: &Path) -> String {
-    format!("'{}'", p.display().to_string().replace('\'', "''"))
 }
 
 #[cfg(all(windows, not(feature = "store")))]
@@ -332,7 +350,7 @@ pub fn modern_menu_status() -> ModernMenu {
         return ModernMenu::Unavailable(tr("Windows 10 has only the classic menu.").into());
     }
     let installed =
-        powershell("(Get-AppxPackage -Name r7z).Name").is_ok_and(|out| out.trim() == "r7z");
+        powershell("(Get-AppxPackage -Name r7z).Name", &[]).is_ok_and(|out| out.trim() == "r7z");
     if installed {
         return ModernMenu::Installed;
     }
@@ -386,12 +404,9 @@ fn register_modern_menu(package: &Path, signed: bool, dir: &Path, replace: bool)
         ""
     };
     let add = if signed { "-Path" } else { "-Register" };
-    let script = format!(
-        "{remove}Add-AppxPackage {add} {} -ExternalLocation {}",
-        ps_path(package),
-        ps_path(dir)
-    );
-    match powershell(&script) {
+    let script =
+        format!("{remove}Add-AppxPackage {add} $env:R7Z_PACKAGE -ExternalLocation $env:R7Z_DIR");
+    match powershell(&script, &[("R7Z_PACKAGE", package), ("R7Z_DIR", dir)]) {
         Ok(_) => modern_menu_status(),
         Err(e) => ModernMenu::Unavailable(tf!("Windows refused the menu package: {e}", e = e)),
     }
@@ -399,7 +414,7 @@ fn register_modern_menu(package: &Path, signed: bool, dir: &Path, replace: bool)
 
 #[cfg(all(windows, not(feature = "store")))]
 pub fn uninstall_modern_menu() -> ModernMenu {
-    let _ = powershell("Get-AppxPackage -Name r7z | Remove-AppxPackage");
+    let _ = powershell("Get-AppxPackage -Name r7z | Remove-AppxPackage", &[]);
     modern_menu_status()
 }
 
@@ -689,5 +704,13 @@ mod tests {
         for (_, _, label, _) in super::VERBS {
             assert!(crate::i18n::translated(label), "{label}");
         }
+    }
+
+    #[test]
+    fn powershell_gets_paths_verbatim() {
+        let hostile = "D:\\Bob\u{2019}s it's \u{2018}x\u{201A}\u{201B}; Write-Output pwned; $(Write-Output sub) `n end\\r7z";
+        let script = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; [Console]::Out.Write($env:R7Z_TEST)";
+        let out = super::powershell(script, &[("R7Z_TEST", std::path::Path::new(hostile))]);
+        assert_eq!(out.as_deref(), Ok(hostile));
     }
 }

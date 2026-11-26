@@ -9,10 +9,13 @@ crates/
       sevenz/   7z container: data model, header reader (memory-mapped), header writer
       format/   the format layer: Archive trait, registry and detection, nesting, one
                 module per format (zip, tar, stream compressors, cab, cpio, ar, rpm, arj,
-                lzh, xar, wim, split/base64/ihex), non-7z writers
+                lzh, xar, wim, rar, chm, cfb, split/base64/ihex), disc and disk images
+                (iso, udf, dmg, hfs, virtual disks) with their file systems (fat, exfat,
+                ntfs, ext), installers and executables (inno, nsis, pe, sfx), and
+                `write.rs` for the non-7z writers
       codec/    method registry, decode graph, encode chain, 7zAES, parallel LZMA2,
                 parallel Deflate/bzip2/xz encoders, parallel bzip2 decoder, zip crypto,
-                LZW, LZX, Quantum, MSZIP, LZH/ARJ decoders
+                LZW, LZX, Quantum, MSZIP, LZH/ARJ and RAR decoders
       ops/      create, extract/test (format-neutral), damaged-archive recovery, hash,
                 benchmark workflows
       util/     CRC64, wildcards, FILETIME/DOS time conversion, code pages, memory,
@@ -20,12 +23,17 @@ crates/
       cli/      7-Zip-compatible argument parser, terminal UI
     tests/      round trips and fixture reads per format (no external tools needed)
   r7z-gui/      desktop app (egui): archive tree model, background jobs, dialogs, theme,
-                painter-drawn icons, Explorer integration, Open as folder (ProjFS)
+                painter-drawn icons, Explorer integration, Open as folder (ProjFS),
+                interface languages (`src/i18n.rs`, `res/lang/zh-CN.txt`). The
+                `*_stub.rs` modules stand in for install, mount and update in the
+                Store build and off Windows.
   r7z-shell/    Windows 11 context menu (a COM server) and its package manifests
   fuzz/         cargo-fuzz targets, outside the workspace
   winres.rs     version information and icons, shared by the build scripts
 scripts/        interop.sh (two-way 7-Zip matrix), compare.py (benchmarks), release
-                packaging
+                packaging (package_release.py, release_notes.py, make_msix.ps1), the
+                Store package (make_store_msix.ps1, store_assets.py,
+                check_store_build.py), inno_layouts.py (Inno Setup layouts)
 ```
 
 Third-party codecs, all pure Rust: [`lzma-rust2`](https://crates.io/crates/lzma-rust2)
@@ -41,14 +49,16 @@ pipeline and the CLI.
    move `CHANGELOG.md`'s `## Unreleased` under the new version, and write
    `docs/releases/vX.Y.Z.md`. Its `## What's new` section is what the desktop app shows
    before updating (`python scripts/release_notes.py vX.Y.Z` prints it), so keep it to
-   Markdown lists, bold, code, links and tables.
+   Markdown lists, bold, code, links and tables. The manifest bump is cosmetic:
+   `make_msix.ps1` and `package_release.py` stamp the version into the package themselves.
 2. Merge, then push the tag `vX.Y.Z`. The release workflow's `notes` job puts the notes on
    the run's summary page, and the `release` job waits for a maintainer to approve the
    `release` environment. Read the summary, then approve: only then are the programs
    built, signed (Authenticode, the update manifest and the notes) and published.
 3. Publish to the Microsoft Store: download the `store-package` artifact from the run
-   and submit the `.msix` in Partner Center. Nothing does this for you, and Store users
-   stay on the old version until it passes certification.
+   and submit the `.msix` in Partner Center. First scan the signed `r7z-gui.exe` from it on
+   VirusTotal, because an antivirus once flagged a Store build. Nothing does this for you,
+   and Store users stay on the old version until it passes certification.
 
 ## Testing
 

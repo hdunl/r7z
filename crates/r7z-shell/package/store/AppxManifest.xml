@@ -25,6 +25,7 @@
   </Dependencies>
   <Resources>
     <Resource Language="en-us" />
+    <Resource Language="zh-cn" />
   </Resources>
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
@@ -67,6 +68,9 @@
               <uap:FileType>.swm</uap:FileType>
               <uap:FileType>.esd</uap:FileType>
               <uap:FileType>.001</uap:FileType>
+              <uap:FileType>.rar</uap:FileType>
+              <uap:FileType>.iso</uap:FileType>
+              <uap:FileType>.dmg</uap:FileType>
             </uap:SupportedFileTypes>
           </uap:FileTypeAssociation>
         </uap:Extension>

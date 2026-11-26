@@ -455,16 +455,7 @@ impl Archive for Rar {
             drain(&mut r)?;
             return Ok(());
         }
-        // A window holds the whole unit when it fits within the dictionary, so filter blocks
-        // never wrap; otherwise it is the dictionary itself.
-        let total: u64 = u.entries.iter().map(|&i| self.members[i].size).sum();
-        let dict = members.iter().map(|m| m.dict).max().unwrap_or(1 << 16);
-        let win = if total <= dict {
-            (total + 1024).max(1 << 16).next_power_of_two()
-        } else {
-            dict.next_power_of_two()
-        } as usize;
-        let mut lz = Lz3::new(Box::new(stream), win);
+        let mut lz = Lz3::new(Box::new(stream), unit_window(&members));
         for (&i, m) in u.entries.iter().zip(members.iter()) {
             lz.begin(m.size);
             let mut inner = Lz3Read(&mut lz);
@@ -538,6 +529,18 @@ impl Rar {
 
 /// Extracts a unit of RAR 1.5 or 2.0 members. Each member's packed data is a stream of
 /// its own, decoded with the model the members before it in a solid unit left behind.
+/// The LZ window for a RAR 2.9 unit: the whole unit when it fits within the dictionary, so
+/// filter blocks never wrap; otherwise the dictionary itself.
+fn unit_window(members: &[&Member]) -> usize {
+    // Declared sizes that overflow when added are larger than any dictionary.
+    let total = members.iter().try_fold(0u64, |t, m| t.checked_add(m.size));
+    let dict = members.iter().map(|m| m.dict).max().unwrap_or(1 << 16);
+    (match total {
+        Some(total) if total <= dict => (total + 1024).max(1 << 16).next_power_of_two(),
+        _ => dict.next_power_of_two(),
+    }) as usize
+}
+
 fn extract_old(entries: &[usize], members: &[&Member], f: &mut EntryFn<'_>) -> Result<()> {
     if members.iter().any(|m| m.crypt.is_some()) {
         return Err(Error::unsupported("RAR 1.5 and 2.0 encryption"));
@@ -601,5 +604,43 @@ fn drain(r: &mut dyn Read) -> Result<()> {
         if r.read(&mut buf).map_err(Error::from_codec)? == 0 {
             return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn member(size: u64, dict: u64) -> Member {
+        Member {
+            name: "x".into(),
+            is_dir: false,
+            size,
+            packed: Vec::new(),
+            mtime: None,
+            attrib: None,
+            crc: None,
+            blake2: None,
+            method: 3,
+            version: 29,
+            solid: true,
+            dict,
+            crypt: None,
+            incomplete: false,
+        }
+    }
+
+    #[test]
+    fn unit_window_fits_the_unit_or_the_dictionary() {
+        let (a, b) = (member(1000, 1 << 22), member(2000, 1 << 22));
+        assert_eq!(unit_window(&[&a, &b]), 1 << 16);
+        let big = member(5 << 20, 1 << 22);
+        assert_eq!(unit_window(&[&a, &big]), 1 << 22);
+    }
+
+    #[test]
+    fn unit_sizes_that_overflow_are_larger_than_the_dictionary() {
+        let (a, b) = (member(u64::MAX, 1 << 20), member(2, 1 << 20));
+        assert_eq!(unit_window(&[&a, &b]), 1 << 20);
     }
 }

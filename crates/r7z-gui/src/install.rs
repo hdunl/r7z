@@ -276,16 +276,28 @@ foreach ($e in @({exts})) {{
     Ok(())
 }
 
-/// After an update the installed copy is newer than its Installed apps entry says.
+/// After an update the installed copy is newer than its registration: the Installed apps
+/// entry names the old version, and file types added since are not offered in "Open with".
+/// Registers it again, once, the first time the new version starts.
 #[cfg(windows)]
 pub fn refresh() {
-    if let State::Installed { here: true, .. } = state() {
-        if reg_get(UNINSTALL_KEY, "DisplayVersion").as_deref() != Some(crate::update::CURRENT) {
+    let State::Installed { dir, here: true } = state() else {
+        return;
+    };
+    if reg_get(UNINSTALL_KEY, "DisplayVersion").as_deref() == Some(crate::update::CURRENT) {
+        return;
+    }
+    // PowerShell takes a moment to start, and the window does not wait for it.
+    std::thread::spawn(move || {
+        if register(&dir.join("r7z-gui.exe"), &dir).is_ok() {
+            changed_associations();
+        } else {
+            // The version is then right at least, and this is not tried on every start.
             let key = format!(r"HKCU\{UNINSTALL_KEY}");
             let version = crate::update::CURRENT;
             crate::shell::reg(&["add", &key, "/v", "DisplayVersion", "/d", version, "/f"]);
         }
-    }
+    });
 }
 
 /// A program can't delete the folder it runs from, so a hidden `cmd` gives this one three

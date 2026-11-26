@@ -29,6 +29,9 @@ Notable changes to r7z. Versions follow [Semantic Versioning](https://semver.org
   as "hide". The classic right-click menu follows a language change.
 - "Open with" offers r7z for `.rar`, `.iso` and `.dmg`, in the installed portable copy and
   in the Store version, and the Store package declares Simplified Chinese.
+- An installed copy registers itself with Windows again the first time it starts after an
+  update. Before, only its version in Installed apps was brought up to date, so file types
+  added by a new version were not offered until r7z was installed again.
 - Installing over an existing copy stages the new files first and puts the old ones back
   if copying fails, instead of leaving a mixed install.
 - Open as folder: closing r7z or ejecting no longer waits for the decoder to skip a long

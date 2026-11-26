@@ -76,7 +76,11 @@ pub(crate) fn overlay_has_signature(file: &[u8]) -> bool {
     let Ok(image) = Image::parse(file) else {
         return false;
     };
-    let tail = &file[image.overlay..];
+    signature_in(&file[image.overlay..])
+}
+
+/// Whether a payload format's signature appears in `tail`, bytes from a PE file's overlay.
+pub(crate) fn signature_in(tail: &[u8]) -> bool {
     PAYLOAD_SIGNATURES
         .iter()
         .flat_map(|sigs| sigs.iter())

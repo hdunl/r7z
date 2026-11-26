@@ -46,6 +46,9 @@ pub struct Image {
     resources: Option<(u32, u32)>,
     /// File offset just past the image's section data, where appended data starts.
     pub overlay: usize,
+    /// The same offset before it is limited to the bytes parsed, so headers read from the
+    /// start of a larger file still say where its overlay is.
+    pub end: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -114,6 +117,7 @@ impl Image {
             sections: out,
             resources,
             overlay: overlay.min(d.len()),
+            end: overlay,
         })
     }
 

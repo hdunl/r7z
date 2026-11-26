@@ -51,7 +51,7 @@ pub mod xar;
 pub mod zip;
 pub mod zipsplit;
 
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -400,15 +400,66 @@ pub fn payload_format(file: &Slice) -> Option<&'static Format> {
 
 /// A cheap look at whether the PE file at `path` carries an installer or self-extractor
 /// payload: an NSIS header, an Inno Setup offset table, or a payload format's signature after
-/// the image. It reads bytes only and opens nothing, so the Explorer menu can call it
-/// without linking the parsers; opening the file decides, through [`payload_format`].
+/// the image. It reads bytes only and opens nothing; opening the file decides, through
+/// [`payload_format`]. It looks through the whole file: the Explorer menu uses
+/// [`exe_may_have_payload_bounded`] instead.
 pub fn exe_may_have_payload(path: &Path) -> bool {
-    Slice::map_file(path).is_ok_and(|file| {
-        file.starts_with(b"MZ")
-            && (nsis::looks_like_nsis(&file)
-                || inno::looks_like_inno(&file)
-                || sfx::overlay_has_signature(&file))
-    })
+    Slice::map_file(path).is_ok_and(|file| may_have_payload(&file))
+}
+
+fn may_have_payload(file: &[u8]) -> bool {
+    file.starts_with(b"MZ")
+        && (nsis::looks_like_nsis(file)
+            || inno::looks_like_inno(file)
+            || sfx::overlay_has_signature(file))
+}
+
+/// How much [`exe_may_have_payload_bounded`] reads from the start of a file: the headers and
+/// an installer's loader image, which holds Inno Setup's offset table.
+pub const PAYLOAD_HEAD: u64 = 1 << 20;
+
+/// How much of the overlay it reads: an NSIS header and a self-extractor's archive start right
+/// after the stub, behind at most a short configuration text.
+pub const PAYLOAD_OVERLAY: u64 = 256 << 10;
+
+/// [`exe_may_have_payload`] in at most [`PAYLOAD_HEAD`] plus [`PAYLOAD_OVERLAY`] bytes of plain
+/// reads, for the Explorer menu: it runs inside Explorer, where a long scan freezes the menu
+/// and a mapped file that vanishes from a network share or USB drive is a crash. A file no
+/// longer than [`PAYLOAD_HEAD`] gets the same answer as the full check; in a longer one, a
+/// payload whose marker lies past these bounds is missed.
+pub fn exe_may_have_payload_bounded<R: Read + Seek>(file: &mut R) -> std::io::Result<bool> {
+    let len = file.seek(SeekFrom::End(0))?;
+    let head = read_at(file, 0, len.min(PAYLOAD_HEAD))?;
+    if len <= PAYLOAD_HEAD {
+        return Ok(may_have_payload(&head));
+    }
+    if !head.starts_with(b"MZ") {
+        return Ok(false);
+    }
+    if inno::looks_like_inno(&head) {
+        return Ok(true);
+    }
+    let Ok(image) = pe::Image::parse(&head) else {
+        return Ok(nsis::looks_like_nsis(&head));
+    };
+    // NSIS headers sit at 512-byte steps from the start of the file, and the check counts its
+    // steps from the start of the bytes it is given.
+    let from = image.end as u64 / 512 * 512;
+    if from >= len {
+        return Ok(false);
+    }
+    let stretch = read_at(file, from, (len - from).min(PAYLOAD_OVERLAY))?;
+    let tail = stretch
+        .get((image.end as u64 - from) as usize..)
+        .unwrap_or(&[]);
+    Ok(nsis::looks_like_nsis(&stretch) || sfx::signature_in(tail))
+}
+
+fn read_at<R: Read + Seek>(file: &mut R, at: u64, len: u64) -> std::io::Result<Vec<u8>> {
+    file.seek(SeekFrom::Start(at))?;
+    let mut buf = vec![0; len as usize];
+    file.read_exact(&mut buf)?;
+    Ok(buf)
 }
 
 /// One level of an opened archive chain (`x.tar.gz` has a gzip level and a tar level).

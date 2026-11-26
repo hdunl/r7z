@@ -791,3 +791,93 @@ fn cli_adds_updates_deletes_and_renames() {
     let out = run(&["t", "cli.7z"]);
     assert!(out.status.success());
 }
+
+/// Files in `dir` left by an interrupted or failed write.
+fn temp_files(dir: &Path) -> Vec<String> {
+    fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".r7z-tmp-"))
+        .collect()
+}
+
+type Make = Box<dyn Fn(&Path, &[Item]) -> r7z::Result<create::Summary>>;
+
+/// Each writer that renames a temporary file over its archive.
+fn writers() -> [(&'static str, Make); 3] {
+    [
+        (
+            "a.7z",
+            Box::new(|p, it| create::create(p, it, &cfg_7z(false, None, false), &NoProgress)),
+        ),
+        (
+            "a.zip",
+            Box::new(|p, it| write::create(p, Kind::Zip, it, &cfg_other(None), &NoProgress)),
+        ),
+        (
+            "a.tar",
+            Box::new(|p, it| write::create(p, Kind::Tar, it, &cfg_other(None), &NoProgress)),
+        ),
+    ]
+}
+
+fn set_readonly(path: &Path, on: bool) {
+    let mut perms = fs::metadata(path).unwrap().permissions();
+    perms.set_readonly(on);
+    fs::set_permissions(path, perms).unwrap();
+}
+
+#[test]
+fn a_read_only_archive_is_replaced_without_leaving_a_temporary_file() {
+    // Writing over a read-only archive has always succeeded (the old archive was deleted
+    // first); the rename that now replaces it directly must keep that.
+    let s = Scratch::new("read-only");
+    let items = vec![s.file("a.txt", b"first\n", T0)];
+    let again = vec![s.file("b.txt", b"second\n", T1)];
+    for (name, make) in writers() {
+        let archive = s.path(name);
+        make(&archive, &items).unwrap();
+        set_readonly(&archive, true);
+        let result = make(&archive, &again);
+        let left = temp_files(&s.0);
+        set_readonly(&archive, false);
+        result.unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(left.is_empty(), "{name}: temporary files left: {left:?}");
+        let files = read_back(&archive, None).unwrap();
+        assert_eq!(files, expect(&[("b.txt", b"second\n")]), "{name}");
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn an_archive_that_cannot_be_replaced_is_kept() {
+    use std::os::windows::fs::OpenOptionsExt;
+    // Open without delete sharing, as another program may hold it: it cannot be replaced.
+    const FILE_SHARE_READ: u32 = 1;
+    let s = Scratch::new("held-open");
+    let items = vec![s.file("a.txt", b"first\n", T0)];
+    let again = vec![s.file("b.txt", b"second\n", T1)];
+    for (name, make) in writers() {
+        let archive = s.path(name);
+        make(&archive, &items).unwrap();
+        let original = fs::read(&archive).unwrap();
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(&archive)
+            .unwrap();
+        let result = make(&archive, &again);
+        drop(held);
+        assert!(
+            result.is_err(),
+            "{name}: replacing a held archive succeeded"
+        );
+        assert_eq!(
+            fs::read(&archive).unwrap(),
+            original,
+            "{name}: the archive changed"
+        );
+        let left = temp_files(&s.0);
+        assert!(left.is_empty(), "{name}: temporary files left: {left:?}");
+    }
+}

@@ -20,7 +20,7 @@ store = []
 r7z = { path = "../r7z" }
 eframe = { version = "0.37", default-features = false, features = ["glow"] }
 egui_extras = { version = "0.37", default-features = false }
-rfd = { version = "0.17", default-features = false }
+rfd = { version = "0.18", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "ico", "tiff"] }
 sha2 = "0.11"
 sha1 = "0.11"
